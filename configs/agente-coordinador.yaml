@@ -1,0 +1,71 @@
+# Configuración del Agente Coordinador
+# Este arquivo deve ser revisado e melhorado
+
+metadata:
+  version: "1.0"
+  created: "2026-03-31"
+  estado: "para_revision"
+
+coordinador:
+  nombre: "Coordinador Central"
+  descripcion: "Orquesta el flujo de trabajo entre agentes"
+  
+  timeout_defecto: 300  # segundos
+  max_reintentos: 3
+  
+  responsabilidades:
+    - "Recibir peticiones del usuario"
+    - "Asignar tareas a agentes especializados"
+    - "Monitorear estado de ejecución"
+    - "Resolver conflictos"
+    - "Generar reportes de progreso"
+
+  flujo_ejecucion:
+    1_recibir_peticion:
+      entrada: "peticion_usuario"
+      validar: true
+      timeout: 30
+    
+    2_planificar:
+      agentes_requeridos: []  # Se llena dinámicamente
+      dependencias: []
+      timeout: 60
+    
+    3_distribuir_tareas:
+      asignacion: "secuencial"  # o "paralelo"
+      reintentos: 3
+      rollback_on_failure: true
+    
+    4_monitorear:
+      ping_interval: 10  # segundos
+      timeout_agente: 300
+      log_verbose: true
+    
+    5_compilar_resultados:
+      generar_reporte: true
+      notificar_usuario: true
+      guardar_en_historial: true
+
+  rutas:
+    estado_compartido: "antigravity/agentes/historial/estado-actual.json"
+    historial: "Historial de Conversaciones y Sesiones de Desarrollo.md"
+    logs: "antigravity/agentes/historial/logs/"
+
+  comunicacion:
+    protocolo: "JSON basado en archivos"
+    encoding: "UTF-8"
+    timeout_lectura: 5
+    timeout_escritura: 5
+
+  seguridad:
+    requiere_autorizacion: false  # TODO: implementar
+    registro_auditoria: true
+    encripcion_credenciales: false  # TODO: implementar
+
+# ============================================================
+# NOTAS PARA REVISOR:
+# 1. Falta especificar cómo se maneja el rollback
+# 2. ¿Quién autoriza qué? Falta matriz RBAC
+# 3. Los timeouts son arbitrarios - necesitan ajuste
+# 4. La comunicación por archivos JSON es primitiva
+# 5. Sin mecanismo de prio
