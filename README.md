@@ -25,6 +25,8 @@ Aquí se encuentran los arquivos para definir, revisar y mejorar el **sistema de
 | **configs/** | 🔧 Archivos de configuración YAML para cada agente |
 | **scripts/** | 🖥️ Scripts PowerShell para inicialización y automatización |
 | **historial/** | 📊 Registros de sesiones, decisiones y ejecuciones |
+| **nemoclaw/** | 🦞 Contexto operativo, replicación, seguridad y Telegram para NVIDIA NemoClaw |
+| **comandos para linux/** | 🐧 Notas y scripts de soporte para Linux |
 
 ---
 
@@ -54,6 +56,18 @@ cd "C:\Users\ZN-\Documents\antigravity\agentes"
 ```
 
 Esto creará la estructura de carpetas y archivos necesarios.
+
+### Paso 4: Revisar NemoClaw
+```bash
+# Archivos clave para continuar el trabajo de NemoClaw:
+code nemoclaw/README.md
+code nemoclaw/CONTEXTO_IMPLEMENTACION.md
+code nemoclaw/REPLICACION_OTRO_PC.md
+code nemoclaw/SEGURIDAD_Y_SECRETOS.md
+code nemoclaw/TELEGRAM.md
+```
+
+Estos archivos documentan la instalación real realizada en Linux y dejan un flujo replicable para otro PC sin subir secretos al repositorio.
 
 ---
 

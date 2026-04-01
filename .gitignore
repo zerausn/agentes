@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+*.secret
+*.secrets
+secrets/
+local/
+tmp/
+nemoclaw/local/
+nemoclaw/tmp/
+nemoclaw/*.local
+nemoclaw/*.log
