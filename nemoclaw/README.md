@@ -13,9 +13,11 @@ Este directorio deja el contexto operativo de la instalacion local de `NemoClaw`
 - `REPLICACION_OTRO_PC.md`: paso a paso para repetir la instalacion
 - `SEGURIDAD_Y_SECRETOS.md`: controles para no filtrar credenciales
 - `TELEGRAM.md`: flujo de integracion y hardening para Telegram
+- `WEB_UI_LOCAL.md`: como funciona realmente la UI web local y como abrirla sin caer en `device identity required`
 - `HOTFIX_LOCAL_NEMOCLAW.md`: parches aplicados al checkout local de `NemoClaw`
 - `INICIO_AUTOMATICO.md`: como dejar el bridge listo al iniciar sesion
 - `scripts/start_nemoclaw_telegram.sh`: helper para arrancar servicios leyendo secretos fuera del repo
+- `scripts/start_nemoclaw_dashboard.sh`: helper para reabrir el panel local con URL tokenizada
 - `scripts/enable_nemoclaw_autostart.sh`: instala el autostart en `~/.config/autostart`
 - `scripts/disable_nemoclaw_autostart.sh`: quita autostart, para el bridge, y opcionalmente borra secretos locales
 - `nemoclaw.env.example`: plantilla de variables sin secretos
@@ -54,6 +56,12 @@ Arranque manual:
 
 ```bash
 bash /home/zerausn/Documents/Antigravity/agentes/nemoclaw/scripts/start_nemoclaw_telegram.sh
+```
+
+UI web local:
+
+```bash
+bash /home/zerausn/Documents/Antigravity/agentes/nemoclaw/scripts/start_nemoclaw_dashboard.sh
 ```
 
 Arranque automatico al iniciar sesion:

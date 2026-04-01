@@ -44,6 +44,23 @@ Ese archivo no va al repo.
 bash /home/zerausn/Documents/Antigravity/agentes/nemoclaw/scripts/start_nemoclaw_telegram.sh
 ```
 
+## UI web local
+
+El panel web no se debe abrir con el bare URL y asumir que conectara solo.
+En este host, la forma estable es:
+
+```bash
+bash /home/zerausn/Documents/Antigravity/agentes/nemoclaw/scripts/start_nemoclaw_dashboard.sh
+```
+
+Ese helper:
+
+- saca la URL tokenizada correcta del sandbox
+- reabre el forward local
+- deja el forward en foreground para que no muera
+
+La terminal debe quedar abierta mientras uses el panel.
+
 ## Activar autostart con un solo comando
 
 ```bash

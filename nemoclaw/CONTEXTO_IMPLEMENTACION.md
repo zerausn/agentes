@@ -13,6 +13,7 @@ Se dejo operativo:
 - gateway `nemoclaw` levantada
 - sandbox `nemoclaw-main` creado y en estado usable
 - forwarding local del dashboard en `http://127.0.0.1:18789/`
+- acceso web documentado como `OpenClaw Control` sobre la gateway de `NemoClaw`
 
 ## Lo que se encontro al inicio
 
@@ -118,6 +119,44 @@ Estado final validado:
 - `nemoclaw status` muestra `nemoclaw-main`
 - el sandbox quedo `Ready`
 - el dashboard local quedo accesible via port forward
+
+### 5.1 UI web local
+
+Al abrir `http://127.0.0.1:18789/` aparecio una UI de `OpenClaw Control`, no una marca separada de `NemoClaw`.
+
+Eso no fue un error.
+Al revisar el repo original se confirmo que `NemoClaw` usa la interfaz de `OpenClaw` para el chat/control web.
+
+El fallo real fue este:
+
+- la UI cargaba
+- pero mostraba `device identity required`
+- y quedaba desconectada de la gateway
+
+Se reviso el bundle de la UI y la configuracion real descargada desde el sandbox.
+Se confirmo que:
+
+- la UI soporta modo local por token
+- `NemoClaw` construye URLs tokenizadas con `#token=...`
+- el sandbox ya tenia:
+  - `gateway.controlUi.allowInsecureAuth: true`
+  - `gateway.controlUi.dangerouslyDisableDeviceAuth: true`
+
+Ademas, en este host el `openshell forward` en background quedaba en estado `dead`, pero en foreground se mantenia bien.
+
+Por eso la solucion operativa documentada fue:
+
+- no depender de `http://127.0.0.1:18789/` pelado
+- usar la URL tokenizada del sandbox
+- sostener el forward en foreground con un helper dedicado
+
+Helper agregado en `agentes`:
+
+- `scripts/start_nemoclaw_dashboard.sh`
+
+Documento asociado:
+
+- `WEB_UI_LOCAL.md`
 
 ### 6. Telegram
 
