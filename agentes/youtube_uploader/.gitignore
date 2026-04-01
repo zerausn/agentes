@@ -1,0 +1,12 @@
+# Credenciales y tokens
+credentials/
+*.json
+!scanned_videos.json
+
+# Logs
+*.log
+__pycache__/
+
+# Python env
+venv/
+.env
