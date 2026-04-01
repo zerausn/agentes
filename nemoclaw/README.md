@@ -13,8 +13,13 @@ Este directorio deja el contexto operativo de la instalacion local de `NemoClaw`
 - `REPLICACION_OTRO_PC.md`: paso a paso para repetir la instalacion
 - `SEGURIDAD_Y_SECRETOS.md`: controles para no filtrar credenciales
 - `TELEGRAM.md`: flujo de integracion y hardening para Telegram
+- `HOTFIX_LOCAL_NEMOCLAW.md`: parches aplicados al checkout local de `NemoClaw`
+- `INICIO_AUTOMATICO.md`: como dejar el bridge listo al iniciar sesion
 - `scripts/start_nemoclaw_telegram.sh`: helper para arrancar servicios leyendo secretos fuera del repo
+- `scripts/enable_nemoclaw_autostart.sh`: instala el autostart en `~/.config/autostart`
+- `scripts/disable_nemoclaw_autostart.sh`: quita autostart, para el bridge, y opcionalmente borra secretos locales
 - `nemoclaw.env.example`: plantilla de variables sin secretos
+- `startup/nemoclaw-telegram-bridge.desktop`: plantilla de autostart para escritorio Linux
 
 ## Estado validado en este equipo
 
@@ -42,3 +47,15 @@ openshell term
 
 No guardar `NVIDIA_API_KEY`, `TELEGRAM_BOT_TOKEN` ni otros secretos dentro de este repositorio.
 Usar un archivo externo como `~/.config/antigravity/nemoclaw.env`.
+
+## Inicio rapido
+
+Arranque manual:
+
+```bash
+bash /home/zerausn/Documents/Antigravity/agentes/nemoclaw/scripts/start_nemoclaw_telegram.sh
+```
+
+Arranque automatico al iniciar sesion:
+
+- ver `INICIO_AUTOMATICO.md`

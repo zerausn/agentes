@@ -9,6 +9,12 @@ if [ ! -f "$ENV_FILE" ]; then
   exit 1
 fi
 
+export NVM_DIR="${HOME}/.nvm"
+if [ -s "$NVM_DIR/nvm.sh" ]; then
+  # Load the user Node environment before validating commands.
+  . "$NVM_DIR/nvm.sh"
+fi
+
 if ! command -v node >/dev/null 2>&1; then
   echo "[nemoclaw-telegram] node not found" >&2
   exit 1
@@ -43,6 +49,7 @@ if [ ! -f "$BRIDGE_SCRIPT" ]; then
 fi
 
 echo "[nemoclaw-telegram] starting telegram bridge for sandbox: $SANDBOX_NAME"
+pkill -f "$BRIDGE_SCRIPT" 2>/dev/null || true
 nohup env SANDBOX_NAME="$SANDBOX_NAME" node "$BRIDGE_SCRIPT" >"$LOG_FILE" 2>&1 &
 echo $! >"$PID_FILE"
 sleep 2

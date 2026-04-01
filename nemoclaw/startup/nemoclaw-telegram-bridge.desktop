@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=NemoClaw Telegram Bridge
+Comment=Start the local NemoClaw Telegram bridge on login
+Exec=/bin/bash -lc '/home/zerausn/Documents/Antigravity/agentes/nemoclaw/scripts/start_nemoclaw_telegram.sh'
+Terminal=false
+X-GNOME-Autostart-enabled=true
+Categories=Utility;
