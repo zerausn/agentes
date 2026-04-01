@@ -97,7 +97,9 @@ def upload_video(youtube, file_path, title, description, publish_at_dt):
         'status': {
             'privacyStatus': metadata.get('privacyStatus', 'private'),
             'publishAt': publish_at_str,
-            'selfDeclaredMadeForKids': audience.get('selfDeclaredMadeForKids', False)
+            'selfDeclaredMadeForKids': audience.get('selfDeclaredMadeForKids', False),
+            'hasAlteredContentDisclosure': audience.get('hasAlteredContentDisclosure', False),
+            'license': metadata.get('license', 'youtube')
         }
     }
 
@@ -211,8 +213,11 @@ def main():
             logging.warning(f"Archivo no encontrado: {video['path']}")
             continue
 
-        title = Path(video['filename']).stem[:100]
-        # Metadata personalizada: buscar un archivo .txt con el mismo nombre que el video
+        # Extraer fecha de grabación para el título
+        date_str = video.get('creation_date', 'N/A').split(' ')[0]
+        # Formato aprobado: Performatic Writings | 2026-03-10 | (20260310_191216)
+        title = f"Performatic Writings | {date_str} | ({Path(video['filename']).stem})"
+        
         desc = config.get('default_metadata', {}).get('description', '')
         desc_file = Path(video['path']).with_suffix('.txt')
         if desc_file.exists():

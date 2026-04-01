@@ -13,8 +13,11 @@ Automated YouTube Bulk-Uploader with staggered scheduling and safety automation.
     5. **Multithreaded Scanning**: `video_scanner.py` uses `ThreadPoolExecutor` for high-speed disk traversal.
 
 ## AI Execution Instructions
-1. **Config**: Check `config.json` before running.
-2. **Scanner**: `python video_scanner.py`.
+1. **Config**: Check `config.json` before running. Categoría: Entretenimiento (24).
+2. **Scanner**: `python video_scanner.py` (actualiza `scanned_videos.json`).
 3. **Uploader**: `python uploader.py`.
-4. **Resilience**: If a network error occurs, the script will retry up to 5 times with exponential backoff before rotating the client secret.
+    - **Naming Strategy**: `Performatic Writings | [FECHA] | ([FILENAME])`.
+    - **Auth**: La primera vez con cada llave abrirá una ventana en Edge. El usuario tiene su sesión allí.
+4. **Resilience**: Reintento exponencial (5 veces) ante errores de red.
+5. **Deteccion de Duplicados**: El uploader no sube si la flag `uploaded` es True en `scanned_videos.json`.
 
