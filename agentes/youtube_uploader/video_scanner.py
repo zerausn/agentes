@@ -26,6 +26,8 @@ scanner_cfg = config.get('scanner', {})
 VIDEO_EXTENSIONS = set(scanner_cfg.get('video_extensions', ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv']))
 MIN_SIZE_MB = scanner_cfg.get('min_size_mb', 100)
 EXCLUDE_FOLDERS = set(folder.lower() for folder in scanner_cfg.get('exclude_folders', []))
+EXCLUDE_FILES = set(f.lower() for f in scanner_cfg.get('exclude_files', []))
+EXCLUDE_PATTERNS = [p.lower() for p in scanner_cfg.get('exclude_patterns', [])]
 
 def scan_directory(directory):
     """Escanea un directorio de forma recursiva buscando videos grandes."""
@@ -40,6 +42,13 @@ def scan_directory(directory):
             try:
                 ext = os.path.splitext(file)[1].lower()
                 if ext in VIDEO_EXTENSIONS:
+                    # Verificar exclusiones por nombre de archivo o patrón
+                    file_lower = file.lower()
+                    if file_lower in EXCLUDE_FILES:
+                        continue
+                    if any(pattern in file_lower for pattern in EXCLUDE_PATTERNS):
+                        continue
+                        
                     full_path = os.path.join(root, file)
                     size_bytes = os.path.getsize(full_path)
                     size_mb = size_bytes / (1024 * 1024)

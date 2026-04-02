@@ -13,19 +13,21 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaFileUpload
 
+# Rutas absolutas para ejecución desde cualquier directorio
+BASE_DIR = Path(__file__).parent.absolute()
+LOG_FILE = BASE_DIR / "uploader.log"
+JSON_DB = BASE_DIR / 'scanned_videos.json'
+CREDENTIALS_DIR = BASE_DIR / 'credentials'
+CONFIG_FILE = BASE_DIR / 'config.json'
+QUOTA_STATUS_FILE = BASE_DIR / 'quota_status.json'
+SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
+
 # Setup Logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.FileHandler("uploader.log"), logging.StreamHandler()]
+    handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler()]
 )
-
-# Configuración
-SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
-JSON_DB = 'scanned_videos.json'
-CREDENTIALS_DIR = 'credentials'
-CONFIG_FILE = 'config.json'
-QUOTA_STATUS_FILE = 'quota_status.json'
 
 def load_config():
     if os.path.exists(CONFIG_FILE):
@@ -157,7 +159,7 @@ def update_quota_status(client_name):
         "date": datetime.now().strftime("%Y-%m-%d")
     }
     
-    with open(QUOTA_STATUS_FILE, 'w') as f:
+    with open(QUOTA_STATUS_FILE, 'w', encoding='utf-8') as f:
         json.dump(status, f, indent=4)
 
 def is_client_available(client_name):
