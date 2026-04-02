@@ -65,15 +65,8 @@ def scan_directory(directory):
     return found
 
 def main():
-    user_profile = os.environ.get('USERPROFILE', 'C:\\')
-    default_roots = [
-        os.path.join(user_profile, 'Videos'),
-        os.path.join(user_profile, 'Documents'),
-        os.path.join(user_profile, 'Downloads'),
-        os.path.join(user_profile, 'Desktop')
-    ]
-    
-    roots_to_scan = [r for r in default_roots if os.path.exists(r)]
+    unified_folder = r"C:\Users\ZN-\Documents\ADM\Carpeta 1"
+    roots_to_scan = [unified_folder] if os.path.exists(unified_folder) else []
     
     logging.info(f"Iniciando escaneo multihilo en {len(roots_to_scan)} raíces...")
     

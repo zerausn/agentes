@@ -1,0 +1,15 @@
+# ARCHIVO DE PARADA DE EMERGENCIA
+# ================================
+# Para DETENER la subida de videos en cualquier momento:
+#
+#   1. Crea un archivo llamado STOP dentro de esta misma carpeta:
+#      C:\Users\ZN-\Documents\Antigravity\agentes\agentes\youtube_uploader\STOP
+#
+#   2. El script uploader.py lo detectará y se detendrá limpiamente
+#      antes de comenzar la siguiente subida.
+#
+#   3. Para REANUDAR, simplemente elimina el archivo STOP y vuelve a ejecutar uploader.py
+#
+# ALTERNATIVA RÁPIDA (PowerShell):
+#   Crear el archivo: New-Item STOP
+#   Eliminar para reanudar: Remove-Item STOP

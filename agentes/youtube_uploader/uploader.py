@@ -20,7 +20,8 @@ JSON_DB = BASE_DIR / 'scanned_videos.json'
 CREDENTIALS_DIR = BASE_DIR / 'credentials'
 CONFIG_FILE = BASE_DIR / 'config.json'
 QUOTA_STATUS_FILE = BASE_DIR / 'quota_status.json'
-SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
+SCOPES = ['https://www.googleapis.com/auth/youtube.upload', 'https://www.googleapis.com/auth/youtube.readonly']
+STOP_FILE = BASE_DIR / 'STOP'  # Si existe este archivo, el uploader se detiene limpiamente
 
 # Setup Logging
 logging.basicConfig(
@@ -211,6 +212,15 @@ def main():
     )
 
     for video in pendientes:
+        # ─── MECANISMO DE PARADA DE EMERGENCIA ───────────────────────────────────
+        # Para detener: crea un archivo llamado STOP en la misma carpeta.
+        # Para reanudar: elimina el archivo STOP.
+        if STOP_FILE.exists():
+            logging.warning("🛑 Archivo STOP detectado. Deteniendo el uploader limpiamente.")
+            logging.warning("   Para reanudar, elimina el archivo STOP y ejecuta uploader.py nuevamente.")
+            break
+        # ─────────────────────────────────────────────────────────────────────────
+
         if not os.path.exists(video['path']):
             logging.warning(f"Archivo no encontrado: {video['path']}")
             continue

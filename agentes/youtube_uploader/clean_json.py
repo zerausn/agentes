@@ -35,6 +35,10 @@ def clean_scanned_videos():
         # Check folders
         if any(folder in path_lower for folder in exclude_folders):
             should_exclude = True
+            
+        # Validar si el archivo todavía existe en disco
+        if not os.path.exists(v['path']):
+            should_exclude = True
         
         # Check files
         if filename_lower in exclude_files:

@@ -2,6 +2,7 @@
 credentials/
 *.json
 !scanned_videos.json
+!config.example.json
 
 # Logs
 *.log
