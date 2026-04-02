@@ -18,15 +18,36 @@ Automatiza la subida masiva de videos de performance artístico ("Performatic Wr
 |---|---|
 | `uploader.py` | Motor principal. Lee la cola y sube un video a la vez. |
 | `video_scanner.py` | Escanea `ADM\Carpeta 1` y registra videos en `scanned_videos.json`. |
-| `check_channel_videos.py` | Consulta la API de YouTube para marcar como ya subidos los videos que ya están en el canal (evita duplicados). |
+| `check_channel_videos.py` | Consulta la API de YouTube para marcar como ya subidos los videos que ya están en el canal. |
 | `clean_json.py` | Depura `scanned_videos.json`, eliminando rutas inválidas y aplicando exclusiones. |
-| `config.json` | ⚠️ **No se sube a GitHub.** Contiene rutas privadas, exclusiones personales y metadatos. |
-| `config.example.json` | Plantilla pública. Copiar como `config.json` y personalizar. |
-| `scanned_videos.json` | Base de datos local: listado de videos con estado `uploaded: true/false`. |
-| `quota_status.json` | Registro de llaves de API con cuota agotada (se resetea cada 24h). |
-| `credentials/` | ⚠️ **No se sube a GitHub.** Contiene `client_secret_X.json` y `token_X.json`. |
-| **`STOP`** | **Archivo de parada de emergencia.** Si existe, el uploader se detiene antes de la siguiente subida. |
-| `STOP.txt` | Instrucciones para usar el mecanismo de parada. |
+| `schedule_drafts.py` | **Gestión de Borradores.** Programa videos sin fecha a 1 por día. |
+| `config.json` | ⚠️ **OCULTO.** Contiene rutas privadas, exclusiones y metadatos. |
+| `config.example.json` | Plantilla pública para configurar el sistema. |
+| `scanned_videos.json` | Base de datos local de videos. |
+| `STOP` | Archivo de parada de emergencia (provocado por `PARAR_SUBIDA.bat`). |
+
+---
+
+## ⚡ Automatización con Archivos .BAT (Doble Click)
+
+Para facilitar el uso sin comandos de consola, se incluyen:
+- **`EJECUTAR_SUBIDA.bat`**: Inicia el proceso de subida de videos nuevos.
+- **`PARAR_SUBIDA.bat`**: Crea el archivo de parada de emergencia.
+- **`REANUDAR_SUBIDA.bat`**: Borra el archivo STOP para volver a subir.
+- **`PROGRAMAR_BORRADORES.bat`**: Ejecuta la programación masiva de videos ya subidos.
+
+---
+
+## 🔍 Identificación Inteligente de Borradores
+
+Para evitar alterar videos que el usuario desea mantener como **Privados** (personales, de otros proyectos), el script `schedule_drafts.py` aplica un filtro estricto:
+
+Solo se programan videos que:
+1. **No tengan fecha de publicación** (estado: Borrador).
+2. **Cumplan con el patrón de etiquetas**: Contengan "Performatic Writings" en el título.
+3. **O cumplan con el patrón de archivos**: El título sea un timestamp corto (ej: `20251010_203823`).
+
+**Cualquier otro video privado se ignora automáticamente.**
 
 ---
 
