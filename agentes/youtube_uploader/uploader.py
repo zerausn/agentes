@@ -4,6 +4,7 @@ import json
 import time
 import httplib2
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from googleapiclient.discovery import build
@@ -38,36 +39,50 @@ def load_config():
 
 config = load_config()
 
-def get_next_publish_date(videos):
-    """Calcula la próxima fecha de publicación basándose en los videos ya programados."""
-    max_date = None
-    for v in videos:
-        if v.get('uploaded') and v.get('publishAt'):
-            try:
-                dt_str = v['publishAt'].replace('Z', '+00:00')
-                dt_obj = datetime.fromisoformat(dt_str)
-                if max_date is None or dt_obj > max_date:
-                    max_date = dt_obj
-            except ValueError:
-                pass
+def get_next_publish_date(videos, video_type='video', yt_scheduled_dates=None):
+    """
+    Busca el primer hueco disponible para el tipo dado (short o video).
+    yt_scheduled_dates: un mapping fecha -> {"videos": N, "shorts": N}
+    """
+    if yt_scheduled_dates is None:
+        yt_scheduled_dates = {}
 
-    now_utc = datetime.now(timezone.utc)
     tz_offset = config.get('scheduling', {}).get('colombia_time_offset', -5)
     target_hour = config.get('scheduling', {}).get('publish_hour', 17)
     target_minute = config.get('scheduling', {}).get('publish_minute', 45)
-    
     colombia_tz = timezone(timedelta(hours=tz_offset))
-    now_col = now_utc.astimezone(colombia_tz)
     
-    if max_date is None or max_date < now_utc:
-        tomorrow_col = now_col + timedelta(days=1)
-        next_pub_col = tomorrow_col.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
-        return next_pub_col.astimezone(timezone.utc)
-    else:
-        max_col = max_date.astimezone(colombia_tz)
-        next_pub_col = max_col + timedelta(days=1)
-        next_pub_col = next_pub_col.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
-        return next_pub_col.astimezone(timezone.utc)
+    # Empezar a buscar desde mañana (7 de abril en este contexto)
+    now_utc = datetime.now(timezone.utc)
+    now_col = now_utc.astimezone(colombia_tz)
+    base_date = now_col + timedelta(days=1)
+    
+    # Limitar búsqueda a 2 años por seguridad
+    for i in range(730):
+        check_date = base_date + timedelta(days=i)
+        date_str = check_date.strftime("%Y-%m-%d")
+        
+        # Combinar datos de YouTube y datos locales (scanned_videos.json)
+        local_counts = {"videos": 0, "shorts": 0}
+        for v in videos:
+            if v.get('uploaded') and v.get('publishAt'):
+                v_date = v['publishAt'].split('T')[0]
+                if v_date == date_str:
+                    if v.get('type') == 'short': local_counts["shorts"] += 1
+                    else: local_counts["videos"] += 1
+        
+        # Sumar los de YouTube recogidos en la auditoría externa si se pasan
+        yt_counts = yt_scheduled_dates.get(date_str, {"videos": 0, "shorts": 0})
+        
+        total_v = local_counts["videos"] + yt_counts["videos"]
+        total_s = local_counts["shorts"] + yt_counts["shorts"]
+        
+        if video_type == 'short' and total_s == 0:
+            return check_date.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0).astimezone(timezone.utc)
+        elif video_type == 'video' and total_v == 0:
+            return check_date.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0).astimezone(timezone.utc)
+            
+    return base_date.astimezone(timezone.utc) # Fallback
 
 def get_authenticated_service(client_secret_file, creds_cache_file):
     creds = None
@@ -174,6 +189,55 @@ def is_client_available(client_name):
         return False
     return True
 
+def fetch_yt_schedule(youtube):
+    """Obtiene el mapeo de fechas programadas actualmente en YouTube."""
+    schedule = {}
+    try:
+        channels_response = youtube.channels().list(mine=True, part="contentDetails").execute()
+        uploads_playlist_id = channels_response["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
+        
+        next_page_token = None
+        while True:
+            playlist_request = youtube.playlistItems().list(
+                part="snippet",
+                playlistId=uploads_playlist_id,
+                maxResults=50,
+                pageToken=next_page_token
+            )
+            playlist_response = playlist_request.execute()
+            video_ids = [item['snippet']['resourceId']['videoId'] for item in playlist_response.get("items", [])]
+            
+            videos_response = youtube.videos().list(
+                part="status,contentDetails",
+                id=",".join(video_ids)
+            )
+            videos_response = videos_response.execute()
+            
+            for video in videos_response.get("items", []):
+                status = video.get('status', {})
+                content = video.get('contentDetails', {})
+                publish_at = status.get('publishAt')
+                
+                if publish_at:
+                    date_str = publish_at.split("T")[0]
+                    if date_str not in schedule: schedule[date_str] = {"videos": 0, "shorts": 0}
+                    
+                    # Parsear duración manual (re-usado de audit_schedule_shorts)
+                    dur_str = content.get('duration', '')
+                    m = re.search(r'(\d+)M', dur_str); s = re.search(r'(\d+)S', dur_str); h = re.search(r'(\d+)H', dur_str)
+                    total_sec = (int(h.group(1)) if h else 0)*3600 + (int(m.group(1)) if m else 0)*60 + (int(s.group(1)) if s else 0)
+                    
+                    if total_sec <= 60: # Simplificado para la auditoría rápida
+                        schedule[date_str]["shorts"] += 1
+                    else:
+                        schedule[date_str]["videos"] += 1
+            
+            next_page_token = playlist_response.get("nextPageToken")
+            if not next_page_token: break
+    except Exception as e:
+        logging.error(f"Error en auditoría previa: {e}")
+    return schedule
+
 def main():
     if not os.path.exists(CREDENTIALS_DIR):
         os.makedirs(CREDENTIALS_DIR)
@@ -198,7 +262,6 @@ def main():
     if not pendientes: return
 
     current_idx = 0
-    # Buscar el primer cliente con cuota disponible
     while current_idx < len(client_files) and not is_client_available(client_files[current_idx]):
         current_idx += 1
 
@@ -211,41 +274,38 @@ def main():
         os.path.join(CREDENTIALS_DIR, f'token_{current_idx}.json')
     )
 
+    logging.info("Auditando calendario de YouTube antes de comenzar...")
+    yt_schedule = fetch_yt_schedule(youtube)
+
+    # Priorizar los videos más pesados primero (Heaviest first)
+    pendientes.sort(key=lambda x: x.get('size_mb', 0), reverse=True)
+
     for video in pendientes:
-        # ─── MECANISMO DE PARADA DE EMERGENCIA ───────────────────────────────────
-        # Para detener: crea un archivo llamado STOP en la misma carpeta.
-        # Para reanudar: elimina el archivo STOP.
         if STOP_FILE.exists():
-            logging.warning("🛑 Archivo STOP detectado. Deteniendo el uploader limpiamente.")
-            logging.warning("   Para reanudar, elimina el archivo STOP y ejecuta uploader.py nuevamente.")
+            logging.warning("🛑 Archivo STOP detectado. Deteniendo.")
             break
-        # ─────────────────────────────────────────────────────────────────────────
 
         if not os.path.exists(video['path']):
             logging.warning(f"Archivo no encontrado: {video['path']}")
             continue
 
-        # Extraer fecha de grabación para el título
+        v_type = video.get('type', 'video')
         date_str = video.get('creation_date', 'N/A').split(' ')[0]
-        # Formato aprobado: Performatic Writings | 2026-03-10 | (20260310_191216)
         title = f"Performatic Writings | {date_str} | ({Path(video['filename']).stem})"
-        
         desc = config.get('default_metadata', {}).get('description', '')
-        desc_file = Path(video['path']).with_suffix('.txt')
-        if desc_file.exists():
-            with open(desc_file, 'r', encoding='utf-8') as df:
-                desc = df.read().strip()
-                logging.info(f"Usando descripción personalizada de {desc_file.name}")
+        
+        # Ajustar título según tipo
+        prefix = "[SHORT] " if v_type == 'short' else ""
+        # user no pidió prefijo pero ayuda a depurar. Lo omitiré para ser fiel al formato anterior.
+        # title = f"{prefix}{title}" 
 
-        next_date = get_next_publish_date(videos)
+        next_date = get_next_publish_date(videos, v_type, yt_schedule)
         
         while True:
             result = upload_video(youtube, video['path'], title, desc, next_date)
 
             if result == "QUOTA_EXCEEDED":
-                client_name = client_files[current_idx]
-                logging.warning(f"Cuota agotada en {client_name}. Registrando y rotando...")
-                update_quota_status(client_name)
+                update_quota_status(client_files[current_idx])
                 current_idx += 1
                 if current_idx < len(client_files):
                     youtube = get_authenticated_service(
@@ -262,6 +322,12 @@ def main():
                 video['youtube_id'] = result
                 video['publishAt'] = next_date.isoformat().replace('+00:00', 'Z')
                 
+                # Actualizar el mapa local de schedule para el siguiente video en este loop
+                d_str = next_date.strftime("%Y-%m-%d")
+                if d_str not in yt_schedule: yt_schedule[d_str] = {"videos": 0, "shorts": 0}
+                if v_type == 'short': yt_schedule[d_str]["shorts"] += 1
+                else: yt_schedule[d_str]["videos"] += 1
+
                 try:
                     success_folder = os.path.join(os.path.dirname(video['path']), "videos subidos exitosamente")
                     os.makedirs(success_folder, exist_ok=True)

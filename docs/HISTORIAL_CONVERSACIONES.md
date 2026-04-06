@@ -3,6 +3,8 @@
 Este documento registra el contexto de las conversaciones con IAs que han trabajado en este proyecto,
 para que cualquier desarrollador o IA futura pueda entender la historia y continuar sin perder contexto.
 
+> ActualizaciÃ³n 2026-04-01 (Antigravity + OpenAI Codex; Claude Code no intervino): se revisÃ³ `agentes/youtube_uploader`. Estado observado: `324` videos totales, `7` subidos, `317` pendientes, `4` credenciales con solo `token_0.json` autorizado. Hallazgos principales: `uploader.py` no corta ni rota ante `uploadLimitExceeded`, `video_scanner.py` usa rutas relativas y `clean_json.py` depende de rutas absolutas de esta mÃ¡quina. La corrida activa quedÃ³ esperando autorizaciÃ³n OAuth para la siguiente credencial despuÃ©s de agotar `client_secret_1.json`.
+
 ---
 
 ## Repositorios involucrados
