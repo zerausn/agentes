@@ -1,9 +1,10 @@
 # YouTube Uploader - AI Instructions
 
-Este proyecto automatiza la subida y programación de videos y Shorts siguiendo una estrategia de "Doble Vía" (1 Video + 1 Short diario).
+Este proyecto automatiza la subida y programación de videos y Shorts siguiendo una estrategia de "Doble Vía" (1 Video + 1 Short diario) bajo el prefijo "PW".
 
 ## Convenciones del Proyecto
-1.  **Clasificación de Shorts:** Se rige por la regla de YouTube (Oct 2024): 
+1.  **Formato de Título:** `PW | YYYY-MM-DD | (nombre_original)`
+2.  **Clasificación de Shorts:** Se rige por la regla de YouTube (Oct 2024): 
     - Vertical/Cuadrado: Hasta 180s.
     - Horizontal: Hasta 60s.
 2.  **Estrategia de Programación:** 

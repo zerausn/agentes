@@ -291,7 +291,7 @@ def main():
 
         v_type = video.get('type', 'video')
         date_str = video.get('creation_date', 'N/A').split(' ')[0]
-        title = f"Performatic Writings | {date_str} | ({Path(video['filename']).stem})"
+        title = f"PW | {date_str} | ({Path(video['filename']).stem})"
         desc = config.get('default_metadata', {}).get('description', '')
         
         # Ajustar título según tipo

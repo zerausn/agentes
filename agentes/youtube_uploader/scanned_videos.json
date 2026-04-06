@@ -235,14 +235,16 @@
         "publishAt": "2026-04-11T22:45:00Z"
     },
     {
-        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20251115_185421.mp4",
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\videos subidos exitosamente\\20251115_185421.mp4",
         "size_mb": 440.45,
         "filename": "20251115_185421.mp4",
         "creation_date": "2025-12-11 09:04:06",
-        "uploaded": false,
+        "uploaded": true,
         "type": "short",
         "duration": 25.719644,
-        "dimensions": "3840x2160"
+        "dimensions": "3840x2160",
+        "youtube_id": "t3Sb5aAF_W0",
+        "publishAt": "2026-04-12T22:45:00Z"
     },
     {
         "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20251010_202917.mp4",
@@ -255,24 +257,28 @@
         "dimensions": "1280x720"
     },
     {
-        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20251018_201937.mp4",
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\videos subidos exitosamente\\20251018_201937.mp4",
         "size_mb": 428.57,
         "filename": "20251018_201937.mp4",
         "creation_date": "2025-12-11 08:57:08",
-        "uploaded": false,
+        "uploaded": true,
         "type": "short",
         "duration": 24.9967,
-        "dimensions": "3840x2160"
+        "dimensions": "3840x2160",
+        "youtube_id": "8L4ID9au6es",
+        "publishAt": "2026-04-13T22:45:00Z"
     },
     {
-        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20251018_201159.mp4",
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\videos subidos exitosamente\\20251018_201159.mp4",
         "size_mb": 422.1,
         "filename": "20251018_201159.mp4",
         "creation_date": "2025-12-11 08:56:16",
-        "uploaded": false,
+        "uploaded": true,
         "type": "short",
         "duration": 24.6941,
-        "dimensions": "3840x2160"
+        "dimensions": "3840x2160",
+        "youtube_id": "HToVd_6qhvU",
+        "publishAt": "2026-04-14T22:45:00Z"
     },
     {
         "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20251024_192752.mp4",
