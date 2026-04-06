@@ -20,7 +20,7 @@
         "video_extensions": [".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv"],
         "exclude_folders": [
             "windows", "program files", "appdata", ".git", "node_modules",
-            "Temp", "Cache"
+            "Temp", "Cache", "otros videos"
         ],
         "exclude_files": [
             "placeholder_video.mp4"
