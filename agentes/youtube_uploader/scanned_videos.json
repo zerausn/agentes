@@ -223,14 +223,16 @@
         "publishAt": "2026-04-10T22:45:00Z"
     },
     {
-        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20251121_190707.mp4",
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\videos subidos exitosamente\\20251121_190707.mp4",
         "size_mb": 440.8,
         "filename": "20251121_190707.mp4",
         "creation_date": "2025-12-11 09:04:45",
-        "uploaded": false,
+        "uploaded": true,
         "type": "short",
         "duration": 25.944944,
-        "dimensions": "3840x2160"
+        "dimensions": "3840x2160",
+        "youtube_id": "drrvRMqB3ZY",
+        "publishAt": "2026-04-11T22:45:00Z"
     },
     {
         "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20251115_185421.mp4",
