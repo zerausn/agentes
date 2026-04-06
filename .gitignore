@@ -10,3 +10,7 @@ nemoclaw/local/
 nemoclaw/tmp/
 nemoclaw/*.local
 nemoclaw/*.log
+AI.local.md
+CLAUDE.local.md
+MEMORY.md
+.antigravity/local.json

@@ -1,0 +1,23 @@
+{
+  "project_name": "agentes",
+  "base_branch": "main",
+  "branch_prefix": "codex/",
+  "git": {
+    "push_remote": "origin",
+    "base_remote": "origin"
+  },
+  "validation": {
+    "local": [
+      "python -m compileall agentes\\youtube_uploader",
+      "[void][scriptblock]::Create((Get-Content 'scripts\\init-agents.ps1' -Raw))"
+    ],
+    "ci": [
+      "python -m compileall agentes/youtube_uploader",
+      "pwsh -NoProfile -Command \"[void][scriptblock]::Create((Get-Content 'scripts/init-agents.ps1' -Raw))\""
+    ]
+  },
+  "pull_request": {
+    "enabled": true,
+    "draft": true
+  }
+}

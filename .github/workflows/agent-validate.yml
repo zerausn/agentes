@@ -1,0 +1,40 @@
+name: agent-validate
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run configured CI commands
+        shell: pwsh
+        run: |
+          $configPath = ".antigravity/automation.json"
+          if (-not (Test-Path $configPath)) {
+            Write-Host "No automation config found. Skipping."
+            exit 0
+          }
+
+          $config = Get-Content $configPath -Raw | ConvertFrom-Json
+          $commands = @($config.validation.ci)
+
+          if ($commands.Count -eq 0) {
+            Write-Host "No CI validation commands configured. Skipping."
+            exit 0
+          }
+
+          foreach ($command in $commands) {
+            Write-Host "Running: $command"
+            bash -lc $command
+            if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+            }
+          }

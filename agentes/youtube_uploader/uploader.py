@@ -22,7 +22,9 @@ CREDENTIALS_DIR = BASE_DIR / 'credentials'
 CONFIG_FILE = BASE_DIR / 'config.json'
 QUOTA_STATUS_FILE = BASE_DIR / 'quota_status.json'
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload', 'https://www.googleapis.com/auth/youtube.readonly']
-STOP_FILE = BASE_DIR / 'STOP'  # Si existe este archivo, el uploader se detiene limpiamente
+STOP_FILE = BASE_DIR / 'STOP'
+CACHE_FILE = BASE_DIR / 'yt_schedule_cache.json'
+CACHE_EXPIRY_SECONDS = 3600  # 1 hora
 
 # Setup Logging
 logging.basicConfig(
@@ -150,12 +152,17 @@ def upload_video(youtube, file_path, title, description, publish_at_dt):
             logging.warning(f"Error de red ({e}). Reintentando en {wait_time}s... (Intento {retry_count}/{max_retries})")
             time.sleep(wait_time)
         except HttpError as e:
-            if e.resp.status in [403]:
-                error_content = json.loads(e.content.decode('utf-8'))
-                reason = error_content['error']['errors'][0]['reason']
-                if reason in ['quotaExceeded', 'rateLimitExceeded']:
-                    return "QUOTA_EXCEEDED"
-            logging.error(f"Error HTTP: {e}")
+            error_content = json.loads(e.content.decode('utf-8'))
+            reason = error_content['error']['errors'][0]['reason']
+            
+            if e.resp.status in [403] and reason in ['quotaExceeded', 'rateLimitExceeded']:
+                return "QUOTA_EXCEEDED"
+            
+            if e.resp.status == 400 and reason == 'uploadLimitExceeded':
+                logging.warning(f"⚠️ Límite de subidas de YouTube alcanzado para esta cuenta/canal.")
+                return "LIMIT_EXCEEDED"
+
+            logging.error(f"Error HTTP ({e.resp.status}): {reason} - {e}")
             return None
         except Exception as e:
             logging.error(f"Error inesperado: {e}")
@@ -189,8 +196,20 @@ def is_client_available(client_name):
         return False
     return True
 
-def fetch_yt_schedule(youtube):
-    """Obtiene el mapeo de fechas programadas actualmente en YouTube."""
+def fetch_yt_schedule(youtube, force_refresh=False):
+    """Obtiene el mapeo de fechas programadas actualmente en YouTube con caché."""
+    if not force_refresh and CACHE_FILE.exists():
+        try:
+            with open(CACHE_FILE, 'r', encoding='utf-8') as f:
+                cache = json.load(f)
+                cache_time = datetime.fromisoformat(cache.get("timestamp", "2000-01-01"))
+                if (datetime.now() - cache_time).total_seconds() < CACHE_EXPIRY_SECONDS:
+                    logging.info("Usando caché del calendario de YouTube (ahorro de cuota).")
+                    return cache.get("schedule", {})
+        except Exception as e:
+            logging.warning(f"Error leyendo caché: {e}")
+
+    logging.info("Auditando calendario completo de YouTube (esto consume cuota de lectura)...")
     schedule = {}
     try:
         channels_response = youtube.channels().list(mine=True, part="contentDetails").execute()
@@ -222,18 +241,22 @@ def fetch_yt_schedule(youtube):
                     date_str = publish_at.split("T")[0]
                     if date_str not in schedule: schedule[date_str] = {"videos": 0, "shorts": 0}
                     
-                    # Parsear duración manual (re-usado de audit_schedule_shorts)
                     dur_str = content.get('duration', '')
                     m = re.search(r'(\d+)M', dur_str); s = re.search(r'(\d+)S', dur_str); h = re.search(r'(\d+)H', dur_str)
                     total_sec = (int(h.group(1)) if h else 0)*3600 + (int(m.group(1)) if m else 0)*60 + (int(s.group(1)) if s else 0)
                     
-                    if total_sec <= 60: # Simplificado para la auditoría rápida
+                    if total_sec <= 180: # Alineado con la nueva regla de 3 min
                         schedule[date_str]["shorts"] += 1
                     else:
                         schedule[date_str]["videos"] += 1
             
             next_page_token = playlist_response.get("nextPageToken")
             if not next_page_token: break
+        
+        # Guardar en caché
+        with open(CACHE_FILE, 'w', encoding='utf-8') as f:
+            json.dump({"timestamp": datetime.now().isoformat(), "schedule": schedule}, f, indent=4)
+            
     except Exception as e:
         logging.error(f"Error en auditoría previa: {e}")
     return schedule
@@ -304,17 +327,21 @@ def main():
         while True:
             result = upload_video(youtube, video['path'], title, desc, next_date)
 
-            if result == "QUOTA_EXCEEDED":
-                update_quota_status(client_files[current_idx])
+            if result in ["QUOTA_EXCEEDED", "LIMIT_EXCEEDED"]:
+                reason_msg = "Cuota agotada" if result == "QUOTA_EXCEEDED" else "Límite de subidas de YouTube"
+                logging.info(f"🔄 {reason_msg} en llave {current_idx}. Rotando...")
+                
+                update_quota_status(client_files[current_idx]) # Marcar como usada por hoy
                 current_idx += 1
+                
                 if current_idx < len(client_files):
                     youtube = get_authenticated_service(
                         os.path.join(CREDENTIALS_DIR, client_files[current_idx]), 
                         os.path.join(CREDENTIALS_DIR, f'token_{current_idx}.json')
                     )
-                    continue
+                    continue # Reintentar el MISMO video con la nueva llave
                 else:
-                    logging.error("Se agotaron todas las llaves.")
+                    logging.error("❌ Se agotaron todas las llaves o el canal está bloqueado por hoy.")
                     return
             
             elif result:

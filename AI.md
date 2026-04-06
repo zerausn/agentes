@@ -1,21 +1,35 @@
-# YouTube Uploader - AI Instructions
+# Sistema de Agentes Coordinados - AI Instructions
 
-Este proyecto automatiza la subida y programación de videos y Shorts siguiendo una estrategia de "Doble Vía" (1 Video + 1 Short diario) bajo el prefijo "PW".
+Este `AI.md` aplica al repo raiz `agentes`, no al subproyecto
+`agentes/youtube_uploader`. Si trabajas dentro de `agentes/youtube_uploader`,
+usa el contexto local de ese subproyecto como fuente mas especifica.
 
-## Convenciones del Proyecto
-1.  **Formato de Título:** `PW | YYYY-MM-DD | (nombre_original)`
-2.  **Clasificación de Shorts:** Se rige por la regla de YouTube (Oct 2024): 
-    - Vertical/Cuadrado: Hasta 180s.
-    - Horizontal: Hasta 60s.
-2.  **Estrategia de Programación:** 
-    - Priorizar el llenado de huecos (Gaps) en el calendario detectados al inicio de cada sesión.
-    - Mantener un balance de 1:1 diario.
-3.  **Mecanismos de Control:**
-    - `STOP`: Archivo para detener limpiamente el uploader.
-    - `scanned_videos.json`: Base de datos local de seguimiento (Ignorada por Git).
+## Que es este repo
 
-## Arquitectura de Memoria
-- `AI.md`: Este archivo.
-- `docs/`: Documentación técnica y estado del proyecto.
-- `docs/DECISIONS.md`: Registro de decisiones arquitectónicas.
-- `docs/PROGRESS.md`: Estado actual del inventario y programación.
+Este repo contiene propuestas, configuraciones, scripts y documentacion para
+orquestar multiples agentes de desarrollo, ademas de algunos subproyectos
+anidados como `youtube_uploader`.
+
+## Antes de editar
+
+- Lee `AGENTS.md` en la raiz del repo.
+- Revisa `README.md`.
+- Rehidrata estado desde `docs/DECISIONS.md`, `docs/PROGRESS.md` y
+  `docs/HISTORIAL_CONVERSACIONES.md`.
+- Si trabajas en un subproyecto con su propio `AGENTS.md` o `AI.md`, el
+  contexto mas cercano tiene prioridad.
+
+## Mapa rapido
+
+- `agentes/youtube_uploader/`: automatizacion de YouTube con contexto propio
+- `configs/`: configuraciones de agentes
+- `scripts/`: automatizaciones y bootstrap
+- `nemoclaw/`: contexto operativo y documentacion separada
+- `docs/`: estado del sistema de agentes coordinados
+
+## Reglas
+
+- No mezcles contexto del repo raiz con el de subproyectos anidados.
+- No cambies decisiones registradas sin actualizar `docs/DECISIONS.md`.
+- Si una sesion compleja queda en pausa, deja nota en `docs/HANDOVER.md`.
+- No subas secretos, tokens ni archivos locales.
