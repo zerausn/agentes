@@ -11,3 +11,7 @@ __pycache__/
 # Python env
 venv/
 .env
+
+# AI Memory
+AI.local.md
+MEMORY.md
