@@ -10,6 +10,7 @@
 - [x] Icono base 1024x1024 para la app de Meta.
 - [x] Sitio estatico local para App Review (`site/`).
 - [x] Sitio estatico ajustado con nombre, direccion y telefono visibles para verificacion.
+- [x] Despliegue confirmado de GitHub Pages con URLs publicas limpias para Meta.
+- [x] Sitio publico ajustado para verificacion de acceso con nombre, direccion y correo visibles.
 - [ ] Validar en vivo el flujo dual con assets de prueba y tokens correctos.
-- [ ] Confirmar despliegue de GitHub Pages y usar URLs limpias en Meta.
 - [ ] Separar mejor el carril IG-only de videos largos si se necesita.

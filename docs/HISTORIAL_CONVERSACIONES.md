@@ -134,3 +134,10 @@ con ruido tipo "sal y pimienta" y manchas de fotocopia. Extraer texto y exportar
 - [ ] Añadir autenticación de usuario (para uso multi-investigador)
 - [ ] Explorar integración de QGIS Desktop API para análisis espacial avanzado
 - [ ] Implementar pipeline completo de métodos mixtos: NLP → R stats → mapa espacial en un solo workflow
+---
+
+## Sesion 4 - Meta Uploader y App Review (Codex, 2026-04-07)
+
+- Se confirmo el despliegue de `https://zerausn.github.io/agentes/` y sus paginas legales para soporte de App Review y Access Verification en Meta.
+- Se dejo como criterio operativo que `meta_uploader` es una app de publicacion organica para Facebook e Instagram y no una app de Ads ni Catalog API.
+- Para `Access Verification`, mientras `Performatic Writings` siga siendo marca informal y los porfolios confirmados (`802657775463630` y `676518254917301`) sean propios del operador, la opcion mas segura para describir la empresa es `Autonomo`.
