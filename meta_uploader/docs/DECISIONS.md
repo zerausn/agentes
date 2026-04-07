@@ -26,3 +26,10 @@
 ## D5: Artefactos operativos fuera de Git
 - **Decision:** ignorar colas generadas, inventarios y videos optimizados.
 - **Razon:** contienen rutas locales, ruido operativo y datos derivados.
+
+## D6: Prerrequisitos de App Review versionados en el repo
+- **Decision:** versionar una politica de privacidad, instrucciones de
+  eliminacion de datos, terminos basicos e icono publico para completar los
+  requisitos de App Review de Meta.
+- **Razon:** la app no podia avanzar a revision porque faltaban activos basicos
+  obligatorios en configuracion.

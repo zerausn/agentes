@@ -49,3 +49,9 @@ generadas ni videos transcodificados.
 - `diag_sizes.py`: lista los videos mas pesados de una carpeta
 - `transcode_batch.py`: prepara una cola de videos optimizados para IG
 - `test_batch_upload.py` y `test_batch_upload_v2.py`: scripts manuales con opt-in explicito
+
+## Documentacion publica para App Review
+
+- [`docs/PRIVACY_POLICY.md`](./docs/PRIVACY_POLICY.md)
+- [`docs/DATA_DELETION.md`](./docs/DATA_DELETION.md)
+- [`docs/TERMS_OF_SERVICE.md`](./docs/TERMS_OF_SERVICE.md)
