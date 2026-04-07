@@ -1,8 +1,10 @@
-# Progreso de Meta Uploader
+# Progreso - Meta Uploader
 
-- [x] Estructura base.
-- [x] Reglas de arquitectura replicadas (AI.md, docs/).
-- [x] Plan de API de Meta analizado (Container Polling y 3 Phase FB API).
-- [ ] Implementar `classify_meta_videos.py`.
-- [ ] Implementar polling y endpoints FB/IG en `meta_uploader.py`.
-- [ ] Implementar generador de calendario.
+- [x] Estructura base del subproyecto.
+- [x] Contexto local (`AGENTS.md`, `AI.md`, `docs/`).
+- [x] Clasificacion local de videos con `ffprobe`.
+- [x] Utilidades de diagnostico y tokens.
+- [x] Revision contra documentacion oficial de Meta.
+- [x] Limpieza de artefactos locales fuera de Git.
+- [ ] Validar en vivo el flujo dual con assets de prueba y tokens correctos.
+- [ ] Separar mejor el carril IG-only de videos largos si se necesita.

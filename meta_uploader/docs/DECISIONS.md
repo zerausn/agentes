@@ -1,14 +1,28 @@
-# Registros de Decisiones (Meta Uploader)
+# Registros de Decisiones - Meta Uploader
 
-## D1: Meta API Endpoint vs Instagram Basic Display
-- **Decisión:** Utilizar Meta Graph API v19.0.
-- **Razón:** Soporta publicación automatizada de Reels para cuentas Profesionales IG y páginas FB separadas con validación.
+## D1: Mantener la version de API configurable
+- **Decision:** centralizar la version de Graph API en una variable de entorno
+  (`META_GRAPH_API_VERSION`) con default conservador.
+- **Razon:** la documentacion oficial ya muestra ejemplos en versiones mas
+  nuevas; dejarla configurable reduce deuda tecnica.
 
-## D2: 2 Part Upload para IG Reels
-- **Decisión:** Hacer POST asíncrono al contenedor y luego un polling iterativo a `status_code` hasta que el valor sea `FINISHED`.
+## D2: Instagram publica desde contenedor, no desde `media_publish`
+- **Decision:** mandar `caption` y metadatos de Reel en la creacion del
+  contenedor (`POST /{ig-user-id}/media`) y dejar `media_publish` solo para
+  `creation_id`.
+- **Razon:** asi lo documenta Meta para el flujo de publicacion.
 
-## D3: 3 Part Upload para FB Reels
-- **Decisión:** Usar `upload_phase=start, upload (rupload), finish` usando el endpoint específico de Meta.
+## D3: Facebook e Instagram requieren polling
+- **Decision:** verificar `status_code` en IG y `status` en videos de Facebook
+  antes de declarar exito.
+- **Razon:** las cargas y publicaciones son asincronas.
 
-## D4: Clasificación Automática de Video
-- **Decisión:** Usar `ffprobe` en `classify_meta_videos.py`. Relación 9:16 estricta y ventana [5-90] segundos fuerza a un contenedor de REEL.
+## D4: Politica conservadora para el carril compartido
+- **Decision:** clasificar como candidato compartido solo lo que cumple el
+  subconjunto seguro `3-90s` y vertical.
+- **Razon:** Facebook Reels es mas restrictivo que Instagram Reels; esta regla
+  evita publicar automaticamente assets que solo uno de los dos soporta bien.
+
+## D5: Artefactos operativos fuera de Git
+- **Decision:** ignorar colas generadas, inventarios y videos optimizados.
+- **Razon:** contienen rutas locales, ruido operativo y datos derivados.

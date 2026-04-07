@@ -1,64 +1,76 @@
 import os
+from pathlib import Path
+
 import requests
 
 try:
     from dotenv import load_dotenv
-    load_dotenv()
 except ImportError:
-    pass # Asumimos que podemos leer manual si no hay dotenv
+    load_dotenv = None
 
-def get_tokens_manually():
-    token = ""
-    try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        env_path = os.path.join(base_dir, ".env")
-        with open(env_path, "r", encoding="utf-8") as f:
-            for line in f:
-                if line.startswith("META_PAGE_TOKEN="):
-                    token = line.split("=", 1)[1].strip()
-    except Exception as e:
-        print(f"Error open: {e}")
-    return token
 
-def main():
-    TOKEN = os.environ.get("META_PAGE_TOKEN", "")
-    if not TOKEN:
-        TOKEN = get_tokens_manually()
-        
-    if not TOKEN:
-        print("❌ Error: No se detectó META_PAGE_TOKEN en el archivo .env. Asegúrate de haberlo pegado en la primera línea.")
+BASE_DIR = Path(__file__).resolve().parent
+
+
+def _strip_quotes(value):
+    return value.strip().strip('"').strip("'")
+
+
+def load_local_env():
+    if load_dotenv:
+        load_dotenv(BASE_DIR / ".env")
+
+    env_path = BASE_DIR / ".env"
+    if not env_path.exists():
         return
 
-    print("🔎 Consultando los servidores de Meta para extraer tus IDs automáticamente...\n")
-    url_fb = "https://graph.facebook.com/v19.0/me/accounts"
-    res = requests.get(url_fb, params={"access_token": TOKEN}).json()
+    with open(env_path, "r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            if key and key not in os.environ:
+                os.environ[key.strip()] = _strip_quotes(value)
 
-    if "data" in res and len(res["data"]) > 0:
-        for page in res["data"]:
-            page_name = page.get("name")
-            page_id = page.get("id")
-            print(f"✅ Página encontrada: '{page_name}'")
-            print(f"👉 META_FB_PAGE_ID={page_id}")
-            
-            # Buscar IG account conectada a esta página
-            url_ig = f"https://graph.facebook.com/v19.0/{page_id}"
-            res_ig = requests.get(url_ig, params={"fields": "instagram_business_account", "access_token": TOKEN}).json()
-            
-            if "instagram_business_account" in res_ig:
-                ig_id = res_ig["instagram_business_account"].get("id")
-                print(f"✅ Instagram emparejado a la página de FB encontrado.")
-                print(f"👉 META_IG_USER_ID={ig_id}\n")
-                
-                print("====================================")
-                print("¡Copia esto y reemplázalo en tu .env!")
-                print("====================================")
-                print(f"META_FB_PAGE_ID={page_id}")
-                print(f"META_IG_USER_ID={ig_id}")
-            else:
-                print(f"❌ La página '{page_name}' no reportó cuenta de Instagram enlazada por API.")
-    else:
-        print("❌ Operación fallida o no se encontraron páginas.")
-        print(f"Respuesta de Meta: {res}")
+
+def main():
+    load_local_env()
+    api_version = os.environ.get("META_GRAPH_API_VERSION", "v19.0").strip() or "v19.0"
+    token = os.environ.get("META_PAGE_TOKEN", "")
+    if not token:
+        print("No se encontro META_PAGE_TOKEN en .env.")
+        return
+
+    print("Consultando Meta para obtener Page ID e IG User ID...")
+    accounts_url = f"https://graph.facebook.com/{api_version}/me/accounts"
+    accounts = requests.get(accounts_url, params={"access_token": token}, timeout=60).json()
+
+    pages = accounts.get("data") or []
+    if not pages:
+        print("No se encontraron paginas accesibles con ese token.")
+        print(accounts)
+        return
+
+    for page in pages:
+        page_name = page.get("name", "(sin nombre)")
+        page_id = page.get("id")
+        print(f"\nPagina: {page_name}")
+        print(f"META_FB_PAGE_ID={page_id}")
+
+        page_url = f"https://graph.facebook.com/{api_version}/{page_id}"
+        page_details = requests.get(
+            page_url,
+            params={"fields": "instagram_business_account", "access_token": token},
+            timeout=60,
+        ).json()
+
+        ig_account = page_details.get("instagram_business_account") or {}
+        if ig_account.get("id"):
+            print(f"META_IG_USER_ID={ig_account['id']}")
+        else:
+            print("La pagina no reporto una cuenta de Instagram enlazada.")
+
 
 if __name__ == "__main__":
     main()

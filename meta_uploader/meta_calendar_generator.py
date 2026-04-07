@@ -1,61 +1,59 @@
 import json
-from datetime import datetime, timedelta
 import logging
+from datetime import datetime, timedelta
+from pathlib import Path
 
-LOG_FILE = "calendar.log"
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s', handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler()])
+
+BASE_DIR = Path(__file__).resolve().parent
+LOG_FILE = BASE_DIR / "calendar.log"
+REELS_FILE = BASE_DIR / "pendientes_reels.json"
+POSTS_FILE = BASE_DIR / "pendientes_posts.json"
+CALENDAR_FILE = BASE_DIR / "meta_calendar.json"
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(message)s",
+    handlers=[logging.FileHandler(LOG_FILE, encoding="utf-8"), logging.StreamHandler()],
+)
+
+
+def load_queue(path):
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except FileNotFoundError:
+        return []
+
 
 def generate_calendar(start_date=None):
     if start_date is None:
         start_date = datetime.now()
-        
-    calendar = []
-    
-    try:
-        with open("pendientes_reels.json", "r", encoding="utf-8") as f:
-            reels = json.load(f)
-    except FileNotFoundError:
-        reels = []
-        
-    try:
-        with open("pendientes_posts.json", "r", encoding="utf-8") as f:
-            posts = json.load(f)
-    except FileNotFoundError:
-        posts = []
-        
-    logging.info(f"Distribuyendo {len(reels)} Reels y {len(posts)} Posts en el calendario...")
 
-    # Generamos los días necesarios basados en el mayor de los dos (Reels o Posts), ya que es máximo 1 por día
+    reels = load_queue(REELS_FILE)
+    posts = load_queue(POSTS_FILE)
+    logging.info("Distribuyendo %s reels y %s posts en el calendario...", len(reels), len(posts))
+
+    calendar = []
     max_days = max(len(reels), len(posts))
-    
-    for i in range(max_days):
-        current_date = start_date + timedelta(days=i)
-        dia_str = current_date.strftime("%Y-%m-%d")
-        
-        # Horarios óptimos (Reels a la tarde, Posts al mediodía)
-        reel_time = "18:00:00"
-        post_time = "12:00:00"
-        
+
+    for index in range(max_days):
+        current_date = start_date + timedelta(days=index)
+        date_str = current_date.strftime("%Y-%m-%d")
         entry = {
-            "fecha": dia_str,
-            "reel": None,
-            "reel_time": f"{dia_str}T{reel_time}",
-            "post": None,
-            "post_time": f"{dia_str}T{post_time}"
+            "fecha": date_str,
+            "reel": reels[index] if index < len(reels) else None,
+            "reel_time": f"{date_str}T18:00:00",
+            "post": posts[index] if index < len(posts) else None,
+            "post_time": f"{date_str}T12:00:00",
         }
-        
-        if i < len(reels):
-            entry["reel"] = reels[i]
-            
-        if i < len(posts):
-            entry["post"] = posts[i]
-            
         calendar.append(entry)
-        
-    with open("meta_calendar.json", "w", encoding="utf-8") as f:
-        json.dump(calendar, f, indent=4)
-        
-    logging.info(f"Calendario generado exitosamente con {len(calendar)} días en 'meta_calendar.json'.")
+
+    with open(CALENDAR_FILE, "w", encoding="utf-8") as handle:
+        json.dump(calendar, handle, indent=2, ensure_ascii=False)
+
+    logging.info("Calendario generado en %s con %s dias.", CALENDAR_FILE.name, len(calendar))
+
 
 if __name__ == "__main__":
     generate_calendar()

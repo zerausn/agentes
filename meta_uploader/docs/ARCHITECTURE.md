@@ -2,17 +2,33 @@
 
 ## Proposito
 
-Subir contenido de video a Facebook e Instagram usando Graph API, con una capa
-de automatizacion separada del repo contenedor.
+Subir contenido de video a Facebook e Instagram usando Graph API y Video API,
+con una capa de automatizacion separada del repo contenedor.
 
-## Componentes previstos
+## Componentes
 
-- `meta_uploader.py`: cliente principal para limites, subida y publicacion.
-- `.env`: credenciales locales no versionadas.
-- `requirements.txt`: dependencias de Python del subproyecto.
+- `meta_uploader.py`: cliente principal de autenticacion, limites, subida y
+  polling.
+- `classify_meta_videos.py`: clasifica videos locales para el carril compartido
+  Reel/Reel con reglas conservadoras.
+- `meta_calendar_generator.py`: construye una cola local de publicacion.
+- Scripts de diagnostico: `get_meta_ids.py`, `get_page_token.py`,
+  `debug_token.py`, `check_page_v2.py`, `diag_sizes.py`.
+- Scripts de operacion: `transcode_batch.py`, `test_batch_upload.py`,
+  `test_batch_upload_v2.py`.
+
+## Carriles funcionales
+
+- **Carril compartido Reel/Reel**: usa el subconjunto mas seguro para publicar
+  el mismo asset en Facebook Reels e Instagram Reels.
+- **Carril Facebook video estandar**: conserva un flujo separado para videos de
+  pagina que no dependan del formato Reel.
+- **Artefactos locales**: colas JSON, inventarios y videos optimizados se
+  generan localmente y quedan fuera de Git.
 
 ## Reglas
 
 - La configuracion sensible vive en variables de entorno.
 - El subproyecto debe poder moverse dentro del repo sin romper rutas locales.
-- La logica de Meta no debe mezclarse con la de `youtube_uploader`.
+- El codigo no debe asumir exito inmediato despues de `finish`; Meta procesa
+  videos de forma asincrona y requiere polling.

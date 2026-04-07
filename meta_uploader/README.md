@@ -1,12 +1,13 @@
 # Meta Uploader Agent (Facebook & Instagram)
 
-Este directorio contiene el automatizador de Graph API de Meta, inspirado en
-la separacion arquitectonica de `youtube_uploader`.
+Este subproyecto automatiza publicaciones de video hacia Facebook e Instagram
+usando APIs oficiales de Meta.
 
 ## Estado
 
-En desarrollo. El objetivo es publicar Reels y videos estandar hacia Facebook e
-Instagram con manejo de limites, polling de contenedores y calendario propio.
+En desarrollo activo. Ya existen scripts de clasificacion, diagnostico, subida
+resumible y utilidades de operacion, pero el flujo todavia se esta endureciendo
+contra la documentacion oficial.
 
 ## Setup rapido
 
@@ -14,17 +15,37 @@ Instagram con manejo de limites, polling de contenedores y calendario propio.
 python -m pip install -r requirements.txt
 Copy-Item .env.example .env
 # Edita .env con tus credenciales reales
-python meta_uploader.py
+python get_meta_ids.py
+python classify_meta_videos.py "C:\ruta\a\videos"
+python meta_calendar_generator.py
 ```
 
-## Variables esperadas
+## Requisitos locales
 
-- `META_PAGE_TOKEN`
-- `META_IG_USER_ID`
+- Python 3.10+
+- `ffmpeg` y `ffprobe` disponibles en PATH
+- Credenciales de Meta en `.env`
+
+## Variables importantes
+
+- `META_IG_USER_TOKEN` o `META_PAGE_TOKEN` para Instagram
+- `META_FB_PAGE_TOKEN` para endpoints de pagina de Facebook
 - `META_FB_PAGE_ID`
+- `META_IG_USER_ID`
+- `META_APP_ID` para flujos avanzados de uploads
+- `META_GRAPH_API_VERSION` para fijar la version del Graph API
+- `META_ENABLE_UPLOAD=1` solo cuando quieras habilitar los scripts manuales que publican de verdad
 
-## Notas
+## Regla de Git
 
-- `.env`, logs y caches locales no se deben subir a Git.
-- La implementacion funcional sigue en curso; revisa `AI.md` y `docs/` antes de
-  cambiar este subproyecto.
+No se deben subir a Git los tokens, logs, inventarios exportados, colas
+generadas ni videos transcodificados.
+
+## Utilidades incluidas
+
+- `check_page_v2.py`: valida acceso basico a la pagina y al edge `/videos`
+- `debug_token.py`: imprime el diagnostico del token actual
+- `get_page_token.py`: intenta derivar `META_FB_PAGE_TOKEN` a partir de `META_PAGE_TOKEN`
+- `diag_sizes.py`: lista los videos mas pesados de una carpeta
+- `transcode_batch.py`: prepara una cola de videos optimizados para IG
+- `test_batch_upload.py` y `test_batch_upload_v2.py`: scripts manuales con opt-in explicito
