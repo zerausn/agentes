@@ -24,3 +24,11 @@ quedaran en este formato:
 
 Para Meta App Review conviene usar estas URLs limpias en lugar de enlaces tipo
 `github.com/.../blob/...`.
+
+## Datos visibles para verificacion
+
+La portada y las paginas legales muestran tambien:
+
+- `Performatic writings`
+- `7600001, km 28 via dagua, 7600001 cali`
+- `+573156816992`
