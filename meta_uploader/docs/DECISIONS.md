@@ -40,3 +40,17 @@
   `github.com/.../blob/...`.
 - **Razon:** Meta App Review suele validar mejor URLs publicas simples y
   estables que vistas HTML de GitHub con wrapper de repositorio.
+
+## D8: Mantener `requests` como base y no migrar el uploader al Business SDK
+- **Decision:** conservar el cliente HTTP directo con `requests` como base de
+  `meta_uploader` y no reescribir el flujo principal sobre
+  `facebook-python-business-sdk`.
+- **Razon:** al evaluar el repo oficial `facebook/facebook-python-business-sdk`
+  se confirmo que el SDK sigue activo y versionado (release `25.0.1` del
+  `2026-03-30`), pero su foco visible sigue muy cargado hacia Marketing API,
+  objetos autogenerados y ejemplos de anuncios. Para el flujo actual del
+  proyecto, que usa publicacion organica, subida resumible y polling fino en
+  Pages/Instagram, el codigo directo con `requests` sigue siendo mas claro,
+  trazable y facil de depurar. Se consideran rescatables solo patrones puntuales
+  del SDK como `debug=True` para imprimir cURL equivalentes, manejo de sesiones
+  por token y batch calls para lecturas no criticas.

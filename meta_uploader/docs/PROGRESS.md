@@ -12,5 +12,6 @@
 - [x] Sitio estatico ajustado con nombre, direccion y telefono visibles para verificacion.
 - [x] Despliegue confirmado de GitHub Pages con URLs publicas limpias para Meta.
 - [x] Sitio publico ajustado para verificacion de acceso con nombre, direccion y correo visibles.
+- [x] Evaluacion del repositorio oficial `facebook-python-business-sdk`.
 - [ ] Validar en vivo el flujo dual con assets de prueba y tokens correctos.
 - [ ] Separar mejor el carril IG-only de videos largos si se necesita.
