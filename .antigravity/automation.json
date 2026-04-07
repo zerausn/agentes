@@ -8,11 +8,13 @@
   },
   "validation": {
     "local": [
-      "python -m compileall agentes\\youtube_uploader",
+      "python -m compileall youtube_uploader",
+      "python -m compileall meta_uploader",
       "[void][scriptblock]::Create((Get-Content 'scripts\\init-agents.ps1' -Raw))"
     ],
     "ci": [
-      "python -m compileall agentes/youtube_uploader",
+      "python -m compileall youtube_uploader",
+      "python -m compileall meta_uploader",
       "pwsh -NoProfile -Command \"[void][scriptblock]::Create((Get-Content 'scripts/init-agents.ps1' -Raw))\""
     ]
   },

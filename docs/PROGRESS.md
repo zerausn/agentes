@@ -1,4 +1,15 @@
-# Estado de Progreso - YouTube Uploader
+# Estado de Progreso - Repo agentes
+
+## Infraestructura del repo
+- `youtube_uploader/` ya vive en la raiz del repo contenedor.
+- Se eliminaron las referencias operativas al nesting accidental
+  `agentes/agentes/youtube_uploader`.
+- La automatizacion raiz ahora valida `youtube_uploader/`, `meta_uploader/` y
+  `scripts/init-agents.ps1`.
+- `meta_uploader/` ya tiene contexto local minimo y setup base, aunque su
+  implementacion funcional sigue en desarrollo.
+
+## Seguimiento operativo heredado de `youtube_uploader`
 
 ## Resumen de Inventario (Carpeta 1)
 - Shorts detectados: 96

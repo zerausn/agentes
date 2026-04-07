@@ -1,4 +1,20 @@
-# Decisiones Arquitectonicas - YouTube Uploader
+# Decisiones Arquitectonicas - Repo agentes
+
+## 2026-04-06: Corregir nesting accidental de `youtube_uploader`
+- Contexto: el subproyecto estaba fisicamente dentro de `agentes/agentes/`,
+  mientras otros subproyectos funcionales del repo viven en la raiz.
+- Decision: mover `youtube_uploader` a `youtube_uploader/` en la raiz del repo
+  y actualizar automatizacion, documentacion y scripts para no depender de la
+  ruta vieja.
+- Consecuencia: cualquier referencia a `agentes/youtube_uploader` queda
+  obsoleta y debe tratarse como deuda ya cerrada.
+
+## 2026-04-06: Los docs raiz quedan reservados para el repo contenedor
+- Contexto: la memoria del repo raiz habia quedado mezclada con estado operativo
+  especifico de `youtube_uploader`.
+- Decision: las decisiones y el progreso de cada subproyecto deben vivir en su
+  propio `docs/`, mientras `docs/` en la raiz se usa para reglas del contenedor,
+  automatizacion compartida y estructura del workspace.
 
 ## 2026-04-06: Estrategia de Doble Via (Double Track)
 Se decidio implementar un calendario paralelo para Videos y Shorts para
@@ -15,9 +31,9 @@ A solicitud del usuario, se cambio el prefijo de los titulos de
 "Performatic Writings" a "PW" para mayor brevedad y consistencia visual en el
 canal.
 
-## 2026-04-06: Automatizacion en la raiz del repo para el subproyecto anidado
-- Contexto: `agentes/youtube_uploader` vive dentro de este repo, pero no es un
-  repo Git separado.
+## 2026-04-06: Automatizacion en la raiz del repo para los subproyectos
+- Contexto: `youtube_uploader` y `meta_uploader` viven dentro de este repo,
+  pero no son repos Git separados.
 - Decision: la capa `.antigravity/automation.json` se registra en la raiz del
-  repo `agentes` y valida sintaxis del subproyecto anidado y del bootstrap
-  `scripts/init-agents.ps1`.
+  repo `agentes` y valida sintaxis de los subproyectos funcionales y del
+  bootstrap `scripts/init-agents.ps1`.
