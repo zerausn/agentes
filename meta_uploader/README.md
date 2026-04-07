@@ -55,3 +55,5 @@ generadas ni videos transcodificados.
 - [`docs/PRIVACY_POLICY.md`](./docs/PRIVACY_POLICY.md)
 - [`docs/DATA_DELETION.md`](./docs/DATA_DELETION.md)
 - [`docs/TERMS_OF_SERVICE.md`](./docs/TERMS_OF_SERVICE.md)
+- [`docs/APP_REVIEW_SITE.md`](./docs/APP_REVIEW_SITE.md)
+- Sitio estatico listo para GitHub Pages en `site/`

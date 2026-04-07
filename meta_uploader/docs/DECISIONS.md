@@ -33,3 +33,10 @@
   requisitos de App Review de Meta.
 - **Razon:** la app no podia avanzar a revision porque faltaban activos basicos
   obligatorios en configuracion.
+
+## D7: Usar GitHub Pages para URLs publicas limpias
+- **Decision:** publicar `privacy`, `data deletion` y `terms` como sitio
+  estatico gratuito con GitHub Pages en lugar de depender de enlaces
+  `github.com/.../blob/...`.
+- **Razon:** Meta App Review suele validar mejor URLs publicas simples y
+  estables que vistas HTML de GitHub con wrapper de repositorio.

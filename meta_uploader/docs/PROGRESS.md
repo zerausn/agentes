@@ -8,5 +8,7 @@
 - [x] Limpieza de artefactos locales fuera de Git.
 - [x] Documentacion publica minima para App Review.
 - [x] Icono base 1024x1024 para la app de Meta.
+- [x] Sitio estatico local para App Review (`site/`).
 - [ ] Validar en vivo el flujo dual con assets de prueba y tokens correctos.
+- [ ] Confirmar despliegue de GitHub Pages y usar URLs limpias en Meta.
 - [ ] Separar mejor el carril IG-only de videos largos si se necesita.
