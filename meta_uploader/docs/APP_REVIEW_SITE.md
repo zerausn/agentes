@@ -31,4 +31,3 @@ La portada y las paginas legales muestran tambien:
 
 - `Performatic writings`
 - `7600001, km 28 via dagua, 7600001 cali`
-- `+573156816992`
