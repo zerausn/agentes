@@ -2,8 +2,8 @@
 Sonda manual de un solo asset para validar, con opt-in explicito, que formatos
 siguen funcionando de verdad contra Meta antes de escalar a una corrida por
 dias. Mantiene el nombre heredado del archivo para no romper referencias
-locales, pero hoy ya no agenda nada: prueba un activo pesado y deja evidencia
-estructurada en JSON.
+locales, pero hoy ya no agenda nada: prueba un activo pesado, deriva un clip
+vertical corto para stories/reels y deja evidencia estructurada en JSON.
 """
 
 import json
@@ -17,11 +17,14 @@ from meta_uploader import (
     upload_fb_reel,
     upload_fb_video_standard,
     upload_ig_feed_video_resumable,
+    upload_ig_reel_resumable,
+    upload_ig_story_video_resumable,
 )
 from test_batch_upload_v2 import ensure_instagram_optimized_copy
 
 
 BASE_DIR = Path(__file__).resolve().parent
+OPTIMIZED_DIR = BASE_DIR / "optimized_videos"
 RESULT_FILE = BASE_DIR / "single_format_probe_result.json"
 QUEUE_REELS = BASE_DIR / "pendientes_reels.json"
 QUEUE_POSTS = BASE_DIR / "pendientes_posts.json"
@@ -83,6 +86,19 @@ def is_reel_safe(meta):
     return abs(ratio - (9 / 16)) <= 0.08
 
 
+def is_story_safe(meta, size_bytes):
+    width = meta.get("width", 0)
+    height = meta.get("height", 0)
+    duration = meta.get("duration", 0.0)
+    if width <= 0 or height <= 0:
+        return False
+    if not (3.0 <= duration <= 60.0):
+        return False
+    if size_bytes > 100 * 1024 * 1024:
+        return False
+    return True
+
+
 def load_ranked_assets(queue_path):
     ranked = []
     for raw_path in load_queue(queue_path):
@@ -102,6 +118,45 @@ def load_ranked_assets(queue_path):
 
 def build_caption(video_name, channel):
     return f"Prueba automatizada {channel}: {Path(video_name).stem}"
+
+
+def ensure_vertical_probe_copy(video_path, source_meta):
+    OPTIMIZED_DIR.mkdir(exist_ok=True)
+    source_path = Path(video_path)
+    output_path = OPTIMIZED_DIR / f"probe_vertical_{source_path.stem}.mp4"
+
+    if output_path.exists() and output_path.stat().st_size > 0:
+        return output_path
+
+    target_duration = max(3.0, min(source_meta.get("duration", 30.0), 30.0))
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-ss",
+        "0",
+        "-t",
+        f"{target_duration:.3f}",
+        "-i",
+        str(source_path),
+        "-vf",
+        "fps=30,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,format=yuv420p",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "23",
+        "-movflags",
+        "+faststart",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        str(output_path),
+    ]
+    logging.info("Derivando clip vertical de prueba desde %s", source_path.name)
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return output_path
 
 
 def write_result(payload):
@@ -154,7 +209,13 @@ def main():
         primary_meta["height"],
     )
 
-    optimized_path = ensure_instagram_optimized_copy(primary_asset["path"])
+    optimized_post_path = ensure_instagram_optimized_copy(primary_asset["path"])
+    probe_source = reels[0] if reels else primary_asset
+    probe_source_meta = inspect_video(probe_source["path"])
+    vertical_probe_path = ensure_vertical_probe_copy(probe_source["path"], probe_source_meta)
+    vertical_probe_meta = inspect_video(vertical_probe_path)
+    vertical_probe_size_bytes = vertical_probe_path.stat().st_size
+    vertical_probe_size_mb = round(vertical_probe_size_bytes / (1024 * 1024), 1)
 
     probe = {
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
@@ -165,49 +226,74 @@ def main():
             "queue": primary_asset["queue"],
             "size_mb": primary_asset["size_mb"],
             "reel_safe": primary_asset["reel_safe"],
-            "optimized_path": str(optimized_path),
+            "optimized_path": str(optimized_post_path),
             "video": primary_meta,
         },
+        "vertical_probe_asset": {
+            "source_path": probe_source["path"],
+            "source_name": probe_source["name"],
+            "generated_from_queue": "reels" if reels else "posts",
+            "path": str(vertical_probe_path),
+            "size_mb": vertical_probe_size_mb,
+            "reel_safe": is_reel_safe(vertical_probe_meta),
+            "story_safe": is_story_safe(vertical_probe_meta, vertical_probe_size_bytes),
+            "video": vertical_probe_meta,
+        },
         "formats": {
-            "instagram_story": mark_skip(
-                "unsupported_by_current_official_docs",
-                "La documentacion oficial versionada en este repo no cubre publicacion de Stories por API para este flujo.",
-            ),
             "facebook_story": mark_skip(
-                "unsupported_by_current_official_docs",
-                "La documentacion oficial versionada en este repo no cubre publicacion de Stories por API para este flujo.",
+                "no_official_page_story_flow_confirmed",
+                "No se encontro una guia oficial equivalente para publicar Stories de Facebook Pages en el flujo versionado en este repo.",
             ),
         },
     }
 
-    if primary_asset["reel_safe"]:
-        caption_ig = build_caption(primary_asset["name"], "IG reel+feed")
-        probe["formats"]["instagram_reel"] = execute_step(
-            "Instagram Reel compartido al feed",
-            lambda: upload_ig_feed_video_resumable(str(optimized_path), caption_ig),
+    if probe["vertical_probe_asset"]["story_safe"]:
+        probe["formats"]["instagram_story"] = execute_step(
+            "Instagram Story",
+            lambda: upload_ig_story_video_resumable(str(vertical_probe_path)),
         )
-        probe["formats"]["instagram_post"] = {
-            "status": probe["formats"]["instagram_reel"]["status"],
-            "detail": "Se cubre con la misma publicacion porque el flujo usa REELS con share_to_feed=true.",
-            "result": probe["formats"]["instagram_reel"].get("result"),
-        }
+    else:
+        probe["formats"]["instagram_story"] = mark_skip(
+            "derived_probe_not_story_safe",
+            "El clip derivado no quedo dentro de las restricciones oficiales de Story para tamano/duracion.",
+        )
+
+    if probe["vertical_probe_asset"]["reel_safe"]:
+        probe["formats"]["instagram_reel"] = execute_step(
+            "Instagram Reel",
+            lambda: upload_ig_reel_resumable(
+                str(vertical_probe_path),
+                build_caption(vertical_probe_path.name, "IG reel"),
+                share_to_feed=False,
+            ),
+        )
         probe["formats"]["facebook_reel"] = execute_step(
             "Facebook Reel",
-            lambda: upload_fb_reel(primary_asset["path"], build_caption(primary_asset["name"], "FB reel")),
+            lambda: upload_fb_reel(str(vertical_probe_path), build_caption(vertical_probe_path.name, "FB reel")),
         )
     else:
         probe["formats"]["instagram_reel"] = mark_skip(
-            "no_reel_compatible_asset",
-            "No hay video clasificado como reel seguro en pendientes_reels.json; la cola actual esta vacia.",
+            "derived_probe_not_reel_safe",
+            "El clip derivado no quedo dentro del subconjunto seguro compartido para reels.",
         )
         probe["formats"]["facebook_reel"] = mark_skip(
-            "no_reel_compatible_asset",
-            "No hay video clasificado como reel seguro en pendientes_reels.json; la cola actual esta vacia.",
+            "derived_probe_not_reel_safe",
+            "El clip derivado no quedo dentro del subconjunto seguro compartido para reels.",
         )
+
+    if primary_asset["reel_safe"]:
         probe["formats"]["instagram_post"] = execute_step(
             "Instagram video compartido al feed",
             lambda: upload_ig_feed_video_resumable(
-                str(optimized_path),
+                str(optimized_post_path),
+                build_caption(primary_asset["name"], "IG post"),
+            ),
+        )
+    else:
+        probe["formats"]["instagram_post"] = execute_step(
+            "Instagram video compartido al feed",
+            lambda: upload_ig_feed_video_resumable(
+                str(optimized_post_path),
                 build_caption(primary_asset["name"], "IG post"),
             ),
         )

@@ -379,13 +379,14 @@ def check_ig_publish_limit():
     return usage < quota_total
 
 
-def create_ig_reel_container(caption="", share_to_feed=True):
+def _create_ig_video_container(media_type, caption="", share_to_feed=None):
     payload = {
-        "media_type": "REELS",
+        "media_type": media_type,
         "upload_type": "resumable",
         "access_token": IG_ACCESS_TOKEN,
-        "share_to_feed": "true" if share_to_feed else "false",
     }
+    if share_to_feed is not None:
+        payload["share_to_feed"] = "true" if share_to_feed else "false"
     if caption:
         payload["caption"] = caption
 
@@ -400,6 +401,14 @@ def create_ig_reel_container(caption="", share_to_feed=True):
 
     logging.info("Contenedor de Instagram creado: %s", creation_id)
     return creation_id
+
+
+def create_ig_reel_container(caption="", share_to_feed=True):
+    return _create_ig_video_container("REELS", caption=caption, share_to_feed=share_to_feed)
+
+
+def create_ig_story_container():
+    return _create_ig_video_container("STORIES")
 
 
 def upload_ig_binary(creation_id, video_path):
@@ -501,6 +510,33 @@ def upload_ig_feed_video_resumable(video_path, caption):
     documentado de `REELS` con `share_to_feed=true`.
     """
     return upload_ig_reel_resumable(video_path, caption, share_to_feed=True)
+
+
+def upload_ig_story_video_resumable(video_path):
+    """
+    Flujo oficial resumible para video en Instagram Stories usando
+    `media_type=STORIES`.
+    """
+    if not IG_USER_ID or not IG_ACCESS_TOKEN:
+        logging.error("Faltan META_IG_USER_ID o el token de Instagram.")
+        return None
+
+    file_path = Path(video_path)
+    if not file_path.exists():
+        logging.error("No existe el archivo para subir Story a Instagram: %s", file_path)
+        return None
+
+    creation_id = create_ig_story_container()
+    if not creation_id:
+        return None
+
+    if not upload_ig_binary(str(creation_id), str(file_path)):
+        return None
+
+    if not wait_for_ig_container(str(creation_id)):
+        return None
+
+    return publish_ig_container(str(creation_id))
 
 
 def _normalize_fb_status(status_blob):
@@ -671,6 +707,7 @@ def upload_fb_video_standard(video_path, description):
     if not video_id:
         logging.error("Facebook no devolvio video_id en start de video: %s", start_result)
         return None
+    upload_session_id = start_result.get("upload_session_id")
 
     if not _upload_facebook_video_binary(str(video_id), str(file_path)):
         return None
@@ -680,6 +717,8 @@ def upload_fb_video_standard(video_path, description):
         "video_id": video_id,
         "access_token": META_FB_PAGE_TOKEN,
     }
+    if upload_session_id:
+        finish_payload["upload_session_id"] = upload_session_id
     if description:
         finish_payload["description"] = description
 

@@ -63,12 +63,14 @@
   obsoleto para publicar video al feed. Reutilizar el flujo `REELS` evita
   mantener dos implementaciones distintas para Reel y video compartido al feed.
 
-## D10: Dejar Stories fuera del flujo automatizado actual
-- **Decision:** no intentar publicar Stories desde la nueva sonda unificada
-  mientras la documentacion oficial versionada en el repo no cubra ese flujo.
-- **Razon:** es preferible marcar el formato como `skipped` con una razon clara
-  antes que inferir endpoints o parametros no respaldados por las fuentes
-  oficiales ya auditadas para este subproyecto.
+## D10: Mantener Facebook Stories fuera del flujo automatizado actual
+- **Decision:** no intentar publicar Stories de Facebook Pages desde la sonda
+  unificada mientras no exista una guia oficial equivalente claramente
+  respaldada en las fuentes versionadas del repo.
+- **Razon:** en la revision de documentacion oficial de esta ronda si aparecio
+  soporte documentado para `Instagram Stories`, pero no se encontro un carril
+  equivalente y confirmado para `Facebook Page Stories` en los endpoints ya
+  auditados (`/videos`, `/video_reels`, Page Stories API).
 
 ## D11: Vigilar estancamientos de subida cada 10 segundos
 - **Decision:** anadir un watchdog de subida que revise progreso cada `10s`,
@@ -78,3 +80,27 @@
   sino distinguir si el bloqueo venia de wifi/conectividad local o de un stall
   del lado de Meta. El watchdog deja esa senal en logs sin requerir inspeccion
   manual del proceso.
+
+## D12: Habilitar `Instagram Stories` solo con flujo oficial `STORIES`
+- **Decision:** exponer `upload_ig_story_video_resumable(...)` sobre el mismo
+  carril resumible de Instagram, pero creando contenedor con
+  `media_type=STORIES`.
+- **Razon:** la documentacion oficial consultada en esta ronda ya incluye
+  `Story posts` y `POST /{ig-user-id}/media?media_type=STORIES&upload_type=resumable`.
+  Eso permite dejar de marcar `Instagram Stories` como no soportado por
+  documentacion, aunque la primera prueba viva aun falle en procesamiento.
+
+## D13: Derivar un clip vertical corto cuando la cola Reel esta vacia
+- **Decision:** cuando `pendientes_reels.json` no tenga activos compatibles,
+  generar una copia local de prueba en `1080x1920`, `30s`, `H.264/AAC` para
+  validar `IG Story`, `IG Reel` y `FB Reel` sin esperar nuevo material fuente.
+- **Razon:** la cola real de reels seguia vacia, pero bloquear las pruebas por
+  eso impedia verificar si el carril compartido ya estaba funcional con un
+  asset que si cumpliera el subconjunto seguro.
+
+## D14: Propagar `upload_session_id` en `Facebook /videos finish`
+- **Decision:** incluir `upload_session_id` en el `finish_payload` del flujo
+  `upload_fb_video_standard(...)` cuando Meta lo devuelve en `upload_phase=start`.
+- **Razon:** la prueba viva de `Facebook Post` ya no fallo por conectividad,
+  sino por un error explicito `(#194) Requires all of the params: upload_session_id`.
+  El ajuste alinea el cliente con la publicacion documentada de video estandar.

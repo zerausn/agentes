@@ -151,3 +151,13 @@ con ruido tipo "sal y pimienta" y manchas de fotocopia. Extraer texto y exportar
 - Stories quedaron saltadas a proposito porque la documentacion oficial versionada en el repo no cubre ese flujo para este carril.
 - Los carriles Reel quedaron sin ejecutar en la sonda porque `pendientes_reels.json` estaba vacio; la cola `pendientes_posts.json` si estaba ordenada por peso descendente y selecciono `20260310_184517.mp4` (2696.6 MB, 3840x2160, 157.258656 s).
 - `single_format_probe_result.json` se dejo como artefacto operativo local fuera de Git.
+
+## Sesion 6 - Meta Uploader, stories/reels derivados y nuevo retry FB (Codex, 2026-04-07)
+
+- Se contrasto de nuevo con documentacion oficial y esta vez se confirmo soporte documentado para `Instagram Stories` mediante `media_type=STORIES` y `upload_type=resumable`.
+- Se mantuvo fuera del flujo automatizado a `Facebook Stories`, porque no se encontro una guia oficial equivalente claramente aplicable a este carril de Pages dentro de las fuentes ya auditadas.
+- `test_single_scheduled.py` se endurecio para derivar automaticamente un clip vertical corto (`1080x1920`, `30s`) cuando `pendientes_reels.json` esta vacio, de forma que el carril story/reel pueda probarse aun sin material vertical fuente.
+- Resultado real de la nueva sonda: `Facebook Reel` publico con exito (`1863981500985541`) y `Instagram Post` publico con exito (`17883639039504468`).
+- `Instagram Story` y `Instagram Reel` alcanzaron a crear contenedor pero fallaron en `rupload` con `ProcessingFailedError`, pese a que el clip derivado quedo dentro de specs basicas (`H.264`, `1080x1920`, `30s`, `6.4 MB`).
+- `Facebook Post` ya no fallo por wifi: revelo un bug concreto del cliente, porque Meta exigio `upload_session_id` en el `finish` (`#194`). El codigo se ajusto para propagar ese parametro.
+- Despues del fix se lanzo un retry puntual de `Facebook Post`, pero el usuario interrumpio la prueba. El proceso huérfano quedo con una conexion TLS abierta y fue detenido manualmente para dejar el estado limpio.

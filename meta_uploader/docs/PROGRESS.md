@@ -17,5 +17,12 @@
 - [x] Sonda real de un solo asset que prueba formatos compatibles desde la cola mas pesada disponible.
 - [x] Prueba en vivo confirmada para Instagram post con media id `17921696511315151`.
 - [x] Evidencia guardada de fallo actual en Facebook post por `ConnectionResetError(10054)` del host remoto durante la subida binaria.
+- [x] Confirmacion oficial de soporte para `Instagram Stories` con `media_type=STORIES`.
+- [x] Sonda real con clip vertical derivado (`1080x1920`, `30s`) para destrabar pruebas de stories/reels cuando la cola Reel esta vacia.
+- [x] Prueba en vivo confirmada para `Facebook Reel` con video id `1863981500985541`.
+- [x] Nueva prueba en vivo confirmada para `Instagram Post` con media id `17883639039504468`.
+- [x] Identificacion del bug de `Facebook Post`: `finish` exigia `upload_session_id`, ya corregido localmente en el cliente.
+- [ ] Revalidar en vivo `Facebook Post` despues del fix de `upload_session_id`; el retry puntual fue interrumpido por el usuario.
+- [ ] Investigar por que `Instagram Story` e `Instagram Reel` del clip vertical derivado fallan con `ProcessingFailedError` en `rupload`.
 - [ ] Validar en vivo el flujo dual completo con assets reel-safe y confirmar Facebook sin reset remoto.
 - [ ] Separar mejor el carril IG-only de videos largos si se necesita.
