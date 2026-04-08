@@ -177,3 +177,13 @@ con ruido tipo "sal y pimienta" y manchas de fotocopia. Extraer texto y exportar
   - `python -m py_compile uploader.py video_helpers.py second_pass\local_clip_optimizer.py second_pass\register_optimized_videos.py tests\test_video_helpers.py tests\test_second_pass.py`
   - `python -m unittest discover -s tests -v`
   - ambos CLIs nuevos responden correctamente a `--help`
+
+## Sesion 8 - Meta Uploader, corrida normal de 15 minutos con segundo agente (Codex, 2026-04-08)
+
+- El usuario pidio lanzar un segundo agente, no para prueba sino para una subida normal de `15 minutos`.
+- Antes de arrancar se detecto y detuvo un `python.exe` huerfano que seguia ejecutando `meta_uploader/second_pass/local_clip_optimizer.py`; no correspondia al carril de publicacion real.
+- Se eligio como runner operativo `meta_uploader/test_batch_upload.py --source posts --start-index 1 --limit 50`, con `META_ENABLE_UPLOAD=1`, para evitar volver a tocar el primer asset ya usado varias veces en las sondas.
+- La corrida normal si arranco y avanzo sobre varios videos de `meta_uploader/pendientes_posts.json`. Durante la ventana operativa quedaron registrados al menos los assets `20260310_185649.mp4`, `20260201_191557.mp4`, `20260310_190454.mp4`, `20260310_183619.mp4`, `20260302_190317.mp4` y el arranque de `20260310_181709.mp4`.
+- No aparecio ningun ID nuevo confirmado por Meta durante esta ventana. El batch siguio vivo a pesar de los fallos individuales.
+- El patron de error fue mixto: se repitio `ConnectionResetError(10054)` en `rupload.facebook.com/video-upload/...`, aparecio un `NameResolutionError` contra `graph.facebook.com`, se reportaron `OSError(22, Invalid argument)` desde el segundo agente y el watchdog marco al menos un estancamiento real con degradacion fuerte de conectividad (`internet timed out`, `getaddrinfo failed`).
+- Al cerrar la ventana de `15 minutos`, el segundo agente reporto que la ejecucion habia quedado sin publicaciones nuevas confirmadas y detuvo el proceso huerfano para no dejar una subida fantasma corriendo.

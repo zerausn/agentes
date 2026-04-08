@@ -22,7 +22,11 @@
 - [x] Prueba en vivo confirmada para `Facebook Reel` con video id `1863981500985541`.
 - [x] Nueva prueba en vivo confirmada para `Instagram Post` con media id `17883639039504468`.
 - [x] Identificacion del bug de `Facebook Post`: `finish` exigia `upload_session_id`, ya corregido localmente en el cliente.
+- [x] Corrida normal de `15 minutos` sobre `pendientes_posts.json` con un segundo agente, arrancando desde `start-index=1` para evitar duplicar el asset ya sondeado.
+- [x] Confirmacion operativa de que el batch normal sigue avanzando aunque falle un asset individual; durante la corrida toco los indices `[2]` a `[7]` antes de cerrarse la ventana.
+- [x] Evidencia local de inestabilidad mixta en Facebook Post durante corrida sostenida: `ConnectionResetError(10054)` en `rupload`, `NameResolutionError` al resolver `graph.facebook.com`, `OSError(22, Invalid argument)` y alerta del watchdog por degradacion fuerte de conectividad.
 - [ ] Revalidar en vivo `Facebook Post` despues del fix de `upload_session_id`; el retry puntual fue interrumpido por el usuario.
 - [ ] Investigar por que `Instagram Story` e `Instagram Reel` del clip vertical derivado fallan con `ProcessingFailedError` en `rupload`.
 - [ ] Validar en vivo el flujo dual completo con assets reel-safe y confirmar Facebook sin reset remoto.
+- [ ] Resolver la inestabilidad de red y socket del carril `Facebook Post` antes de considerar confiable una corrida normal sostenida.
 - [ ] Separar mejor el carril IG-only de videos largos si se necesita.
