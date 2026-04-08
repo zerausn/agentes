@@ -112,7 +112,7 @@ def is_ig_story_safe(video_info):
 
 def build_caption(video_info, lane, publish_date):
     stem = Path(video_info["path"]).stem
-    return f"Jornada 1 {lane} | {publish_date} | {stem}"
+    return f"PW | {publish_date} | {stem}"
 
 
 def build_plan(reels, posts, *, reel_start_index, post_start_index, days, start_date, enable_ig_stories):

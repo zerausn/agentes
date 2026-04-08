@@ -318,3 +318,12 @@ con ruido tipo "sal y pimienta" y manchas de fotocopia. Extraer texto y exportar
 - Con esto queda mucho mas facil seguir hoy mismo:
   - progreso de transfer/polling de Facebook
   - creacion de contenedores, polling y `media_publish` de Instagram
+
+## Sesion 18 - Meta Uploader, ajuste de caption operativo (Codex, 2026-04-08)
+
+- El usuario pidio que el prefijo del caption del runner normal dejara de decir `Jornada 1 post` y pasara a usar `PW`.
+- Se actualizo `run_jornada1_normal.py` para que el caption operativo quede como:
+  - `PW | FECHA | NOMBRE_ORIGINAL`
+- Se mantiene intacto el resto del formato:
+  - fecha del dia operativo
+  - nombre original derivado del stem del archivo
