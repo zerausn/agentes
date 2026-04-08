@@ -60,6 +60,48 @@ python second_pass/prepare_second_jornada_meta.py `
   --sync-main-reels-queue
 ```
 
+## Herramienta experimental YOLO separada
+
+`experimental_yolo_reframer.py` queda totalmente aparte del flujo productivo.
+Sirve para probar, antes de integrar nada, si un recorte inteligente 9:16 con
+YOLO realmente mejora el material.
+
+Que hace:
+
+- toma un video o segmento puntual
+- construye un plan de crop vertical con deteccion de personas
+- puede renderizar un clip experimental aparte
+- guarda planes JSON y renders bajo `second_pass/outputs/yolo_reframe_experiments/`
+- no toca colas de produccion
+- no se integra con `run_jornada1_normal.py` ni con `prepare_second_jornada_meta.py`
+
+Ejemplo de plan sin render:
+
+```powershell
+python second_pass/experimental_yolo_reframer.py `
+  --input "C:\ruta\video.mp4" `
+  --start-seconds 0 `
+  --duration-seconds 20
+```
+
+Ejemplo con render experimental:
+
+```powershell
+python second_pass/experimental_yolo_reframer.py `
+  --input "C:\ruta\video.mp4" `
+  --start-seconds 0 `
+  --duration-seconds 20 `
+  --render
+```
+
+Dependencias adicionales:
+
+- `opencv-python`
+- `ultralytics`
+
+Si `ultralytics` no esta disponible, el script falla de forma explicita y no
+afecta el resto del uploader.
+
 ## Ejemplos
 
 Analizar un video y renderizar el mejor clip para Reel e IG Story:

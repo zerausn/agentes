@@ -255,3 +255,20 @@ con ruido tipo "sal y pimienta" y manchas de fotocopia. Extraer texto y exportar
   - corrida real sobre dos clips pequenos locales (`opt_20260310_184517.mp4` y `probe_vertical_20260310_184517.mp4`)
   - resultado: `second_pass/queues/pendientes_reels_second_pass.json` y `second_pass/queues/pendientes_ig_stories_second_pass.json` quedaron acumulando correctamente dos derivados cada una
 - Con esto quedo lista la pieza que faltaba para la segunda jornada: transformar material crudo en assets reel/story-safe sin tocar originales ni contaminar la cola principal hasta que el operador lo autorice.
+
+## Sesion 14 - Meta Uploader, laboratorio YOLO separado (Codex, 2026-04-08)
+
+- El usuario pidio tomar la idea de `performatic_engine` sobre reencuadre inteligente tipo YOLO, pero dejarla aparte como herramienta de prueba antes de integrarla al codigo real.
+- Se creo `meta_uploader/second_pass/experimental_yolo_reframer.py`.
+- Esta herramienta:
+  - recibe un video y un segmento puntual
+  - calcula un plan de crop 9:16 guiado por deteccion de personas
+  - puede renderizar un clip experimental separado
+  - guarda todo en `second_pass/outputs/yolo_reframe_experiments/`
+  - no toca colas ni runners productivos
+- Tambien se agrego `meta_uploader/second_pass/EXPERIMENTAL_YOLO.md` para documentar su uso y limites.
+- Validacion local completada:
+  - `python -m py_compile meta_uploader/second_pass/experimental_yolo_reframer.py`
+  - `python meta_uploader/second_pass/experimental_yolo_reframer.py --help`
+  - chequeo de dependencias: `cv2` si esta presente; `ultralytics` no esta instalado en este entorno, por lo que no se ejecuto una prueba YOLO completa todavia
+- Con esto quedo listo el laboratorio aislado para pruebas manuales, sin contaminar la segunda jornada estable ni la jornada 1.

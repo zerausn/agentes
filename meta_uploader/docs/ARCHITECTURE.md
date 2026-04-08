@@ -41,6 +41,10 @@ con una capa de automatizacion separada del repo contenedor.
   `instagram_story` desde material crudo, escriben colas separadas en
   `second_pass/queues/` y solo promocionan derivados a `pendientes_reels.json`
   mediante opt-in explicito.
+- **Carril experimental YOLO**: `second_pass/experimental_yolo_reframer.py`
+  existe como laboratorio aparte para comparar recorte centrado vs reencuadre
+  guiado por deteccion de personas. Sus planes y renders viven bajo
+  `second_pass/outputs/yolo_reframe_experiments/` y no tocan colas ni uploads.
 - **Artefactos locales**: colas JSON, inventarios y videos optimizados se
   generan localmente y quedan fuera de Git.
 

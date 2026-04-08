@@ -146,3 +146,12 @@
   segunda jornada existe para "hacer encajar" el material crudo en los carriles
   `FB Reel + IG Reel` e `IG Story`, pero no debe contaminar la cola principal
   de produccion hasta que el operador decida que esos derivados ya estan listos.
+
+## D19: Dejar YOLO como laboratorio separado antes de cualquier integracion
+- **Decision:** encapsular el reencuadre inteligente inspirado en
+  `performatic_engine` dentro de `second_pass/experimental_yolo_reframer.py`,
+  sin conectarlo a colas, runners ni uploads.
+- **Razon:** el usuario quiere probar primero si el enfoque aporta valor real.
+  Mantenerlo como laboratorio reduce riesgo, evita meter dependencias pesadas
+  en el flujo estable y permite comparar resultados antes de decidir una
+  integracion en la segunda jornada.
