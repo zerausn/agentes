@@ -104,3 +104,22 @@
 - **Razon:** la prueba viva de `Facebook Post` ya no fallo por conectividad,
   sino por un error explicito `(#194) Requires all of the params: upload_session_id`.
   El ajuste alinea el cliente con la publicacion documentada de video estandar.
+
+## D15: Introducir retries clasificados en la capa HTTP y binaria
+- **Decision:** endurecer `meta_uploader.py` con retries manuales sobre
+  `_request_json(...)` y `_post_binary(...)`, clasificando errores como
+  `dns_resolution`, `timeout`, `connection_reset`, `local_socket_error` o
+  `http_<status>`, y exponer el ultimo estado operativo al runner.
+- **Razon:** la corrida normal de `15 minutos` mostro un patron mixto de fallos
+  transitorios en `Facebook Post` (`ConnectionResetError(10054)`,
+  `NameResolutionError`, `OSError(22)` y stalles detectados por el watchdog).
+  Sin clasificacion ni retries, el batch seguia quemando cola aunque la causa
+  fuera transitoria o de conectividad local.
+
+## D16: No quemar cola ante fallos transitorios del asset actual
+- **Decision:** hacer que `test_batch_upload.py` reintente el mismo asset cuando
+  el ultimo estado del uploader sea transitorio, y pausar el batch si se agotan
+  esos reintentos.
+- **Razon:** avanzar automaticamente al siguiente video despues de un fallo
+  transitorio degrada la cola y no ayuda a distinguir entre un video roto y un
+  problema momentaneo de red, DNS o socket.

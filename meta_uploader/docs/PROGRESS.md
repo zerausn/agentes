@@ -26,6 +26,8 @@
 - [x] Confirmacion operativa de que el batch normal sigue avanzando aunque falle un asset individual; durante la corrida toco los indices `[2]` a `[7]` antes de cerrarse la ventana.
 - [x] Evidencia local de inestabilidad mixta en Facebook Post durante corrida sostenida: `ConnectionResetError(10054)` en `rupload`, `NameResolutionError` al resolver `graph.facebook.com`, `OSError(22, Invalid argument)` y alerta del watchdog por degradacion fuerte de conectividad.
 - [x] Tarea versionada para manana con plan tecnico de endurecimiento del carril `Facebook Post` en `docs/TODO_FB_POST_RESILIENCE.md`.
+- [x] Primera pasada de endurecimiento implementada: retries clasificados en `_request_json(...)` y `_post_binary(...)`.
+- [x] `test_batch_upload.py` ya no avanza ciegamente ante un fallo transitorio del asset actual; ahora reintenta y puede pausar el batch.
 - [ ] Revalidar en vivo `Facebook Post` despues del fix de `upload_session_id`; el retry puntual fue interrumpido por el usuario.
 - [ ] Investigar por que `Instagram Story` e `Instagram Reel` del clip vertical derivado fallan con `ProcessingFailedError` en `rupload`.
 - [ ] Validar en vivo el flujo dual completo con assets reel-safe y confirmar Facebook sin reset remoto.

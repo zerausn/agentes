@@ -194,3 +194,17 @@ con ruido tipo "sal y pimienta" y manchas de fotocopia. Extraer texto y exportar
 - Se documento como tarea formal `meta_uploader/docs/TODO_FB_POST_RESILIENCE.md`.
 - La estrategia quedo separada en fases: hardening HTTP, upload resumible real `start/transfer/finish`, persistencia local de reanudacion, watchdog accionable, runner conservador y trazabilidad especifica para `OSError(22)`.
 - Tambien se actualizo `meta_uploader/docs/HANDOVER.md` para marcar este frente como bloqueo operativo real de la siguiente ronda.
+
+## Sesion 10 - Meta Uploader, primera pasada de resiliencia y doble ejecucion paralela (Codex, 2026-04-08)
+
+- El usuario pidio trabajar en paralelo con otros dos agentes: uno para la jornada 1 de videos crudos y otro para la jornada 2 de optimizacion local sin publicar.
+- Se lanzaron ambos agentes en paralelo:
+  - jornada 1: `test_batch_upload.py --source posts --start-index 1 --limit 50`
+  - jornada 2: `second_pass/local_clip_optimizer.py --input-dir "C:\Users\ZN-\Documents\ADM\Carpeta 1" --limit 3 --render-top 1 --emit-queues --presets shared_reel instagram_story feed_teaser_square`
+- Mientras corria esa dupla, se implemento una primera pasada de endurecimiento en `meta_uploader.py`:
+  - retries clasificados en `_request_json(...)`
+  - retries clasificados en `_post_binary(...)`
+  - estado operativo expuesto por `get_last_operation_status()`
+- Se endurecio tambien `test_batch_upload.py` para que reintente el mismo asset cuando el fallo sea transitorio y pueda pausar el batch en lugar de consumir la cola completa a ciegas.
+- Validacion local: `python -m py_compile meta_uploader.py test_batch_upload.py` paso sin errores.
+- Durante esta sesion, la jornada 1 si quedo viva como proceso Python activo; la jornada 2 tambien quedo viva y se confirmo que al menos estaba ejecutando `ffmpeg.exe` como hijo del optimizador, aunque todavia no habia dejado artefactos visibles en `second_pass/`.

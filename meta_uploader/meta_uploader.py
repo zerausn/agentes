@@ -17,6 +17,7 @@ except ImportError:
 BASE_DIR = Path(__file__).resolve().parent
 LOG_FILE = BASE_DIR / "meta_uploader.log"
 GRAPH_API_ROOT = "https://graph.facebook.com"
+GRAPH_VIDEO_ROOT = "https://graph-video.facebook.com"
 REQUEST_TIMEOUT_DEFAULT = 60
 IG_CONTAINER_WAIT_SECONDS = 10
 IG_CONTAINER_MAX_POLLS = 30
@@ -24,6 +25,18 @@ FB_STATUS_WAIT_SECONDS = 10
 FB_STATUS_MAX_POLLS = 30
 UPLOAD_STALL_CHECK_SECONDS = int(os.environ.get("META_UPLOAD_STALL_CHECK_SECONDS", "10"))
 UPLOAD_STALL_MAX_NO_PROGRESS_CHECKS = int(os.environ.get("META_UPLOAD_STALL_MAX_NO_PROGRESS_CHECKS", "2"))
+HTTP_RETRY_ATTEMPTS = int(os.environ.get("META_HTTP_RETRY_ATTEMPTS", "3"))
+HTTP_RETRY_BACKOFF_SECONDS = float(os.environ.get("META_HTTP_RETRY_BACKOFF_SECONDS", "3"))
+UPLOAD_BINARY_RETRY_ATTEMPTS = int(os.environ.get("META_UPLOAD_BINARY_RETRY_ATTEMPTS", "2"))
+FB_UPLOAD_CHUNK_BYTES = int(os.environ.get("META_FB_UPLOAD_CHUNK_BYTES", str(4 * 1024 * 1024)))
+
+_LAST_OPERATION_STATUS = {
+    "kind": "unknown",
+    "phase": "",
+    "message": "",
+    "transient": False,
+    "watchdog_alerted": False,
+}
 
 
 class ProgressFile:
@@ -56,6 +69,40 @@ class ProgressFile:
         return getattr(self._file, name)
 
 
+class RangeFile:
+    def __init__(self, filename, start_offset, end_offset, callback=None):
+        self._file = open(filename, "rb")
+        self._file.seek(start_offset)
+        self._remaining = max(0, end_offset - start_offset)
+        self._seen = 0
+        self._total = self._remaining
+        self._callback = callback
+
+    def read(self, n=-1):
+        if self._remaining <= 0:
+            return b""
+        if n is None or n < 0 or n > self._remaining:
+            n = self._remaining
+        chunk = self._file.read(n)
+        self._remaining -= len(chunk)
+        self._seen += len(chunk)
+        if self._callback:
+            self._callback(self._seen, self._total)
+        return chunk
+
+    def close(self):
+        self._file.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def __getattr__(self, name):
+        return getattr(self._file, name)
+
+
 class UploadWatchdog:
     def __init__(self, label):
         self.label = label
@@ -68,6 +115,7 @@ class UploadWatchdog:
         self._last_total = 0
         self._no_progress_checks = 0
         self._alerted = False
+        self._ever_alerted = False
 
     def start(self):
         self._thread = threading.Thread(target=self._run, name=f"watchdog-{self.label}", daemon=True)
@@ -149,6 +197,11 @@ class UploadWatchdog:
 
                 with self._lock:
                     self._alerted = True
+                    self._ever_alerted = True
+
+    def had_alert(self):
+        with self._lock:
+            return self._ever_alerted
 
 
 def _socket_probe(host, port, timeout=5):
@@ -201,6 +254,62 @@ def _strip_quotes(value):
     return value.strip().strip('"').strip("'")
 
 
+def _set_operation_status(kind, phase, message, *, transient=False, watchdog_alerted=False):
+    _LAST_OPERATION_STATUS.update(
+        {
+            "kind": kind,
+            "phase": phase,
+            "message": message,
+            "transient": transient,
+            "watchdog_alerted": watchdog_alerted,
+        }
+    )
+
+
+def get_last_operation_status():
+    return dict(_LAST_OPERATION_STATUS)
+
+
+def _flatten_exception(exc):
+    messages = [repr(exc)]
+    current = exc.__cause__ or exc.__context__
+    depth = 0
+    while current and depth < 3:
+        messages.append(repr(current))
+        current = current.__cause__ or current.__context__
+        depth += 1
+    return " | ".join(messages)
+
+
+def _classify_request_exception(exc):
+    text = _flatten_exception(exc).lower()
+    if "name resolution" in text or "getaddrinfo failed" in text:
+        return "dns_resolution", True
+    if "timed out" in text or "timeout" in text:
+        return "timeout", True
+    if (
+        "connection aborted" in text
+        or "connection reset" in text
+        or "10054" in text
+        or "remote disconnected" in text
+        or "broken pipe" in text
+    ):
+        return "connection_reset", True
+    if "invalid argument" in text or "oserror(22" in text or "[errno 22]" in text:
+        return "local_socket_error", True
+    if "ssl" in text or "tls" in text:
+        return "ssl_error", True
+    return "request_exception", True
+
+
+def _should_retry_http_status(status_code):
+    return status_code in {408, 409, 425, 429, 500, 502, 503, 504}
+
+
+def _retry_delay_seconds(attempt_index):
+    return HTTP_RETRY_BACKOFF_SECONDS * attempt_index
+
+
 def manual_load_env():
     env_path = BASE_DIR / ".env"
     if not env_path.exists():
@@ -250,40 +359,84 @@ def graph_url(path):
     return f"{GRAPH_API_ROOT}/{GRAPH_API_VERSION}/{path.lstrip('/')}"
 
 
+def graph_video_url(path):
+    return f"{GRAPH_VIDEO_ROOT}/{GRAPH_API_VERSION}/{path.lstrip('/')}"
+
+
 def _request_json(method, url, *, params=None, data=None, headers=None):
-    try:
-        response = requests.request(
-            method,
-            url,
-            params=params,
-            data=data,
-            headers=headers,
-            timeout=REQUEST_TIMEOUT,
-        )
-    except requests.RequestException as exc:
-        logging.error("Error HTTP en %s %s: %s", method, url, exc)
-        return None
+    for attempt in range(1, HTTP_RETRY_ATTEMPTS + 1):
+        try:
+            response = requests.request(
+                method,
+                url,
+                params=params,
+                data=data,
+                headers=headers,
+                timeout=REQUEST_TIMEOUT,
+            )
+        except requests.RequestException as exc:
+            error_kind, transient = _classify_request_exception(exc)
+            if transient and attempt < HTTP_RETRY_ATTEMPTS:
+                delay = _retry_delay_seconds(attempt)
+                logging.warning(
+                    "Error HTTP transitorio (%s) en %s %s. Reintento %s/%s en %.1fs. Detalle: %s",
+                    error_kind,
+                    method,
+                    url,
+                    attempt,
+                    HTTP_RETRY_ATTEMPTS,
+                    delay,
+                    exc,
+                )
+                time.sleep(delay)
+                continue
 
-    try:
-        payload = response.json()
-    except ValueError:
-        payload = {"raw_text": response.text}
+            logging.exception("Error HTTP en %s %s: %s", method, url, exc)
+            _set_operation_status(error_kind, "request_json", str(exc), transient=transient)
+            return None
 
-    if not isinstance(payload, dict):
-        payload = {"data": payload}
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = {"raw_text": response.text}
 
-    payload.setdefault("_http_status", response.status_code)
+        if not isinstance(payload, dict):
+            payload = {"data": payload}
 
-    if response.status_code >= 400:
-        logging.error(
-            "Meta devolvio HTTP %s en %s %s: %s",
-            response.status_code,
-            method,
-            url,
-            json.dumps(payload, ensure_ascii=False),
-        )
+        payload.setdefault("_http_status", response.status_code)
 
-    return payload
+        if response.status_code >= 400:
+            if _should_retry_http_status(response.status_code) and attempt < HTTP_RETRY_ATTEMPTS:
+                delay = _retry_delay_seconds(attempt)
+                logging.warning(
+                    "Meta devolvio HTTP %s en %s %s. Reintento %s/%s en %.1fs.",
+                    response.status_code,
+                    method,
+                    url,
+                    attempt,
+                    HTTP_RETRY_ATTEMPTS,
+                    delay,
+                )
+                time.sleep(delay)
+                continue
+
+            logging.error(
+                "Meta devolvio HTTP %s en %s %s: %s",
+                response.status_code,
+                method,
+                url,
+                json.dumps(payload, ensure_ascii=False),
+            )
+            _set_operation_status(
+                f"http_{response.status_code}",
+                "request_json",
+                json.dumps(payload, ensure_ascii=False),
+                transient=_should_retry_http_status(response.status_code),
+            )
+
+        return payload
+
+    return None
 
 
 def _log_progress(prefix):
@@ -295,44 +448,214 @@ def _log_progress(prefix):
 
 
 def _post_binary(url, headers, file_path, progress_prefix):
-    progress_callback = _log_progress(progress_prefix)
-    watchdog = UploadWatchdog(progress_prefix)
+    for attempt in range(1, UPLOAD_BINARY_RETRY_ATTEMPTS + 1):
+        progress_callback = _log_progress(progress_prefix)
+        watchdog = UploadWatchdog(progress_prefix)
 
-    def combined_callback(seen, total):
-        progress_callback(seen, total)
-        watchdog.update(seen, total)
+        def combined_callback(seen, total):
+            progress_callback(seen, total)
+            watchdog.update(seen, total)
 
-    watchdog.start()
-    with ProgressFile(file_path, "rb", callback=combined_callback) as handle:
+        watchdog.start()
+        response = None
         try:
-            response = requests.post(url, headers=headers, data=handle, timeout=REQUEST_TIMEOUT)
+            with ProgressFile(file_path, "rb", callback=combined_callback) as handle:
+                response = requests.post(url, headers=headers, data=handle, timeout=REQUEST_TIMEOUT)
         except requests.RequestException as exc:
             print()
-            logging.error("Error subiendo binario hacia %s: %s", url, exc)
             watchdog.stop()
+            watchdog_alerted = watchdog.had_alert()
+            error_kind, transient = _classify_request_exception(exc)
+            if transient and attempt < UPLOAD_BINARY_RETRY_ATTEMPTS:
+                delay = _retry_delay_seconds(attempt)
+                logging.warning(
+                    "Error transitorio subiendo binario (%s) hacia %s. Reintento %s/%s en %.1fs. Detalle: %s",
+                    error_kind,
+                    url,
+                    attempt,
+                    UPLOAD_BINARY_RETRY_ATTEMPTS,
+                    delay,
+                    exc,
+                )
+                _set_operation_status(error_kind, "binary_upload", str(exc), transient=True, watchdog_alerted=watchdog_alerted)
+                time.sleep(delay)
+                continue
+
+            logging.exception("Error subiendo binario hacia %s: %s", url, exc)
+            _set_operation_status(error_kind, "binary_upload", str(exc), transient=transient, watchdog_alerted=watchdog_alerted)
+            return None
+        finally:
+            watchdog.stop()
+
+        print()
+
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = {"raw_text": response.text}
+
+        if response.status_code >= 400:
+            if _should_retry_http_status(response.status_code) and attempt < UPLOAD_BINARY_RETRY_ATTEMPTS:
+                delay = _retry_delay_seconds(attempt)
+                logging.warning(
+                    "Fallo subida binaria HTTP %s hacia %s. Reintento %s/%s en %.1fs.",
+                    response.status_code,
+                    url,
+                    attempt,
+                    UPLOAD_BINARY_RETRY_ATTEMPTS,
+                    delay,
+                )
+                _set_operation_status(
+                    f"http_{response.status_code}",
+                    "binary_upload",
+                    json.dumps(payload, ensure_ascii=False),
+                    transient=True,
+                    watchdog_alerted=watchdog.had_alert(),
+                )
+                time.sleep(delay)
+                continue
+
+            logging.error(
+                "Fallo subida binaria HTTP %s hacia %s: %s",
+                response.status_code,
+                url,
+                json.dumps(payload, ensure_ascii=False),
+            )
+            _set_operation_status(
+                f"http_{response.status_code}",
+                "binary_upload",
+                json.dumps(payload, ensure_ascii=False),
+                transient=_should_retry_http_status(response.status_code),
+                watchdog_alerted=watchdog.had_alert(),
+            )
             return None
 
-    watchdog.stop()
-    print()
-
-    try:
-        payload = response.json()
-    except ValueError:
-        payload = {"raw_text": response.text}
-
-    if response.status_code >= 400:
-        logging.error(
-            "Fallo subida binaria HTTP %s hacia %s: %s",
-            response.status_code,
-            url,
-            json.dumps(payload, ensure_ascii=False),
+        if not isinstance(payload, dict):
+            payload = {"data": payload}
+        payload.setdefault("_http_status", response.status_code)
+        _set_operation_status(
+            "success",
+            "binary_upload",
+            f"HTTP {response.status_code}",
+            transient=False,
+            watchdog_alerted=watchdog.had_alert(),
         )
-        return None
+        return payload
 
-    if not isinstance(payload, dict):
-        payload = {"data": payload}
-    payload.setdefault("_http_status", response.status_code)
-    return payload
+    return None
+
+
+def _post_transfer_chunk(url, data, file_path, start_offset, end_offset, progress_prefix):
+    for attempt in range(1, UPLOAD_BINARY_RETRY_ATTEMPTS + 1):
+        progress_callback = _log_progress(progress_prefix)
+        watchdog = UploadWatchdog(progress_prefix)
+
+        def combined_callback(seen, total):
+            progress_callback(seen, total)
+            watchdog.update(seen, total)
+
+        watchdog.start()
+        response = None
+        try:
+            with RangeFile(file_path, start_offset, end_offset, callback=combined_callback) as handle:
+                files = {
+                    "video_file_chunk": (Path(file_path).name, handle, "application/octet-stream"),
+                }
+                response = requests.post(url, data=data, files=files, timeout=REQUEST_TIMEOUT)
+        except requests.RequestException as exc:
+            print()
+            watchdog.stop()
+            watchdog_alerted = watchdog.had_alert()
+            error_kind, transient = _classify_request_exception(exc)
+            if transient and attempt < UPLOAD_BINARY_RETRY_ATTEMPTS:
+                delay = _retry_delay_seconds(attempt)
+                logging.warning(
+                    "Error transitorio subiendo chunk (%s) hacia %s. Reintento %s/%s en %.1fs. Detalle: %s",
+                    error_kind,
+                    url,
+                    attempt,
+                    UPLOAD_BINARY_RETRY_ATTEMPTS,
+                    delay,
+                    exc,
+                )
+                _set_operation_status(
+                    error_kind,
+                    "transfer_chunk",
+                    str(exc),
+                    transient=True,
+                    watchdog_alerted=watchdog_alerted,
+                )
+                time.sleep(delay)
+                continue
+
+            logging.exception("Error subiendo chunk hacia %s: %s", url, exc)
+            _set_operation_status(
+                error_kind,
+                "transfer_chunk",
+                str(exc),
+                transient=transient,
+                watchdog_alerted=watchdog_alerted,
+            )
+            return None
+        finally:
+            watchdog.stop()
+
+        print()
+
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = {"raw_text": response.text}
+
+        if response.status_code >= 400:
+            if _should_retry_http_status(response.status_code) and attempt < UPLOAD_BINARY_RETRY_ATTEMPTS:
+                delay = _retry_delay_seconds(attempt)
+                logging.warning(
+                    "Fallo chunk HTTP %s hacia %s. Reintento %s/%s en %.1fs.",
+                    response.status_code,
+                    url,
+                    attempt,
+                    UPLOAD_BINARY_RETRY_ATTEMPTS,
+                    delay,
+                )
+                _set_operation_status(
+                    f"http_{response.status_code}",
+                    "transfer_chunk",
+                    json.dumps(payload, ensure_ascii=False),
+                    transient=True,
+                    watchdog_alerted=watchdog.had_alert(),
+                )
+                time.sleep(delay)
+                continue
+
+            logging.error(
+                "Fallo chunk HTTP %s hacia %s: %s",
+                response.status_code,
+                url,
+                json.dumps(payload, ensure_ascii=False),
+            )
+            _set_operation_status(
+                f"http_{response.status_code}",
+                "transfer_chunk",
+                json.dumps(payload, ensure_ascii=False),
+                transient=_should_retry_http_status(response.status_code),
+                watchdog_alerted=watchdog.had_alert(),
+            )
+            return None
+
+        if not isinstance(payload, dict):
+            payload = {"data": payload}
+        payload.setdefault("_http_status", response.status_code)
+        _set_operation_status(
+            "success",
+            "transfer_chunk",
+            f"HTTP {response.status_code}",
+            transient=False,
+            watchdog_alerted=watchdog.had_alert(),
+        )
+        return payload
+
+    return None
 
 
 def check_ig_publish_limit():
@@ -595,6 +918,70 @@ def wait_for_fb_video_status(video_id):
     return None
 
 
+def _start_fb_upload(page_endpoint, file_size):
+    return _request_json(
+        "POST",
+        graph_url(page_endpoint),
+        data={
+            "upload_phase": "start",
+            "file_size": str(file_size),
+            "access_token": META_FB_PAGE_TOKEN,
+        },
+    )
+
+
+def _transfer_fb_upload(video_id, upload_session_id, file_path):
+    file_size = os.path.getsize(file_path)
+    current_offset = 0
+    while current_offset < file_size:
+        end_offset = min(current_offset + FB_UPLOAD_CHUNK_BYTES, file_size)
+        transfer_payload = {
+            "upload_phase": "transfer",
+            "upload_session_id": upload_session_id,
+            "start_offset": str(current_offset),
+            "access_token": META_FB_PAGE_TOKEN,
+        }
+        result = _post_transfer_chunk(
+            graph_video_url(f"{video_id}/videos"),
+            transfer_payload,
+            file_path,
+            current_offset,
+            end_offset,
+            f"Subiendo FB {current_offset}-{end_offset}",
+        )
+        if not result:
+            return None
+
+        next_start = result.get("start_offset")
+        next_end = result.get("end_offset")
+        try:
+            if next_start is not None:
+                current_offset = int(next_start)
+            elif next_end is not None:
+                current_offset = int(next_end)
+            else:
+                current_offset = end_offset
+        except (TypeError, ValueError):
+            current_offset = end_offset
+
+    return {"success": True, "upload_session_id": upload_session_id, "video_id": video_id}
+
+
+def _finish_fb_upload(endpoint, video_id, description, upload_session_id=None, publish=True):
+    finish_payload = {
+        "upload_phase": "finish",
+        "video_id": video_id,
+        "access_token": META_FB_PAGE_TOKEN,
+    }
+    if upload_session_id:
+        finish_payload["upload_session_id"] = upload_session_id
+    if description:
+        finish_payload["description"] = description
+    if publish:
+        finish_payload["video_state"] = "PUBLISHED"
+    return _finalize_facebook_upload(endpoint, finish_payload, str(video_id))
+
+
 def _validate_facebook_credentials(require_app_id=False):
     if not FB_PAGE_ID or not META_FB_PAGE_TOKEN:
         logging.error("Faltan META_FB_PAGE_ID o META_FB_PAGE_TOKEN.")
@@ -630,12 +1017,15 @@ def _finalize_facebook_upload(endpoint, payload, video_id):
             return None
         if status_result is None:
             logging.warning("Se devuelve el video_id %s como aceptado, pero aun sin confirmacion final.", video_id)
+            _set_operation_status("accepted_without_confirmation", "facebook_finish", str(video_id), transient=False)
             return video_id
 
         logging.info("Facebook confirmo la publicacion del video %s.", video_id)
+        _set_operation_status("success", "facebook_finish", str(video_id), transient=False)
         return video_id
 
     logging.error("Facebook no confirmo el finish del video %s: %s", video_id, result)
+    _set_operation_status("finish_not_confirmed", "facebook_finish", json.dumps(result, ensure_ascii=False), transient=False)
     return None
 
 
@@ -655,11 +1045,8 @@ def upload_fb_reel(video_path, caption):
         logging.error("No existe el archivo para subir a Facebook Reels: %s", file_path)
         return None
 
-    start_result = _request_json(
-        "POST",
-        graph_url(f"{FB_PAGE_ID}/video_reels"),
-        data={"upload_phase": "start", "access_token": META_FB_PAGE_TOKEN},
-    )
+    file_size = file_path.stat().st_size
+    start_result = _start_fb_upload(f"{FB_PAGE_ID}/video_reels", file_size)
     if not start_result:
         return None
 
@@ -668,19 +1055,15 @@ def upload_fb_reel(video_path, caption):
         logging.error("Facebook no devolvio video_id en start de Reel: %s", start_result)
         return None
 
-    if not _upload_facebook_video_binary(str(video_id), str(file_path)):
+    upload_session_id = start_result.get("upload_session_id")
+    if not upload_session_id:
+        logging.error("Facebook no devolvio upload_session_id en start de Reel: %s", start_result)
         return None
 
-    finish_payload = {
-        "upload_phase": "finish",
-        "video_id": video_id,
-        "video_state": "PUBLISHED",
-        "access_token": META_FB_PAGE_TOKEN,
-    }
-    if caption:
-        finish_payload["description"] = caption
+    if not _transfer_fb_upload(str(video_id), str(upload_session_id), str(file_path)):
+        return None
 
-    return _finalize_facebook_upload("video_reels", finish_payload, str(video_id))
+    return _finish_fb_upload("video_reels", str(video_id), caption, str(upload_session_id), publish=True)
 
 
 def upload_fb_video_standard(video_path, description):
@@ -695,11 +1078,8 @@ def upload_fb_video_standard(video_path, description):
         logging.error("No existe el archivo para subir a videos de Facebook: %s", file_path)
         return None
 
-    start_result = _request_json(
-        "POST",
-        graph_url(f"{FB_PAGE_ID}/videos"),
-        data={"upload_phase": "start", "access_token": META_FB_PAGE_TOKEN},
-    )
+    file_size = file_path.stat().st_size
+    start_result = _start_fb_upload(f"{FB_PAGE_ID}/videos", file_size)
     if not start_result:
         return None
 
@@ -708,21 +1088,14 @@ def upload_fb_video_standard(video_path, description):
         logging.error("Facebook no devolvio video_id en start de video: %s", start_result)
         return None
     upload_session_id = start_result.get("upload_session_id")
-
-    if not _upload_facebook_video_binary(str(video_id), str(file_path)):
+    if not upload_session_id:
+        logging.error("Facebook no devolvio upload_session_id en start de video: %s", start_result)
         return None
 
-    finish_payload = {
-        "upload_phase": "finish",
-        "video_id": video_id,
-        "access_token": META_FB_PAGE_TOKEN,
-    }
-    if upload_session_id:
-        finish_payload["upload_session_id"] = upload_session_id
-    if description:
-        finish_payload["description"] = description
+    if not _transfer_fb_upload(str(video_id), str(upload_session_id), str(file_path)):
+        return None
 
-    return _finalize_facebook_upload("videos", finish_payload, str(video_id))
+    return _finish_fb_upload("videos", str(video_id), description, str(upload_session_id), publish=True)
 
 
 def upload_fb_file_handle(video_path, description, scheduled_publish_time=None):
