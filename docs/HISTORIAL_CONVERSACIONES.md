@@ -142,3 +142,12 @@ con ruido tipo "sal y pimienta" y manchas de fotocopia. Extraer texto y exportar
 - Se confirmo el despliegue de `https://zerausn.github.io/agentes/` y sus paginas legales para soporte de App Review y Access Verification en Meta.
 - Se dejo como criterio operativo que `meta_uploader` es una app de publicacion organica para Facebook e Instagram y no una app de Ads ni Catalog API.
 - Para `Access Verification`, mientras `Performatic Writings` siga siendo marca informal y los porfolios confirmados (`802657775463630` y `676518254917301`) sean propios del operador, la opcion mas segura para describir la empresa es `Autonomo`.
+
+## Sesion 5 - Meta Uploader, sonda real y watchdog (Codex, 2026-04-07)
+
+- Se endurecio `meta_uploader.py` con un watchdog de subida que revisa progreso cada 10 segundos y alerta despues de 2 verificaciones sin avance, con diagnostico basico para distinguir conectividad local vs socket a Meta.
+- Se reemplazo el experimento de `test_single_scheduled.py` por una sonda real de un solo asset que toma el video mas pesado disponible, respeta `META_ENABLE_UPLOAD=1` y prueba reels/posts solo donde el asset y la documentacion oficial lo permiten.
+- Resultado real de la sonda: Instagram post aceptado con media id `17921696511315151`; Facebook post fallo durante la subida binaria por `ConnectionResetError(10054)` del host remoto.
+- Stories quedaron saltadas a proposito porque la documentacion oficial versionada en el repo no cubre ese flujo para este carril.
+- Los carriles Reel quedaron sin ejecutar en la sonda porque `pendientes_reels.json` estaba vacio; la cola `pendientes_posts.json` si estaba ordenada por peso descendente y selecciono `20260310_184517.mp4` (2696.6 MB, 3840x2160, 157.258656 s).
+- `single_format_probe_result.json` se dejo como artefacto operativo local fuera de Git.

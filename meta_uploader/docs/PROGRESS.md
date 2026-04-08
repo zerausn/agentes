@@ -13,5 +13,9 @@
 - [x] Despliegue confirmado de GitHub Pages con URLs publicas limpias para Meta.
 - [x] Sitio publico ajustado para verificacion de acceso con nombre, direccion y correo visibles.
 - [x] Evaluacion del repositorio oficial `facebook-python-business-sdk`.
-- [ ] Validar en vivo el flujo dual con assets de prueba y tokens correctos.
+- [x] Watchdog de subidas con verificacion cada 10s y diagnostico de conectividad local vs Meta.
+- [x] Sonda real de un solo asset que prueba formatos compatibles desde la cola mas pesada disponible.
+- [x] Prueba en vivo confirmada para Instagram post con media id `17921696511315151`.
+- [x] Evidencia guardada de fallo actual en Facebook post por `ConnectionResetError(10054)` del host remoto durante la subida binaria.
+- [ ] Validar en vivo el flujo dual completo con assets reel-safe y confirmar Facebook sin reset remoto.
 - [ ] Separar mejor el carril IG-only de videos largos si se necesita.

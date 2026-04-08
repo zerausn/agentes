@@ -35,6 +35,8 @@ python meta_calendar_generator.py
 - `META_APP_ID` para flujos avanzados de uploads
 - `META_GRAPH_API_VERSION` para fijar la version del Graph API
 - `META_ENABLE_UPLOAD=1` solo cuando quieras habilitar los scripts manuales que publican de verdad
+- `META_UPLOAD_STALL_CHECK_SECONDS` para ajustar cada cuanto se vigila una subida
+- `META_UPLOAD_STALL_MAX_NO_PROGRESS_CHECKS` para definir cuantas verificaciones sin avance disparan alerta
 
 ## Regla de Git
 
@@ -49,6 +51,7 @@ generadas ni videos transcodificados.
 - `diag_sizes.py`: lista los videos mas pesados de una carpeta
 - `transcode_batch.py`: prepara una cola de videos optimizados para IG
 - `test_batch_upload.py` y `test_batch_upload_v2.py`: scripts manuales con opt-in explicito
+- `test_single_scheduled.py`: sonda manual de un solo asset pesado para probar formatos activos y dejar evidencia estructurada local
 
 ## Documentacion publica para App Review
 

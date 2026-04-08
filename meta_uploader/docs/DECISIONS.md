@@ -54,3 +54,27 @@
   trazable y facil de depurar. Se consideran rescatables solo patrones puntuales
   del SDK como `debug=True` para imprimir cURL equivalentes, manejo de sesiones
   por token y batch calls para lecturas no criticas.
+
+## D9: Normalizar video de Instagram sobre `REELS` con `share_to_feed`
+- **Decision:** usar `media_type=REELS` como carril oficial para publicar video
+  en Instagram y exponer `upload_ig_feed_video_resumable(...)` como wrapper con
+  `share_to_feed=true`.
+- **Razon:** Meta ya devuelve de forma explicita que `media_type=VIDEO` es
+  obsoleto para publicar video al feed. Reutilizar el flujo `REELS` evita
+  mantener dos implementaciones distintas para Reel y video compartido al feed.
+
+## D10: Dejar Stories fuera del flujo automatizado actual
+- **Decision:** no intentar publicar Stories desde la nueva sonda unificada
+  mientras la documentacion oficial versionada en el repo no cubra ese flujo.
+- **Razon:** es preferible marcar el formato como `skipped` con una razon clara
+  antes que inferir endpoints o parametros no respaldados por las fuentes
+  oficiales ya auditadas para este subproyecto.
+
+## D11: Vigilar estancamientos de subida cada 10 segundos
+- **Decision:** anadir un watchdog de subida que revise progreso cada `10s`,
+  alerte tras `2` verificaciones sin avance y ejecute diagnostico basico de
+  conectividad contra internet general y `graph.facebook.com`.
+- **Razon:** el problema operativo reportado ya no era solo "falla o no falla",
+  sino distinguir si el bloqueo venia de wifi/conectividad local o de un stall
+  del lado de Meta. El watchdog deja esa senal en logs sin requerir inspeccion
+  manual del proceso.
