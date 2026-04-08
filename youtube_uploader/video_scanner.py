@@ -1,105 +1,119 @@
-import os
-import json
 import logging
-from pathlib import Path
+import os
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+from video_helpers import ensure_basic_video_fields
+from video_helpers import get_video_roots
+from video_helpers import load_config
+from video_helpers import load_json_file
+from video_helpers import save_json_file
 
 BASE_DIR = Path(__file__).resolve().parent
 LOG_FILE = BASE_DIR / "scanner.log"
+OUTPUT_JSON = BASE_DIR / "scanned_videos.json"
 
-# Setup Logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler()]
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler()],
 )
 
-CONFIG_FILE = BASE_DIR / 'config.json'
-OUTPUT_JSON = BASE_DIR / 'scanned_videos.json'
+config = load_config(BASE_DIR)
+scanner_cfg = config.get("scanner", {})
 
-def load_config():
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return {}
+VIDEO_EXTENSIONS = {extension.lower() for extension in scanner_cfg.get("video_extensions", [".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv"])}
+MIN_SIZE_MB = scanner_cfg.get("min_size_mb", 100)
+EXCLUDE_FOLDERS = {folder.lower() for folder in scanner_cfg.get("exclude_folders", [])}
+EXCLUDE_FILES = {filename.lower() for filename in scanner_cfg.get("exclude_files", [])}
+EXCLUDE_PATTERNS = [pattern.lower() for pattern in scanner_cfg.get("exclude_patterns", [])]
 
-config = load_config()
-scanner_cfg = config.get('scanner', {})
-
-VIDEO_EXTENSIONS = set(scanner_cfg.get('video_extensions', ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv']))
-MIN_SIZE_MB = scanner_cfg.get('min_size_mb', 100)
-EXCLUDE_FOLDERS = set(folder.lower() for folder in scanner_cfg.get('exclude_folders', []))
-EXCLUDE_FILES = set(f.lower() for f in scanner_cfg.get('exclude_files', []))
-EXCLUDE_PATTERNS = [p.lower() for p in scanner_cfg.get('exclude_patterns', [])]
 
 def scan_directory(directory):
-    """Escanea un directorio de forma recursiva buscando videos grandes."""
     found = []
-    logging.info(f"Escaneando: {directory}")
-    
+    logging.info("Escaneando: %s", directory)
+
     for root, dirs, files in os.walk(directory):
-        # Modificar dirs in-place para que os.walk no entre en carpetas excluidas
-        dirs[:] = [d for d in dirs if d.lower() not in EXCLUDE_FOLDERS]
-        
-        for file in files:
-            try:
-                ext = os.path.splitext(file)[1].lower()
-                if ext in VIDEO_EXTENSIONS:
-                    # Verificar exclusiones por nombre de archivo o patrón
-                    file_lower = file.lower()
-                    if file_lower in EXCLUDE_FILES:
-                        continue
-                    if any(pattern in file_lower for pattern in EXCLUDE_PATTERNS):
-                        continue
-                        
-                    full_path = os.path.join(root, file)
-                    size_bytes = os.path.getsize(full_path)
-                    size_mb = size_bytes / (1024 * 1024)
-                    
-                    if size_mb >= MIN_SIZE_MB:
-                        found.append({
-                            'path': full_path,
-                            'size_mb': round(size_mb, 2),
-                            'filename': file,
-                            'uploaded': False
-                        })
-            except (OSError, PermissionError):
+        dirs[:] = [name for name in dirs if name.lower() not in EXCLUDE_FOLDERS]
+
+        for filename in files:
+            ext = os.path.splitext(filename)[1].lower()
+            if ext not in VIDEO_EXTENSIONS:
                 continue
+
+            filename_lower = filename.lower()
+            if filename_lower in EXCLUDE_FILES:
+                continue
+            if any(pattern in filename_lower for pattern in EXCLUDE_PATTERNS):
+                continue
+
+            file_path = Path(root) / filename
+            try:
+                size_mb = file_path.stat().st_size / (1024 * 1024)
+            except OSError:
+                continue
+
+            if size_mb < MIN_SIZE_MB:
+                continue
+
+            video = {
+                "path": str(file_path),
+                "size_mb": round(size_mb, 2),
+                "filename": filename,
+                "uploaded": False,
+            }
+            ensure_basic_video_fields(video)
+            found.append(video)
+
     return found
 
+
+def merge_scan_results(existing_videos, discovered_videos):
+    existing_by_path = {video["path"]: video for video in existing_videos}
+
+    for video in existing_videos:
+        try:
+            ensure_basic_video_fields(video)
+        except OSError:
+            continue
+
+    new_count = 0
+    for discovered in discovered_videos:
+        known = existing_by_path.get(discovered["path"])
+        if known:
+            for field in ("size_mb", "filename", "creation_date"):
+                if discovered.get(field):
+                    known[field] = discovered[field]
+            continue
+
+        existing_videos.append(discovered)
+        existing_by_path[discovered["path"]] = discovered
+        new_count += 1
+
+    existing_videos.sort(key=lambda item: item.get("size_mb", 0), reverse=True)
+    return new_count
+
+
 def main():
-    unified_folder = r"C:\Users\ZN-\Documents\ADM\Carpeta 1"
-    roots_to_scan = [unified_folder] if os.path.exists(unified_folder) else []
-    
-    logging.info(f"Iniciando escaneo multihilo en {len(roots_to_scan)} raíces...")
-    
+    existing_videos = load_json_file(OUTPUT_JSON, [])
+    roots_to_scan = get_video_roots(BASE_DIR, config=config, videos=existing_videos)
+    if not roots_to_scan:
+        logging.error(
+            "No hay rutas de video configuradas. Define scanner.video_roots en config.json o la variable YOUTUBE_UPLOADER_VIDEO_ROOTS."
+        )
+        return
+
+    logging.info("Iniciando escaneo multihilo en %s raices...", len(roots_to_scan))
+
     all_found = []
     with ThreadPoolExecutor() as executor:
-        results = list(executor.map(scan_directory, roots_to_scan))
-        for res in results:
-            all_found.extend(res)
+        for result in executor.map(scan_directory, roots_to_scan):
+            all_found.extend(result)
 
-    existing_videos = []
-    existing_paths = set()
-    
-    if os.path.exists(OUTPUT_JSON):
-        with open(OUTPUT_JSON, 'r', encoding='utf-8') as f:
-            existing_videos = json.load(f)
-            for v in existing_videos:
-                existing_paths.add(v['path'])
-    
-    new_count = 0
-    for v in all_found:
-        if v['path'] not in existing_paths:
-            existing_videos.append(v)
-            new_count += 1
-            
-    existing_videos.sort(key=lambda x: x['size_mb'], reverse=True)
-            
-    with open(OUTPUT_JSON, 'w', encoding='utf-8') as f:
-        json.dump(existing_videos, f, indent=4, ensure_ascii=False)
-        
-    logging.info(f"Escaneo finalizado. {new_count} nuevos, {len(existing_videos)} totales.")
+    new_count = merge_scan_results(existing_videos, all_found)
+    save_json_file(OUTPUT_JSON, existing_videos)
+    logging.info("Escaneo finalizado. %s nuevos, %s totales.", new_count, len(existing_videos))
+
 
 if __name__ == "__main__":
     main()

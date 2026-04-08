@@ -15,3 +15,12 @@ venv/
 # AI Memory
 AI.local.md
 MEMORY.md
+
+# Test artifacts
+tests/.tmp/
+
+# Second pass artifacts
+second_pass/manifests/
+second_pass/normalized/
+second_pass/optimized_videos/
+second_pass/queues/

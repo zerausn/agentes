@@ -16,6 +16,9 @@
         "publish_minute": 45
     },
     "scanner": {
+        "video_roots": [
+            "C:\\ruta\\a\\tu\\biblioteca"
+        ],
         "min_size_mb": 100,
         "video_extensions": [".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv"],
         "exclude_folders": [

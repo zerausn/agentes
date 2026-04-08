@@ -22,6 +22,8 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 
+from video_helpers import is_managed_title
+
 BASE_DIR = Path(__file__).resolve().parent
 CREDENTIALS_DIR = BASE_DIR / 'credentials'
 SCOPES = [
@@ -185,16 +187,11 @@ def main():
     
     # IMPORTANTE: Solo tomamos como "Borradores" los que:
     # 1. No tienen fecha de publicación.
-    # 2. Coinciden con nuestro patrón de título (ej: "Performatic Writings" o el formato de fecha "2025...")
+    # 2. Coinciden con nuestro patrón de título gestionado por el uploader.
     def is_our_draft(v):
         if v.get('status', {}).get('publishAt'): return False
         title = v.get('snippet', {}).get('title', '')
-        # Patrón 1: Títulos creados por nuestro uploader
-        if "Performatic Writings" in title: return True
-        # Patrón 2: Títulos por defecto de archivos (ej: 20250310_191216.mp4)
-        import re
-        if re.search(r'\d{8}_\d{6}', title): return True
-        return False
+        return is_managed_title(title)
 
     without_date = [v for v in videos if is_our_draft(v)]
     intentional_private = [v for v in videos if not v.get('status', {}).get('publishAt') and not is_our_draft(v)]

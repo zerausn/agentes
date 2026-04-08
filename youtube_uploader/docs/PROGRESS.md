@@ -1,27 +1,42 @@
 # Estado del Progreso - YouTube Uploader
 
-Estado actual del proyecto al **06 de Abril de 2026**.
+Estado actual del proyecto al **07 de Abril de 2026**.
 
 ## Infraestructura del subproyecto
-- [x] Ubicacion corregida a `youtube_uploader/` en la raiz del repo `agentes`.
-- [x] Scripts operativos y rutas internas endurecidos para no depender de
-  `agentes/agentes/youtube_uploader`.
+- [x] `youtube_uploader/` vive en la raiz del repo `agentes`.
+- [x] `uploader.py` vuelve a compilar y conserva watchdog de progreso.
+- [x] Las rutas absolutas se eliminaron del codigo operativo del subproyecto.
+- [x] Existe una capa compartida `video_helpers.py` para config, metadatos y
+  heuristicas comunes.
 
-## Estado de la biblioteca
-- **Total videos encontrados en disco (Carpeta 1):** ~264 pendientes de subida
-  inicial.
-- **Total videos en el canal de YouTube:** 792 registrados en el ultimo
-  escaneo.
-- **Borradores pendientes de programar:** 147 (de un total inicial de 183).
+## Pipeline local
+- [x] `video_scanner.py` indexa y completa `creation_date`.
+- [x] `classify_local_videos.py` completa `type`, `duration` y `dimensions`.
+- [x] `check_channel_videos.py` mueve duplicados al folder de exclusiones sin
+  depender de una ruta fija.
+- [x] `uploader.py` rellena faltantes antes de subir para tolerar indices
+  parciales.
+- [x] `uploader.py` acepta overrides de metadata para clips de segunda jornada.
 
-## Logros recientes
-- [x] Escaneo unificado en `C:\Users\ZN-\Documents\ADM\Carpeta 1`.
-- [x] `clean_json.py` depura rutas inexistentes y aplica exclusiones nuevas.
-- [x] 36 videos ya programados con fechas hasta agosto de 2026.
-- [x] Los `.bat` operativos quedaron desacoplados de la ruta vieja del repo.
+## Segunda jornada local
+- [x] Existe `second_pass/local_clip_optimizer.py` para analizar y renderizar
+  clips derivados.
+- [x] Existe `second_pass/register_optimized_videos.py` para incorporar
+  optimizados al indice solo bajo accion explicita.
+- [x] Los artefactos de `second_pass/` quedan fuera de Git.
+- [x] Hay pruebas unitarias para helpers de metadata y registro de optimizados.
 
-## Bloqueos pendientes
-- **Cuota de API:** agotada en el ultimo intento; requiere esperar al reset
-  diario aproximado de las 02:00 AM hora Colombia.
-- **Limite del canal:** sigue activo hasta terminar de programar los borradores
-  restantes.
+## Validacion reciente
+- [x] `python -m compileall .`
+- [x] `python -m unittest discover -s tests -v`
+- [x] Se verifico que el codigo operativo ya no contiene referencias activas a
+  rutas absolutas de una maquina concreta.
+
+## Riesgos operativos que siguen vigentes
+- **Cuota de API:** el cambio no elimina los resets diarios de quota.
+- **Limite del canal:** `uploadLimitExceeded` sigue dependiendo del estado del
+  canal y de la programacion de borradores.
+- **Dependencia externa:** la clasificacion rica requiere `ffprobe` disponible
+  en el sistema para completar `type`, `duration` y `dimensions`.
+- **Second pass:** el scoring mejora mucho si el video fuente tiene `.srt`,
+  `.vtt` o transcript `.json` al lado del master.
