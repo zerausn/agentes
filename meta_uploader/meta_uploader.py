@@ -28,7 +28,7 @@ UPLOAD_STALL_MAX_NO_PROGRESS_CHECKS = int(os.environ.get("META_UPLOAD_STALL_MAX_
 HTTP_RETRY_ATTEMPTS = int(os.environ.get("META_HTTP_RETRY_ATTEMPTS", "3"))
 HTTP_RETRY_BACKOFF_SECONDS = float(os.environ.get("META_HTTP_RETRY_BACKOFF_SECONDS", "3"))
 UPLOAD_BINARY_RETRY_ATTEMPTS = int(os.environ.get("META_UPLOAD_BINARY_RETRY_ATTEMPTS", "2"))
-FB_UPLOAD_CHUNK_BYTES = int(os.environ.get("META_FB_UPLOAD_CHUNK_BYTES", str(4 * 1024 * 1024)))
+FB_UPLOAD_CHUNK_BYTES = int(os.environ.get("META_FB_UPLOAD_CHUNK_BYTES", str(1 * 1024 * 1024)))
 
 _LAST_OPERATION_STATUS = {
     "kind": "unknown",
@@ -545,6 +545,16 @@ def _post_binary(url, headers, file_path, progress_prefix):
     return None
 
 
+def _read_chunk_bytes(file_path, start_offset, end_offset, callback=None):
+    size = max(0, end_offset - start_offset)
+    with open(file_path, "rb") as handle:
+        handle.seek(start_offset)
+        chunk = handle.read(size)
+    if callback:
+        callback(len(chunk), size)
+    return chunk, size
+
+
 def _post_transfer_chunk(url, data, file_path, start_offset, end_offset, progress_prefix):
     for attempt in range(1, UPLOAD_BINARY_RETRY_ATTEMPTS + 1):
         progress_callback = _log_progress(progress_prefix)
@@ -557,11 +567,26 @@ def _post_transfer_chunk(url, data, file_path, start_offset, end_offset, progres
         watchdog.start()
         response = None
         try:
-            with RangeFile(file_path, start_offset, end_offset, callback=combined_callback) as handle:
-                files = {
-                    "video_file_chunk": (Path(file_path).name, handle, "application/octet-stream"),
-                }
-                response = requests.post(url, data=data, files=files, timeout=REQUEST_TIMEOUT)
+            chunk, expected_size = _read_chunk_bytes(file_path, start_offset, end_offset, callback=combined_callback)
+            if not chunk:
+                logging.error(
+                    "No se pudo leer un chunk valido para Facebook transfer en el rango %s-%s.",
+                    start_offset,
+                    end_offset,
+                )
+                _set_operation_status(
+                    "empty_chunk_read",
+                    "transfer_chunk",
+                    f"Rango {start_offset}-{end_offset}",
+                    transient=False,
+                    watchdog_alerted=watchdog.had_alert(),
+                )
+                return None
+
+            files = {
+                "video_file_chunk": (Path(file_path).name, chunk, "video/mp4"),
+            }
+            response = requests.post(url, data=data, files=files, timeout=(30, REQUEST_TIMEOUT))
         except requests.RequestException as exc:
             print()
             watchdog.stop()
@@ -930,11 +955,18 @@ def _start_fb_upload(page_endpoint, file_size):
     )
 
 
-def _transfer_fb_upload(video_id, upload_session_id, file_path):
+def _transfer_fb_upload(page_endpoint, upload_session_id, file_path):
     file_size = os.path.getsize(file_path)
     current_offset = 0
     while current_offset < file_size:
         end_offset = min(current_offset + FB_UPLOAD_CHUNK_BYTES, file_size)
+        logging.info(
+            "Facebook transfer chunk %s-%s/%s para %s",
+            current_offset,
+            end_offset,
+            file_size,
+            Path(file_path).name,
+        )
         transfer_payload = {
             "upload_phase": "transfer",
             "upload_session_id": upload_session_id,
@@ -942,7 +974,7 @@ def _transfer_fb_upload(video_id, upload_session_id, file_path):
             "access_token": META_FB_PAGE_TOKEN,
         }
         result = _post_transfer_chunk(
-            graph_video_url(f"{video_id}/videos"),
+            graph_video_url(page_endpoint),
             transfer_payload,
             file_path,
             current_offset,
@@ -964,7 +996,14 @@ def _transfer_fb_upload(video_id, upload_session_id, file_path):
         except (TypeError, ValueError):
             current_offset = end_offset
 
-    return {"success": True, "upload_session_id": upload_session_id, "video_id": video_id}
+        logging.info(
+            "Facebook transfer confirmado hasta %s/%s bytes para %s",
+            current_offset,
+            file_size,
+            Path(file_path).name,
+        )
+
+    return {"success": True, "upload_session_id": upload_session_id}
 
 
 def _finish_fb_upload(endpoint, video_id, description, upload_session_id=None, publish=True):
@@ -1060,7 +1099,7 @@ def upload_fb_reel(video_path, caption):
         logging.error("Facebook no devolvio upload_session_id en start de Reel: %s", start_result)
         return None
 
-    if not _transfer_fb_upload(str(video_id), str(upload_session_id), str(file_path)):
+    if not _transfer_fb_upload(f"{FB_PAGE_ID}/video_reels", str(upload_session_id), str(file_path)):
         return None
 
     return _finish_fb_upload("video_reels", str(video_id), caption, str(upload_session_id), publish=True)
@@ -1092,7 +1131,7 @@ def upload_fb_video_standard(video_path, description):
         logging.error("Facebook no devolvio upload_session_id en start de video: %s", start_result)
         return None
 
-    if not _transfer_fb_upload(str(video_id), str(upload_session_id), str(file_path)):
+    if not _transfer_fb_upload(f"{FB_PAGE_ID}/videos", str(upload_session_id), str(file_path)):
         return None
 
     return _finish_fb_upload("videos", str(video_id), description, str(upload_session_id), publish=True)

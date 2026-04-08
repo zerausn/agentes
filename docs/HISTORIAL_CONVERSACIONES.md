@@ -208,3 +208,21 @@ con ruido tipo "sal y pimienta" y manchas de fotocopia. Extraer texto y exportar
 - Se endurecio tambien `test_batch_upload.py` para que reintente el mismo asset cuando el fallo sea transitorio y pueda pausar el batch en lugar de consumir la cola completa a ciegas.
 - Validacion local: `python -m py_compile meta_uploader.py test_batch_upload.py` paso sin errores.
 - Durante esta sesion, la jornada 1 si quedo viva como proceso Python activo; la jornada 2 tambien quedo viva y se confirmo que al menos estaba ejecutando `ffmpeg.exe` como hijo del optimizador, aunque todavia no habia dejado artefactos visibles en `second_pass/`.
+
+## Sesion 11 - Meta Uploader, runner normal unificado de jornada 1 (Codex, 2026-04-08)
+
+- El usuario pidio dejar atras los scripts de prueba y construir un runner normal de jornada 1 para videos crudos, manteniendo la jornada 2 separada y sin tocar originales.
+- Se creo `meta_uploader/run_jornada1_normal.py` como carril operativo nuevo.
+- El runner genera `meta_calendar.json` como calendario local por dias, usando las colas crudas ya ordenadas por peso (`pendientes_reels.json` y `pendientes_posts.json`).
+- La logica quedo asi:
+  - reel-safe -> `FB Reel + IG Reel`
+  - no reel-safe -> `FB Post + IG Feed`
+  - `IG Story` solo como intento best-effort cuando el asset vertical del dia cumple una politica conservadora (`<=60s`)
+  - `Facebook Stories` se registra como `skipped_unsupported`
+- Dentro de cada dia, el runner ejecuta primero el asset mas pesado disponible.
+- Si falla la dupla principal FB+IG de un asset, pausa la jornada para no quemar cola.
+- Validacion local completada:
+  - `python -m py_compile meta_uploader.py test_batch_upload.py run_jornada1_normal.py`
+  - `python run_jornada1_normal.py --days 2 --post-start-index 4 --plan-only` con `META_ENABLE_UPLOAD=1`
+- La generacion de `meta_calendar.json` confirmo que para `2026-04-08` y `2026-04-09` la cola activa seguia entrando por `20260310_183619.mp4` y `20260302_190317.mp4`.
+- No se hizo todavia el corte en vivo al nuevo runner porque seguia corriendo una transferencia real de `Facebook Post` sobre `20260310_183619.mp4` con el runner legacy (`test_batch_upload.py`), y detenerla en ese punto habria descartado cientos de MB ya confirmados por Meta.

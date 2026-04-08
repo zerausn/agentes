@@ -123,3 +123,16 @@
 - **Razon:** avanzar automaticamente al siguiente video despues de un fallo
   transitorio degrada la cola y no ayuda a distinguir entre un video roto y un
   problema momentaneo de red, DNS o socket.
+
+## D17: Crear un runner normal unificado para la jornada 1 de videos crudos
+- **Decision:** introducir `run_jornada1_normal.py` como carril operativo
+  separado de los scripts `test_*`, generando un calendario local por dias en
+  `meta_calendar.json` y ejecutando estas rutas: reel-safe -> `FB Reel + IG Reel`;
+  no reel-safe -> `FB Post + IG Feed`; `IG Story` solo como intento
+  best-effort cuando el reel del dia es vertical y `<=60s`; `Facebook Stories`
+  como salto explicito por soporte oficial aun no versionado.
+- **Razon:** el usuario ya no esta en fase de prueba aislada, sino en fase de
+  subida normal. Mantener la jornada 1 como un runner propio evita seguir
+  mezclando scripts de prueba con operacion real, permite ordenar la cola por
+  dias/fechas y deja trazabilidad local del estado del batch sin tocar los
+  videos originales ni depender de la jornada 2.

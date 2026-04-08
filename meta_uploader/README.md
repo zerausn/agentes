@@ -52,6 +52,25 @@ generadas ni videos transcodificados.
 - `transcode_batch.py`: prepara una cola de videos optimizados para IG
 - `test_batch_upload.py` y `test_batch_upload_v2.py`: scripts manuales con opt-in explicito
 - `test_single_scheduled.py`: sonda manual de un solo asset pesado para probar formatos activos y dejar evidencia estructurada local
+- `run_jornada1_normal.py`: runner operativo de jornada 1 para videos crudos. Genera `meta_calendar.json` por dias, prioriza lo mas pesado primero dentro de cada fecha, ejecuta `FB Reel + IG Reel` en el carril compartido, `FB Post + IG Feed` para el resto, intenta `IG Story` solo cuando el asset vertical pasa una politica conservadora y deja `Facebook Stories` como salto explicito por soporte no versionado.
+
+## Jornada 1
+
+Uso sugerido del runner normal:
+
+```powershell
+$env:META_ENABLE_UPLOAD = "1"
+python run_jornada1_normal.py --days 7 --post-start-index 0 --reel-start-index 0
+```
+
+Notas:
+
+- Usa siempre videos crudos; no toca originales ni depende de `second_pass/`.
+- Se apoya en `pendientes_reels.json` y `pendientes_posts.json`, que ya vienen priorizados por peso.
+- Escribe `meta_calendar.json` como calendario operativo local, fuera de Git.
+- Si falla la dupla principal de un asset (`FB+IG`), pausa la jornada para no quemar cola.
+- `IG Story` se trata como carril best-effort sobre el reel vertical del dia.
+- `Facebook Stories` sigue fuera del flujo automatizado actual.
 
 ## Documentacion publica para App Review
 

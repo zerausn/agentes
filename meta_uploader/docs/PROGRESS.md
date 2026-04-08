@@ -28,8 +28,11 @@
 - [x] Tarea versionada para manana con plan tecnico de endurecimiento del carril `Facebook Post` en `docs/TODO_FB_POST_RESILIENCE.md`.
 - [x] Primera pasada de endurecimiento implementada: retries clasificados en `_request_json(...)` y `_post_binary(...)`.
 - [x] `test_batch_upload.py` ya no avanza ciegamente ante un fallo transitorio del asset actual; ahora reintenta y puede pausar el batch.
+- [x] Runner normal unificado de jornada 1 (`run_jornada1_normal.py`) para videos crudos: calendario por dias, prioridad por peso dentro del dia, `FB Reel + IG Reel`, `FB Post + IG Feed`, `IG Story` best-effort y `Facebook Stories` como salto explicito.
+- [x] Validacion local del runner normal con `python -m py_compile ...` y generacion real de `meta_calendar.json` en modo `--plan-only`.
 - [ ] Revalidar en vivo `Facebook Post` despues del fix de `upload_session_id`; el retry puntual fue interrumpido por el usuario.
 - [ ] Investigar por que `Instagram Story` e `Instagram Reel` del clip vertical derivado fallan con `ProcessingFailedError` en `rupload`.
 - [ ] Validar en vivo el flujo dual completo con assets reel-safe y confirmar Facebook sin reset remoto.
 - [ ] Resolver la inestabilidad de red y socket del carril `Facebook Post` antes de considerar confiable una corrida normal sostenida.
+- [ ] Hacer el corte operativo desde el runner legacy `test_batch_upload.py` al runner normal `run_jornada1_normal.py` sin interrumpir una transferencia cruda ya en curso.
 - [ ] Separar mejor el carril IG-only de videos largos si se necesita.
