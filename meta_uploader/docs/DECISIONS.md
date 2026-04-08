@@ -136,3 +136,13 @@
   mezclando scripts de prueba con operacion real, permite ordenar la cola por
   dias/fechas y deja trazabilidad local del estado del batch sin tocar los
   videos originales ni depender de la jornada 2.
+
+## D18: Mantener la promocion de reels optimizados bajo opt-in explicito
+- **Decision:** usar la segunda jornada para derivar clips `shared_reel` e
+  `instagram_story` en `second_pass/queues/`, y solo fusionar esos derivados
+  dentro de `pendientes_reels.json` cuando el operador lo pida de forma
+  explicita con `--sync-main-reels-queue`.
+- **Razon:** la jornada 1 y la jornada 2 deben mantenerse desacopladas. La
+  segunda jornada existe para "hacer encajar" el material crudo en los carriles
+  `FB Reel + IG Reel` e `IG Story`, pero no debe contaminar la cola principal
+  de produccion hasta que el operador decida que esos derivados ya estan listos.

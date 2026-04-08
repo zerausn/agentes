@@ -238,3 +238,20 @@ con ruido tipo "sal y pimienta" y manchas de fotocopia. Extraer texto y exportar
 - Se lanzo un proceso de espera (`PID 26304`) que monitoriza la salida del runner legacy y, apenas termine, arrancara automaticamente `run_jornada1_normal.py` con `META_ENABLE_UPLOAD=1`.
 - El arranque diferido del runner nuevo quedo configurado desde `post-start-index=5`, para continuar en `20260302_190317.mp4` y no volver a reintentar desde cero el asset que ya estaba transfiriendo el carril legacy.
 - En ese momento `pendientes_reels.json` seguia vacio, por lo que el runner nuevo comenzara de hecho por el carril `FB Post + IG Feed` hasta que existan assets reel-safe en la cola cruda.
+
+## Sesion 13 - Meta Uploader, segunda jornada para encajar crudos en reels/stories (Codex, 2026-04-08)
+
+- El usuario pidio verificar si la segunda jornada podia "hacer encajar" el material crudo para cumplir las reglas de `FB Reel + IG Reel` e `IG Story`, y alimentar `pendientes_reels.json` sin tocar la jornada 1.
+- Se confirmo que ya existia una base reutilizable en `meta_uploader/second_pass/local_clip_optimizer.py`, con presets `shared_reel` e `instagram_story`.
+- Se detecto un hueco operativo importante: al procesar varios videos, las colas de `second_pass/queues/` se sobrescribian por video. Ese comportamiento se corrigio para que ahora acumulen derivados y los ordenen por peso.
+- Se agrego `meta_uploader/second_pass/prepare_second_jornada_meta.py`, que:
+  - lee `pendientes_posts.json` y/o `pendientes_reels.json`
+  - toma los assets mas pesados
+  - renderiza derivados `shared_reel` e `instagram_story`
+  - deja resumen en `second_pass/manifests/second_jornada_meta_prepare_summary.json`
+  - puede fusionar esos derivados dentro de `pendientes_reels.json` solo con `--sync-main-reels-queue`
+- Validacion local:
+  - `python -m py_compile meta_uploader/second_pass/local_clip_optimizer.py meta_uploader/second_pass/prepare_second_jornada_meta.py`
+  - corrida real sobre dos clips pequenos locales (`opt_20260310_184517.mp4` y `probe_vertical_20260310_184517.mp4`)
+  - resultado: `second_pass/queues/pendientes_reels_second_pass.json` y `second_pass/queues/pendientes_ig_stories_second_pass.json` quedaron acumulando correctamente dos derivados cada una
+- Con esto quedo lista la pieza que faltaba para la segunda jornada: transformar material crudo en assets reel/story-safe sin tocar originales ni contaminar la cola principal hasta que el operador lo autorice.

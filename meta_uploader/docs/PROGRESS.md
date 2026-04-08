@@ -30,6 +30,9 @@
 - [x] `test_batch_upload.py` ya no avanza ciegamente ante un fallo transitorio del asset actual; ahora reintenta y puede pausar el batch.
 - [x] Runner normal unificado de jornada 1 (`run_jornada1_normal.py`) para videos crudos: calendario por dias, prioridad por peso dentro del dia, `FB Reel + IG Reel`, `FB Post + IG Feed`, `IG Story` best-effort y `Facebook Stories` como salto explicito.
 - [x] Validacion local del runner normal con `python -m py_compile ...` y generacion real de `meta_calendar.json` en modo `--plan-only`.
+- [x] Correccion del `second_pass` para acumular colas optimizadas sin sobrescribirlas al procesar multiples fuentes.
+- [x] Nuevo preparador `second_pass/prepare_second_jornada_meta.py` para derivar `shared_reel` e `instagram_story` desde colas crudas y promocionar reels optimizados al main queue solo con opt-in.
+- [x] Validacion local real del `second_pass`: dos clips pequenos generaron y acumularon correctamente `pendientes_reels_second_pass.json` y `pendientes_ig_stories_second_pass.json`.
 - [ ] Revalidar en vivo `Facebook Post` despues del fix de `upload_session_id`; el retry puntual fue interrumpido por el usuario.
 - [ ] Investigar por que `Instagram Story` e `Instagram Reel` del clip vertical derivado fallan con `ProcessingFailedError` en `rupload`.
 - [ ] Validar en vivo el flujo dual completo con assets reel-safe y confirmar Facebook sin reset remoto.

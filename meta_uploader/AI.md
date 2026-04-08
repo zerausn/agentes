@@ -19,6 +19,10 @@ de Meta, sin mezclar esta logica con `youtube_uploader`.
   reel-safe -> `FB Reel + IG Reel`; no reel-safe -> `FB Post + IG Feed`;
   `IG Story` solo como intento best-effort cuando el asset vertical pasa una
   politica conservadora; `Facebook Stories` sigue fuera del flujo automatizado.
+- La segunda jornada puede derivar `shared_reel` e `instagram_story` desde
+  `pendientes_posts.json` usando `second_pass/prepare_second_jornada_meta.py`.
+  Solo debe fusionar esos derivados dentro de `pendientes_reels.json` cuando se
+  pida de forma explicita; por defecto las colas optimizadas viven separadas.
 - No subas `.env`, tokens, inventarios exportados, colas generadas, videos
   optimizados ni logs.
 - Actualiza `docs/PROGRESS.md` y `docs/DECISIONS.md` cuando cambie el flujo.

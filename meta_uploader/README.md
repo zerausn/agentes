@@ -53,6 +53,7 @@ generadas ni videos transcodificados.
 - `test_batch_upload.py` y `test_batch_upload_v2.py`: scripts manuales con opt-in explicito
 - `test_single_scheduled.py`: sonda manual de un solo asset pesado para probar formatos activos y dejar evidencia estructurada local
 - `run_jornada1_normal.py`: runner operativo de jornada 1 para videos crudos. Genera `meta_calendar.json` por dias, prioriza lo mas pesado primero dentro de cada fecha, ejecuta `FB Reel + IG Reel` en el carril compartido, `FB Post + IG Feed` para el resto, intenta `IG Story` solo cuando el asset vertical pasa una politica conservadora y deja `Facebook Stories` como salto explicito por soporte no versionado.
+- `second_pass/prepare_second_jornada_meta.py`: prepara derivados de segunda jornada desde colas crudas, acumula colas `reel/story` optimizadas y puede promocionar esos reels a `pendientes_reels.json` solo con opt-in explicito.
 
 ## Jornada 1
 

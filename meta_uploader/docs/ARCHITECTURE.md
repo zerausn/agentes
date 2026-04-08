@@ -36,6 +36,11 @@ con una capa de automatizacion separada del repo contenedor.
   dia cumple una politica conservadora (`<=60s`, vertical). `Facebook Stories`
   permanece fuera del alcance automatizado actual hasta versionar soporte
   oficial especifico para ese flujo.
+- **Carril segunda jornada**: `second_pass/local_clip_optimizer.py` y
+  `second_pass/prepare_second_jornada_meta.py` derivan clips `shared_reel` e
+  `instagram_story` desde material crudo, escriben colas separadas en
+  `second_pass/queues/` y solo promocionan derivados a `pendientes_reels.json`
+  mediante opt-in explicito.
 - **Artefactos locales**: colas JSON, inventarios y videos optimizados se
   generan localmente y quedan fuera de Git.
 
