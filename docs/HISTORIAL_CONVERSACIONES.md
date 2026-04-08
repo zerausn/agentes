@@ -307,3 +307,14 @@ con ruido tipo "sal y pimienta" y manchas de fotocopia. Extraer texto y exportar
   - el log ahora reporta tiempo por chunk y `MB/s` efectivos
 - Validacion local: `python -m py_compile meta_uploader.py run_jornada1_normal.py test_batch_upload.py`
 - El proceso que ya estaba corriendo (`PID 26508`) no absorbio este cambio automaticamente; para beneficiarse de esta optimizacion necesitara reiniciarse con el codigo nuevo.
+
+## Sesion 17 - Meta Uploader, logs separados por plataforma (Codex, 2026-04-08)
+
+- El usuario detecto que el log maestro estaba dominado por las trazas de `Facebook transfer`, lo que hacia dificil ver si Instagram estaba avanzando o no.
+- Se actualizo `meta_uploader.py` para mantener el log maestro `meta_uploader.log` y, en paralelo, escribir dos logs locales derivados:
+  - `meta_uploader_facebook.log`
+  - `meta_uploader_instagram.log`
+- La separacion se hace por filtros de palabras clave sobre el mismo stream de logging, sin romper compatibilidad con el log historico ni con los scripts existentes.
+- Con esto queda mucho mas facil seguir hoy mismo:
+  - progreso de transfer/polling de Facebook
+  - creacion de contenedores, polling y `media_publish` de Instagram

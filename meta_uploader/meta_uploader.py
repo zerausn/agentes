@@ -17,6 +17,8 @@ except ImportError:
 
 BASE_DIR = Path(__file__).resolve().parent
 LOG_FILE = BASE_DIR / "meta_uploader.log"
+FB_LOG_FILE = BASE_DIR / "meta_uploader_facebook.log"
+IG_LOG_FILE = BASE_DIR / "meta_uploader_instagram.log"
 GRAPH_API_ROOT = "https://graph.facebook.com"
 GRAPH_VIDEO_ROOT = "https://graph-video.facebook.com"
 REQUEST_TIMEOUT_DEFAULT = 60
@@ -42,6 +44,16 @@ _LAST_OPERATION_STATUS = {
     "watchdog_alerted": False,
 }
 _HTTP_THREAD_LOCAL = threading.local()
+
+
+class KeywordRoutingFilter(logging.Filter):
+    def __init__(self, keywords):
+        super().__init__()
+        self.keywords = tuple(keyword.lower() for keyword in keywords)
+
+    def filter(self, record):
+        message = record.getMessage().lower()
+        return any(keyword in message for keyword in self.keywords)
 
 
 class ProgressFile:
@@ -345,11 +357,56 @@ IG_USER_ID = os.environ.get("META_IG_USER_ID", "")
 FB_PAGE_ID = os.environ.get("META_FB_PAGE_ID", "")
 
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler(LOG_FILE, encoding="utf-8"), logging.StreamHandler()],
-)
+def _configure_logging():
+    root = logging.getLogger()
+    if getattr(root, "_meta_uploader_configured", False):
+        return
+
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    handlers = [
+        logging.FileHandler(LOG_FILE, encoding="utf-8"),
+        logging.StreamHandler(),
+    ]
+
+    fb_handler = logging.FileHandler(FB_LOG_FILE, encoding="utf-8")
+    fb_handler.addFilter(
+        KeywordRoutingFilter(
+            (
+                "facebook",
+                "subiendo fb",
+                " fb ",
+                "fb reel",
+                "facebook reel",
+                "facebook transfer",
+            )
+        )
+    )
+    handlers.append(fb_handler)
+
+    ig_handler = logging.FileHandler(IG_LOG_FILE, encoding="utf-8")
+    ig_handler.addFilter(
+        KeywordRoutingFilter(
+            (
+                "instagram",
+                "contenedor ig",
+                " ig ",
+                "ig story",
+                "ig reel",
+                "ig feed",
+            )
+        )
+    )
+    handlers.append(ig_handler)
+
+    root.setLevel(logging.INFO)
+    for handler in handlers:
+        handler.setFormatter(formatter)
+        root.addHandler(handler)
+
+    root._meta_uploader_configured = True
+
+
+_configure_logging()
 
 
 def _masked(value, visible=5):

@@ -76,6 +76,7 @@ Notas:
 - `IG Story` se trata como carril best-effort sobre el reel vertical del dia.
 - `Facebook Stories` sigue fuera del flujo automatizado actual.
 - El carril `Facebook Post` ahora arranca con chunk mayor y reduce temporalmente el chunk si detecta fallos transitorios.
+- El logging operativo se separa en tres archivos locales: `meta_uploader.log` (maestro), `meta_uploader_facebook.log` y `meta_uploader_instagram.log`.
 
 ## Documentacion publica para App Review
 

@@ -49,6 +49,11 @@ con una capa de automatizacion separada del repo contenedor.
   `second_pass/outputs/yolo_reframe_experiments/` y no tocan colas ni uploads.
 - **Artefactos locales**: colas JSON, inventarios y videos optimizados se
   generan localmente y quedan fuera de Git.
+- **Observabilidad local**: el uploader deja un log maestro
+  (`meta_uploader.log`) y dos logs derivados por plataforma
+  (`meta_uploader_facebook.log`, `meta_uploader_instagram.log`) para separar
+  mejor las trazas de transfer/polling de Facebook de los eventos de
+  contenedores/publicacion en Instagram.
 
 ## Reglas
 

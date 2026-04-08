@@ -38,6 +38,7 @@
 - [x] `ultralytics` instalado localmente (`8.4.35`) y primera corrida YOLO real completada sobre `probe_vertical_20260310_184517.mp4` con tasa de deteccion `1.0`.
 - [x] Modelo `yolov8n.pt` reubicado a `second_pass/outputs/yolo_reframe_experiments/models/` para no ensuciar la raiz del repo.
 - [x] Optimizado el carril `Facebook Post/Reel` con sesion HTTP persistente por hilo y chunk objetivo de `8 MB`, con reduccion automatica hasta `1 MB` cuando aparecen fallos transitorios.
+- [x] Logging separado por plataforma: `meta_uploader_facebook.log` y `meta_uploader_instagram.log`, manteniendo `meta_uploader.log` como vista maestra.
 - [ ] Revalidar en vivo `Facebook Post` despues del fix de `upload_session_id`; el retry puntual fue interrumpido por el usuario.
 - [ ] Investigar por que `Instagram Story` e `Instagram Reel` del clip vertical derivado fallan con `ProcessingFailedError` en `rupload`.
 - [ ] Validar en vivo el flujo dual completo con assets reel-safe y confirmar Facebook sin reset remoto.
