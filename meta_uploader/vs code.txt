@@ -1,0 +1,5 @@
+# Opción A: Usar Chocolatey
+choco install nodejs
+
+# Opción B: Descargar desde nodejs.org
+# https://nodejs.org (versión LTS recomendada)

@@ -30,6 +30,46 @@ def load_config(base_dir):
     return load_json_file(Path(base_dir) / "config.json", {})
 
 
+def resolve_binary(base_dir, env_name, relative_candidates, fallback_name):
+    environ_value = str(os.environ.get(env_name) or "").strip()
+    if environ_value:
+        candidate = Path(environ_value).expanduser()
+        if candidate.exists():
+            return candidate
+
+    base_dir = Path(base_dir)
+    for relative_path in relative_candidates:
+        candidate = (base_dir / relative_path).resolve()
+        if candidate.exists():
+            return candidate
+
+    return Path(fallback_name)
+
+
+def resolve_ffmpeg_binary(base_dir):
+    return resolve_binary(
+        base_dir,
+        "YOUTUBE_UPLOADER_FFMPEG",
+        [
+            "tools/ffmpeg/bin/ffmpeg.exe",
+            "tools/ffmpeg/bin/ffmpeg",
+        ],
+        "ffmpeg",
+    )
+
+
+def resolve_ffprobe_binary(base_dir):
+    return resolve_binary(
+        base_dir,
+        "YOUTUBE_UPLOADER_FFPROBE",
+        [
+            "tools/ffmpeg/bin/ffprobe.exe",
+            "tools/ffmpeg/bin/ffprobe",
+        ],
+        "ffprobe",
+    )
+
+
 def resolve_config_path(base_dir, raw_path):
     candidate = Path(raw_path).expanduser()
     if not candidate.is_absolute():
@@ -152,8 +192,9 @@ def parse_ffprobe_stream_data(payload):
 
 def probe_video_metadata(file_path, runner=None):
     runner = runner or subprocess.run
+    ffprobe_binary = resolve_ffprobe_binary(Path(__file__).resolve().parent)
     command = [
-        "ffprobe",
+        str(ffprobe_binary),
         "-v",
         "error",
         "-select_streams",

@@ -11,6 +11,34 @@ proyecto.
 - **Motivo:** recuperar un entrypoint ejecutable sin perder el diagnostico de
   bloqueos de subida.
 
+## 2026-04-08: No confundir `uploadLimitExceeded` con quota de credencial
+- **Contexto:** el canal puede rechazar nuevas subidas o borradores aunque la
+  credencial siga sana, y el uploader estaba rotando llaves igual que si fuera
+  `quotaExceeded`.
+- **Decision:** detener la jornada cuando aparezca `uploadLimitExceeded` y
+  reservar la rotacion de credenciales solo para `quotaExceeded` o
+  `rateLimitExceeded`.
+- **Motivo:** no contaminar `quota_status.json` con falsos agotamientos y dejar
+  claro que el siguiente paso operativo es programar o liberar borradores.
+
+## 2026-04-08: Separar la prioridad de subida por carril
+- **Contexto:** el uploader estaba ordenando toda la cola pendiente por peso
+  global, mezclando `videos` y `shorts`.
+- **Decision:** mantener dos colas separadas, una para `videos` y otra para
+  `shorts`, ambas ordenadas por `size_mb` descendente.
+- **Motivo:** conservar la regla de "mas pesados primero" dentro de cada tipo y
+  al mismo tiempo respetar los huecos reales del calendario por carril.
+
+## 2026-04-08: Elegir el siguiente carril por la fecha libre mas cercana
+- **Contexto:** con colas separadas, el uploader necesita decidir cual carril
+  atacar primero en cada iteracion.
+- **Decision:** comparar la siguiente fecha libre de `video` y `short` usando el
+  calendario local + YouTube; subir primero el carril con el hueco mas cercano.
+  Si ambas fechas empatan, desempatar por el archivo mas pesado en cabeza de
+  cola.
+- **Motivo:** llenar antes el hueco operativo mas urgente sin perder la
+  prioridad por peso dentro de cada carril.
+
 ## 2026-04-07: Raices de video configurables
 - **Contexto:** varios scripts seguian amarrados a una ruta absoluta local.
 - **Decision:** resolver las bibliotecas por `scanner.video_roots`,

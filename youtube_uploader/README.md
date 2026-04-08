@@ -57,6 +57,20 @@ New-Item STOP -ItemType File
 
 Para reanudar: `Remove-Item STOP`
 
+## Mantenimiento de Credenciales (Renovacion de Tokens)
+
+Si recibes errores de `invalid_grant` o tokens expirados, puedes renovar todas las llaves de una vez sin esperar a que el uploader falle:
+
+1. Borrar los tokens viejos: `Remove-Item credentials/token_*.json`
+2. Generar nuevos tokens manualmente uno por uno:
+   ```powershell
+   python auth_manager.py 1
+   python auth_manager.py 2
+   python auth_manager.py 3
+   python auth_manager.py 4
+   ```
+   Cada comando abrira una ventana en el navegador para la autorizacion.
+
 ## Documentacion Completa
 Ver [AI.md](AI.md) y la carpeta [docs](docs).
 

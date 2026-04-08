@@ -165,6 +165,46 @@ def get_next_publish_date(videos, video_type="video", yt_scheduled_dates=None):
     return base_date.astimezone(timezone.utc)
 
 
+def normalize_upload_lane(video):
+    return "short" if video.get("type") == "short" else "video"
+
+
+def build_pending_upload_queues(videos):
+    queues = {"video": [], "short": []}
+    for video in videos:
+        if video.get("uploaded", False):
+            continue
+        lane = normalize_upload_lane(video)
+        queues[lane].append(video)
+
+    for lane in queues:
+        queues[lane].sort(key=lambda item: item.get("size_mb", 0) or 0, reverse=True)
+    return queues
+
+
+def pop_next_pending_video(queues, videos, yt_scheduled_dates):
+    candidates = []
+
+    for lane, queue in queues.items():
+        while queue and queue[0].get("uploaded", False):
+            queue.pop(0)
+        if not queue:
+            continue
+
+        head = queue[0]
+        next_date = get_next_publish_date(videos, lane, yt_scheduled_dates)
+        size_mb = float(head.get("size_mb") or 0)
+        lane_priority = 0 if lane == "video" else 1
+        candidates.append((next_date, -size_mb, lane_priority, lane))
+
+    if not candidates:
+        return None, None, None
+
+    next_date, _neg_size, _lane_priority, selected_lane = min(candidates)
+    video = queues[selected_lane].pop(0)
+    return video, selected_lane, next_date
+
+
 def get_authenticated_service(client_secret_file, creds_cache_file):
     client_secret_file = Path(client_secret_file)
     creds_cache_file = Path(creds_cache_file)
@@ -195,6 +235,7 @@ def extract_http_error_reason(error):
 def upload_video(youtube, file_path, upload_metadata, publish_at_dt):
     publish_at_str = publish_at_dt.isoformat().replace("+00:00", "Z")
     audience = config.get("audience_settings", {"selfDeclaredMadeForKids": False})
+    title = upload_metadata["title"]
 
     body = {
         "snippet": {
@@ -414,9 +455,9 @@ def main():
     if enrich_pending_videos(videos):
         save_json_file(JSON_DB, videos)
 
-    pendientes = [video for video in videos if not video.get("uploaded", False)]
-    logging.info("Videos pendientes: %s", len(pendientes))
-    if not pendientes:
+    pending_count = sum(1 for video in videos if not video.get("uploaded", False))
+    logging.info("Videos pendientes: %s", pending_count)
+    if not pending_count:
         return
 
     current_idx = 0
@@ -434,11 +475,20 @@ def main():
 
     logging.info("Auditando calendario de YouTube antes de comenzar...")
     yt_schedule = fetch_yt_schedule(youtube)
-    pendientes.sort(key=lambda item: item.get("size_mb", 0), reverse=True)
+    pending_queues = build_pending_upload_queues(videos)
+    logging.info(
+        "Colas por carril: %s videos largos, %s shorts.",
+        len(pending_queues["video"]),
+        len(pending_queues["short"]),
+    )
 
-    for video in pendientes:
+    while True:
         if STOP_FILE.exists():
             logging.warning("Archivo STOP detectado. Deteniendo.")
+            break
+
+        video, video_type, next_date = pop_next_pending_video(pending_queues, videos, yt_schedule)
+        if not video:
             break
 
         file_path = Path(video["path"])
@@ -449,21 +499,18 @@ def main():
         if enrich_video_record(video, include_probe=True):
             save_json_file(JSON_DB, videos)
 
-        video_type = video.get("type", "video")
         upload_metadata = build_upload_metadata(video, config)
-        next_date = get_next_publish_date(videos, video_type, yt_schedule)
 
         while True:
             result = upload_video(youtube, file_path, upload_metadata, next_date)
 
-            if result in {"QUOTA_EXCEEDED", "LIMIT_EXCEEDED"}:
-                reason_label = "Cuota agotada" if result == "QUOTA_EXCEEDED" else "Limite de subidas de YouTube"
-                logging.info("%s en llave %s. Rotando...", reason_label, current_idx)
+            if result == "QUOTA_EXCEEDED":
+                logging.info("Cuota agotada en llave %s. Rotando...", current_idx)
 
                 update_quota_status(client_files[current_idx])
                 current_idx += 1
                 if current_idx >= len(client_files):
-                    logging.error("Se agotaron todas las llaves o el canal esta bloqueado por hoy.")
+                    logging.error("Se agotaron todas las llaves disponibles por hoy.")
                     return
 
                 youtube = get_authenticated_service(
@@ -471,6 +518,13 @@ def main():
                     CREDENTIALS_DIR / f"token_{current_idx}.json",
                 )
                 continue
+
+            if result == "LIMIT_EXCEEDED":
+                logging.error(
+                    "El canal alcanzo su limite de subidas/borradores. Ejecuta schedule_drafts.py "
+                    "o libera borradores antes de reintentar la subida."
+                )
+                return
 
             if not result:
                 break

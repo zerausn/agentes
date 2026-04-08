@@ -6,6 +6,8 @@ credentials/
 
 # Logs
 *.log
+*.out
+*.err
 __pycache__/
 
 # Python env
@@ -27,6 +29,3 @@ second_pass/queues/
 
 # Local tools
 tools/
-
-*.out
-*.err

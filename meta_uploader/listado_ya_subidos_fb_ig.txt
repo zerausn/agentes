@@ -1,0 +1,9 @@
+Listado de videos ya subidos en Facebook e Instagram
+Generado: 2026-04-08T17:30:48.867340
+Carpeta evaluada: C:\Users\ZN-\Documents\ADM\Carpeta 1\videos subidos exitosamente
+Total videos carpeta: 34
+Coinciden en ambas plataformas: 1
+
+1. 20260310_184517.mp4
+   FB ID: 1863981500985541
+   IG ID: 18578908267001931

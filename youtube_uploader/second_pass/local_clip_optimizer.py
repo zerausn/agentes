@@ -14,6 +14,8 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from video_helpers import DEFAULT_TITLE_PREFIX
+from video_helpers import resolve_ffmpeg_binary
+from video_helpers import resolve_ffprobe_binary
 
 
 LOG_FILE = BASE_DIR / "local_clip_optimizer.log"
@@ -85,6 +87,9 @@ logging.basicConfig(
     handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler()],
 )
 
+FFMPEG_BIN = str(resolve_ffmpeg_binary(ROOT_DIR))
+FFPROBE_BIN = str(resolve_ffprobe_binary(ROOT_DIR))
+
 
 def run_command(command):
     return subprocess.run(command, capture_output=True, text=True, check=False)
@@ -102,7 +107,7 @@ def ffmpeg_escape_filter_path(path):
 
 def probe_video(video_path):
     cmd = [
-        "ffprobe",
+        FFPROBE_BIN,
         "-v",
         "error",
         "-show_entries",
@@ -148,7 +153,7 @@ def normalize_to_cfr(source_path, target_fps=30):
         return output_path
 
     command = [
-        "ffmpeg",
+        FFMPEG_BIN,
         "-y",
         "-i",
         str(source_path),
@@ -176,7 +181,7 @@ def normalize_to_cfr(source_path, target_fps=30):
 
 def detect_scene_changes(video_path, threshold=0.38):
     cmd = [
-        "ffmpeg",
+        FFMPEG_BIN,
         "-hide_banner",
         "-i",
         str(video_path),
@@ -197,7 +202,7 @@ def detect_scene_changes(video_path, threshold=0.38):
 
 def detect_silence_intervals(video_path, noise="-32dB", min_duration=0.4):
     cmd = [
-        "ffmpeg",
+        FFMPEG_BIN,
         "-hide_banner",
         "-i",
         str(video_path),
@@ -224,7 +229,7 @@ def detect_silence_intervals(video_path, noise="-32dB", min_duration=0.4):
 
 def detect_black_intervals(video_path, min_duration=0.4, pixel_threshold=0.98):
     cmd = [
-        "ffmpeg",
+        FFMPEG_BIN,
         "-hide_banner",
         "-i",
         str(video_path),
@@ -247,7 +252,7 @@ def detect_black_intervals(video_path, min_duration=0.4, pixel_threshold=0.98):
 
 def detect_active_crop(video_path, sample_seconds=45):
     cmd = [
-        "ffmpeg",
+        FFMPEG_BIN,
         "-hide_banner",
         "-i",
         str(video_path),
@@ -651,7 +656,7 @@ def render_clip(source_path, preset_name, candidate, crop_mode="center_crop", bu
     video_filter = build_video_filter(preset, crop_mode, subtitle_path=subtitle_path, active_crop=active_crop)
 
     command = [
-        "ffmpeg",
+        FFMPEG_BIN,
         "-y",
         "-ss",
         f"{candidate['start']:.2f}",

@@ -17,6 +17,10 @@ Estado actual del proyecto al **07 de Abril de 2026**.
 - [x] `uploader.py` rellena faltantes antes de subir para tolerar indices
   parciales.
 - [x] `uploader.py` acepta overrides de metadata para clips de segunda jornada.
+- [x] `uploader.py` ya separa la prioridad de `videos` y `shorts` en colas
+  independientes por peso.
+- [x] `uploader.py` selecciona el siguiente carril comparando el primer hueco de
+  calendario disponible para `video` y `short`.
 
 ## Segunda jornada local
 - [x] Existe `second_pass/local_clip_optimizer.py` para analizar y renderizar
@@ -31,6 +35,8 @@ Estado actual del proyecto al **07 de Abril de 2026**.
 - [x] `python -m unittest discover -s tests -v`
 - [x] Se verifico que el codigo operativo ya no contiene referencias activas a
   rutas absolutas de una maquina concreta.
+- [x] `uploader.py` ya no marca falsamente una credencial como agotada cuando
+  el error real es `uploadLimitExceeded` del canal.
 
 ## Riesgos operativos que siguen vigentes
 - **Cuota de API:** el cambio no elimina los resets diarios de quota.

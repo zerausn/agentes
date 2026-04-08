@@ -13,3 +13,8 @@ calendar.log
 AI.local.md
 MEMORY.md
 single_format_probe_result.json
+second_pass/outputs/
+second_pass/normalized/
+second_pass/optimized_videos/
+second_pass/manifests/
+second_pass/queues/
