@@ -226,3 +226,15 @@ con ruido tipo "sal y pimienta" y manchas de fotocopia. Extraer texto y exportar
   - `python run_jornada1_normal.py --days 2 --post-start-index 4 --plan-only` con `META_ENABLE_UPLOAD=1`
 - La generacion de `meta_calendar.json` confirmo que para `2026-04-08` y `2026-04-09` la cola activa seguia entrando por `20260310_183619.mp4` y `20260302_190317.mp4`.
 - No se hizo todavia el corte en vivo al nuevo runner porque seguia corriendo una transferencia real de `Facebook Post` sobre `20260310_183619.mp4` con el runner legacy (`test_batch_upload.py`), y detenerla en ese punto habria descartado cientos de MB ya confirmados por Meta.
+
+## Sesion 12 - Meta Uploader, transicion automatica al runner normal (Codex, 2026-04-08)
+
+- El usuario ordeno arrancar ya con las reglas del runner unificado de jornada 1:
+  - reel-safe -> `FB Reel + IG Reel`
+  - no reel-safe -> `FB Post + IG Feed`
+  - `IG Story` solo como intento best-effort si el reel del dia es vertical y `<=60s`
+  - `Facebook Stories` como salto explicito por soporte no versionado
+- En lugar de cortar la subida cruda ya en curso, se preservo el progreso confirmado del proceso legacy `PID 26508`, que para ese momento ya llevaba mas de `600 MB` transferidos del asset `20260310_183619.mp4`.
+- Se lanzo un proceso de espera (`PID 26304`) que monitoriza la salida del runner legacy y, apenas termine, arrancara automaticamente `run_jornada1_normal.py` con `META_ENABLE_UPLOAD=1`.
+- El arranque diferido del runner nuevo quedo configurado desde `post-start-index=5`, para continuar en `20260302_190317.mp4` y no volver a reintentar desde cero el asset que ya estaba transfiriendo el carril legacy.
+- En ese momento `pendientes_reels.json` seguia vacio, por lo que el runner nuevo comenzara de hecho por el carril `FB Post + IG Feed` hasta que existan assets reel-safe en la cola cruda.
