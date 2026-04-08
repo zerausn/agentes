@@ -187,3 +187,10 @@ con ruido tipo "sal y pimienta" y manchas de fotocopia. Extraer texto y exportar
 - No aparecio ningun ID nuevo confirmado por Meta durante esta ventana. El batch siguio vivo a pesar de los fallos individuales.
 - El patron de error fue mixto: se repitio `ConnectionResetError(10054)` en `rupload.facebook.com/video-upload/...`, aparecio un `NameResolutionError` contra `graph.facebook.com`, se reportaron `OSError(22, Invalid argument)` desde el segundo agente y el watchdog marco al menos un estancamiento real con degradacion fuerte de conectividad (`internet timed out`, `getaddrinfo failed`).
 - Al cerrar la ventana de `15 minutos`, el segundo agente reporto que la ejecucion habia quedado sin publicaciones nuevas confirmadas y detuvo el proceso huerfano para no dejar una subida fantasma corriendo.
+
+## Sesion 9 - Meta Uploader, tarea formal para manana sobre resiliencia de Facebook Post (Codex, 2026-04-08)
+
+- Se aterrizo la estrategia tecnica para resolver los fallos mixtos del carril `Facebook Post` sin mezclarla con el segundo procesamiento de clipping.
+- Se documento como tarea formal `meta_uploader/docs/TODO_FB_POST_RESILIENCE.md`.
+- La estrategia quedo separada en fases: hardening HTTP, upload resumible real `start/transfer/finish`, persistencia local de reanudacion, watchdog accionable, runner conservador y trazabilidad especifica para `OSError(22)`.
+- Tambien se actualizo `meta_uploader/docs/HANDOVER.md` para marcar este frente como bloqueo operativo real de la siguiente ronda.
