@@ -9,6 +9,8 @@ BASE_DIR = Path(__file__).resolve().parent
 EXPERIMENT_ROOT = BASE_DIR / "outputs" / "yolo_reframe_experiments"
 PLAN_DIR = EXPERIMENT_ROOT / "plans"
 RENDER_DIR = EXPERIMENT_ROOT / "renders"
+MODEL_DIR = EXPERIMENT_ROOT / "models"
+DEFAULT_YOLO_MODEL = MODEL_DIR / "yolov8n.pt"
 
 
 def run_command(command):
@@ -304,7 +306,7 @@ def main():
         choices=["center", "golden_ratio", "thirds"],
         default="golden_ratio",
     )
-    parser.add_argument("--yolo-model", default="yolov8n.pt")
+    parser.add_argument("--yolo-model", default=str(DEFAULT_YOLO_MODEL))
     parser.add_argument(
         "--render",
         action="store_true",

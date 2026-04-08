@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 import requests
+from requests.adapters import HTTPAdapter
 
 try:
     from dotenv import load_dotenv
@@ -28,7 +29,10 @@ UPLOAD_STALL_MAX_NO_PROGRESS_CHECKS = int(os.environ.get("META_UPLOAD_STALL_MAX_
 HTTP_RETRY_ATTEMPTS = int(os.environ.get("META_HTTP_RETRY_ATTEMPTS", "3"))
 HTTP_RETRY_BACKOFF_SECONDS = float(os.environ.get("META_HTTP_RETRY_BACKOFF_SECONDS", "3"))
 UPLOAD_BINARY_RETRY_ATTEMPTS = int(os.environ.get("META_UPLOAD_BINARY_RETRY_ATTEMPTS", "2"))
-FB_UPLOAD_CHUNK_BYTES = int(os.environ.get("META_FB_UPLOAD_CHUNK_BYTES", str(1 * 1024 * 1024)))
+FB_UPLOAD_CHUNK_BYTES = int(os.environ.get("META_FB_UPLOAD_CHUNK_BYTES", str(8 * 1024 * 1024)))
+FB_UPLOAD_MIN_CHUNK_BYTES = int(os.environ.get("META_FB_UPLOAD_MIN_CHUNK_BYTES", str(1 * 1024 * 1024)))
+HTTP_SESSION_POOL_CONNECTIONS = int(os.environ.get("META_HTTP_SESSION_POOL_CONNECTIONS", "8"))
+HTTP_SESSION_POOL_MAXSIZE = int(os.environ.get("META_HTTP_SESSION_POOL_MAXSIZE", "8"))
 
 _LAST_OPERATION_STATUS = {
     "kind": "unknown",
@@ -37,6 +41,7 @@ _LAST_OPERATION_STATUS = {
     "transient": False,
     "watchdog_alerted": False,
 }
+_HTTP_THREAD_LOCAL = threading.local()
 
 
 class ProgressFile:
@@ -363,10 +368,26 @@ def graph_video_url(path):
     return f"{GRAPH_VIDEO_ROOT}/{GRAPH_API_VERSION}/{path.lstrip('/')}"
 
 
+def _get_http_session():
+    session = getattr(_HTTP_THREAD_LOCAL, "session", None)
+    if session is None:
+        session = requests.Session()
+        adapter = HTTPAdapter(
+            pool_connections=HTTP_SESSION_POOL_CONNECTIONS,
+            pool_maxsize=HTTP_SESSION_POOL_MAXSIZE,
+            max_retries=0,
+        )
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+        session.headers.update({"Connection": "keep-alive"})
+        _HTTP_THREAD_LOCAL.session = session
+    return session
+
+
 def _request_json(method, url, *, params=None, data=None, headers=None):
     for attempt in range(1, HTTP_RETRY_ATTEMPTS + 1):
         try:
-            response = requests.request(
+            response = _get_http_session().request(
                 method,
                 url,
                 params=params,
@@ -460,7 +481,12 @@ def _post_binary(url, headers, file_path, progress_prefix):
         response = None
         try:
             with ProgressFile(file_path, "rb", callback=combined_callback) as handle:
-                response = requests.post(url, headers=headers, data=handle, timeout=REQUEST_TIMEOUT)
+                response = _get_http_session().post(
+                    url,
+                    headers=headers,
+                    data=handle,
+                    timeout=REQUEST_TIMEOUT,
+                )
         except requests.RequestException as exc:
             print()
             watchdog.stop()
@@ -586,7 +612,12 @@ def _post_transfer_chunk(url, data, file_path, start_offset, end_offset, progres
             files = {
                 "video_file_chunk": (Path(file_path).name, chunk, "video/mp4"),
             }
-            response = requests.post(url, data=data, files=files, timeout=(30, REQUEST_TIMEOUT))
+            response = _get_http_session().post(
+                url,
+                data=data,
+                files=files,
+                timeout=(30, REQUEST_TIMEOUT),
+            )
         except requests.RequestException as exc:
             print()
             watchdog.stop()
@@ -958,8 +989,12 @@ def _start_fb_upload(page_endpoint, file_size):
 def _transfer_fb_upload(page_endpoint, upload_session_id, file_path):
     file_size = os.path.getsize(file_path)
     current_offset = 0
+    target_chunk_bytes = max(FB_UPLOAD_MIN_CHUNK_BYTES, FB_UPLOAD_CHUNK_BYTES)
+    chunk_bytes = target_chunk_bytes
+    consecutive_successes = 0
+
     while current_offset < file_size:
-        end_offset = min(current_offset + FB_UPLOAD_CHUNK_BYTES, file_size)
+        end_offset = min(current_offset + chunk_bytes, file_size)
         logging.info(
             "Facebook transfer chunk %s-%s/%s para %s",
             current_offset,
@@ -967,6 +1002,8 @@ def _transfer_fb_upload(page_endpoint, upload_session_id, file_path):
             file_size,
             Path(file_path).name,
         )
+        started_at = time.monotonic()
+        previous_offset = current_offset
         transfer_payload = {
             "upload_phase": "transfer",
             "upload_session_id": upload_session_id,
@@ -982,6 +1019,18 @@ def _transfer_fb_upload(page_endpoint, upload_session_id, file_path):
             f"Subiendo FB {current_offset}-{end_offset}",
         )
         if not result:
+            last_status = get_last_operation_status()
+            if last_status.get("transient") and chunk_bytes > FB_UPLOAD_MIN_CHUNK_BYTES:
+                previous_chunk = chunk_bytes
+                chunk_bytes = max(FB_UPLOAD_MIN_CHUNK_BYTES, chunk_bytes // 2)
+                consecutive_successes = 0
+                logging.warning(
+                    "Reduciendo chunk de Facebook de %s a %s bytes tras fallo transitorio (%s).",
+                    previous_chunk,
+                    chunk_bytes,
+                    last_status.get("kind"),
+                )
+                continue
             return None
 
         next_start = result.get("start_offset")
@@ -996,12 +1045,30 @@ def _transfer_fb_upload(page_endpoint, upload_session_id, file_path):
         except (TypeError, ValueError):
             current_offset = end_offset
 
+        elapsed = max(time.monotonic() - started_at, 0.001)
+        confirmed_bytes = max(0, current_offset - previous_offset)
+        throughput_mb_s = confirmed_bytes / elapsed / (1024 * 1024)
         logging.info(
-            "Facebook transfer confirmado hasta %s/%s bytes para %s",
+            "Facebook transfer confirmado hasta %s/%s bytes para %s en %.2fs (%.2f MB/s).",
             current_offset,
             file_size,
             Path(file_path).name,
+            elapsed,
+            throughput_mb_s,
         )
+
+        consecutive_successes += 1
+        if chunk_bytes < target_chunk_bytes and consecutive_successes >= 3:
+            increased_chunk = min(target_chunk_bytes, chunk_bytes * 2)
+            if increased_chunk != chunk_bytes:
+                logging.info(
+                    "Aumentando chunk de Facebook de %s a %s bytes tras %s transferencias estables.",
+                    chunk_bytes,
+                    increased_chunk,
+                    consecutive_successes,
+                )
+                chunk_bytes = increased_chunk
+            consecutive_successes = 0
 
     return {"success": True, "upload_session_id": upload_session_id}
 

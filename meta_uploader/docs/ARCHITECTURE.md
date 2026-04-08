@@ -31,7 +31,9 @@ con una capa de automatizacion separada del repo contenedor.
 - **Carril compartido Reel/Reel**: usa el subconjunto mas seguro para publicar
   el mismo asset en Facebook Reels e Instagram Reels.
 - **Carril Facebook video estandar**: conserva un flujo separado para videos de
-  pagina que no dependan del formato Reel.
+  pagina que no dependan del formato Reel. El transfer ahora reutiliza sesion
+  HTTP por hilo y usa chunk adaptativo para reducir el overhead de miles de
+  requests de `1 MB`.
 - **Stories**: `Instagram Stories` se intenta solo cuando el asset vertical del
   dia cumple una politica conservadora (`<=60s`, vertical). `Facebook Stories`
   permanece fuera del alcance automatizado actual hasta versionar soporte

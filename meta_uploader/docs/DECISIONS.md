@@ -155,3 +155,13 @@
   Mantenerlo como laboratorio reduce riesgo, evita meter dependencias pesadas
   en el flujo estable y permite comparar resultados antes de decidir una
   integracion en la segunda jornada.
+
+## D20: Subir el chunk objetivo de Facebook y reutilizar conexiones
+- **Decision:** cambiar el carril `Facebook Post/Reel` para usar sesion HTTP
+  persistente por hilo (`requests.Session`) y arrancar con un chunk objetivo de
+  `8 MB`, reduciendo el chunk solo cuando aparezcan fallos transitorios.
+- **Razon:** con chunks fijos de `1 MB` un video de `~2.6 GB` exige alrededor
+  de `2,493` requests multipart, lo que vuelve dominante el overhead de TLS,
+  handshake y confirmacion secuencial de Meta. El chunk adaptativo conserva un
+  piso de seguridad de `1 MB`, pero evita quedar atrapado siempre en el peor
+  caso de rendimiento.

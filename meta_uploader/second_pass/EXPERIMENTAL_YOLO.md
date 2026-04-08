@@ -61,6 +61,10 @@ python second_pass/experimental_yolo_reframer.py `
 - `opencv-python`
 - `ultralytics`
 
+Por defecto el modelo queda cacheado en:
+
+- `second_pass/outputs/yolo_reframe_experiments/models/yolov8n.pt`
+
 ## Estado
 
 Herramienta experimental.

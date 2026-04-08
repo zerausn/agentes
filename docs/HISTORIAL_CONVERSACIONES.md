@@ -272,3 +272,38 @@ con ruido tipo "sal y pimienta" y manchas de fotocopia. Extraer texto y exportar
   - `python meta_uploader/second_pass/experimental_yolo_reframer.py --help`
   - chequeo de dependencias: `cv2` si esta presente; `ultralytics` no esta instalado en este entorno, por lo que no se ejecuto una prueba YOLO completa todavia
 - Con esto quedo listo el laboratorio aislado para pruebas manuales, sin contaminar la segunda jornada estable ni la jornada 1.
+
+## Sesion 15 - Meta Uploader, instalacion local de ultralytics y primera corrida YOLO (Codex, 2026-04-08)
+
+- El usuario pidio instalar `ultralytics` para poder correr una prueba YOLO real en esta maquina.
+- Se instalo `ultralytics 8.4.35` en el Python activo (`3.14.3`), junto con sus dependencias resueltas por `pip`.
+- Quedaron verificados estos imports:
+  - `ultralytics 8.4.35`
+  - `torch 2.11.0+cpu`
+  - `torchvision 0.26.0+cpu`
+- Se ejecuto una prueba real del laboratorio YOLO sobre `meta_uploader/optimized_videos/probe_vertical_20260310_184517.mp4`.
+- Resultado de la prueba:
+  - plan experimental guardado en `second_pass/outputs/yolo_reframe_experiments/plans/`
+  - `30/30` detecciones en una corrida de `5s`
+  - `18/18` detecciones en una corrida posterior de `3s`
+  - tasa de deteccion observada: `1.0`
+- El modelo descargado `yolov8n.pt` se movio fuera de la raiz del repo hacia `second_pass/outputs/yolo_reframe_experiments/models/` para no dejar un binario suelto en el workspace versionado.
+
+## Sesion 16 - Meta Uploader, optimizacion de velocidad para chunks de Facebook (Codex, 2026-04-08)
+
+- El usuario reporto que la transferencia por chunks seguia siendo demasiado lenta y pidio acelerarla.
+- Se midio el caso real de `20260310_183619.mp4`:
+  - tamano total `2,614,367,574 bytes`
+  - progreso observado `610,271,232 bytes`
+  - velocidad efectiva promedio `0.074 MB/s` (`0.594 Mbps`)
+  - con chunk de `1 MB`, ese archivo implicaba unas `2,493` requests multipart separadas
+- Se concluyo que el cuello de botella no era solo el wifi, sino el overhead de miles de requests chicas, cada una con su confirmacion secuencial del lado de Meta.
+- Se optimizo `meta_uploader.py` asi:
+  - `requests.Session()` persistente por hilo para reutilizar conexiones HTTP/TLS
+  - `META_FB_UPLOAD_CHUNK_BYTES` subido a `8 MB` por defecto
+  - `META_FB_UPLOAD_MIN_CHUNK_BYTES` dejado en `1 MB` como piso de seguridad
+  - el transfer ahora reduce el chunk automaticamente si el ultimo fallo fue transitorio
+  - si la transferencia vuelve a estabilizarse, el chunk puede subir otra vez hasta el objetivo
+  - el log ahora reporta tiempo por chunk y `MB/s` efectivos
+- Validacion local: `python -m py_compile meta_uploader.py run_jornada1_normal.py test_batch_upload.py`
+- El proceso que ya estaba corriendo (`PID 26508`) no absorbio este cambio automaticamente; para beneficiarse de esta optimizacion necesitara reiniciarse con el codigo nuevo.

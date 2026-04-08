@@ -23,6 +23,9 @@ de Meta, sin mezclar esta logica con `youtube_uploader`.
   `pendientes_posts.json` usando `second_pass/prepare_second_jornada_meta.py`.
   Solo debe fusionar esos derivados dentro de `pendientes_reels.json` cuando se
   pida de forma explicita; por defecto las colas optimizadas viven separadas.
+- El uploader de Facebook usa sesion HTTP persistente por hilo y chunk adaptativo:
+  arranca con `META_FB_UPLOAD_CHUNK_BYTES` y puede bajar hasta
+  `META_FB_UPLOAD_MIN_CHUNK_BYTES` si la sesion se vuelve inestable.
 - Cualquier experimento de reencuadre YOLO debe quedarse primero como
   herramienta aislada (`second_pass/experimental_yolo_reframer.py`) y no entrar
   al flujo productivo hasta que las pruebas manuales demuestren valor real.

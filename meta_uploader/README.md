@@ -37,6 +37,8 @@ python meta_calendar_generator.py
 - `META_ENABLE_UPLOAD=1` solo cuando quieras habilitar los scripts manuales que publican de verdad
 - `META_UPLOAD_STALL_CHECK_SECONDS` para ajustar cada cuanto se vigila una subida
 - `META_UPLOAD_STALL_MAX_NO_PROGRESS_CHECKS` para definir cuantas verificaciones sin avance disparan alerta
+- `META_FB_UPLOAD_CHUNK_BYTES` para ajustar el tamano objetivo del chunk de Facebook (default actual: `8 MB`)
+- `META_FB_UPLOAD_MIN_CHUNK_BYTES` como piso de seguridad si el uploader detecta fallos transitorios y necesita bajar el chunk automaticamente
 
 ## Regla de Git
 
@@ -73,6 +75,7 @@ Notas:
 - Si falla la dupla principal de un asset (`FB+IG`), pausa la jornada para no quemar cola.
 - `IG Story` se trata como carril best-effort sobre el reel vertical del dia.
 - `Facebook Stories` sigue fuera del flujo automatizado actual.
+- El carril `Facebook Post` ahora arranca con chunk mayor y reduce temporalmente el chunk si detecta fallos transitorios.
 
 ## Documentacion publica para App Review
 

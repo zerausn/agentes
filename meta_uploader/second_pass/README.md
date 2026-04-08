@@ -101,6 +101,8 @@ Dependencias adicionales:
 
 Si `ultralytics` no esta disponible, el script falla de forma explicita y no
 afecta el resto del uploader.
+Cuando el modelo se descarga por primera vez, queda cacheado en
+`second_pass/outputs/yolo_reframe_experiments/models/`.
 
 ## Ejemplos
 
