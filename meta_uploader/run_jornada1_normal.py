@@ -24,6 +24,15 @@ BASE_DIR = Path(__file__).resolve().parent
 CALENDAR_FILE = BASE_DIR / "meta_calendar.json"
 DATE_STEM_RE = re.compile(r"(?P<date>\d{8})_(?P<time>\d{6})")
 __test__ = False
+IG_REEL_FEED_MAX_BYTES = 300 * 1024 * 1024
+IG_STORY_MAX_BYTES = 100 * 1024 * 1024
+IG_MAX_WIDTH = 1920
+IG_MIN_FPS = 23.0
+IG_MAX_FPS = 60.0
+IG_MAX_VIDEO_BITRATE_BPS = 25_000_000
+IG_REEL_MAX_SECONDS = 15 * 60
+IG_STORY_MAX_SECONDS = 60
+IG_ALLOWED_VIDEO_CODECS = {"h264", "hevc"}
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
@@ -69,7 +78,7 @@ def probe_video(video_path):
         "-select_streams",
         "v:0",
         "-show_entries",
-        "stream=width,height,duration",
+        "stream=width,height,duration,codec_name,avg_frame_rate,pix_fmt,bit_rate",
         "-of",
         "json",
         video_path,
@@ -86,6 +95,10 @@ def probe_video(video_path):
             "duration_seconds": float(stream.get("duration") or 0),
             "width": int(stream.get("width") or 0),
             "height": int(stream.get("height") or 0),
+            "codec_name": (stream.get("codec_name") or "").lower(),
+            "avg_frame_rate": stream.get("avg_frame_rate") or "0/0",
+            "pix_fmt": stream.get("pix_fmt") or "",
+            "bit_rate": int(stream.get("bit_rate") or 0),
             "source_datetime": source_dt.isoformat() if source_dt else None,
         }
     except Exception as exc:
@@ -97,8 +110,30 @@ def probe_video(video_path):
             "duration_seconds": 0,
             "width": 0,
             "height": 0,
+            "codec_name": "",
+            "avg_frame_rate": "0/0",
+            "pix_fmt": "",
+            "bit_rate": 0,
             "source_datetime": None,
         }
+
+
+def parse_avg_frame_rate(value):
+    if not value or value == "0/0":
+        return 0.0
+    if "/" in value:
+        num, den = value.split("/", 1)
+        try:
+            denominator = float(den)
+            if denominator == 0:
+                return 0.0
+            return float(num) / denominator
+        except ValueError:
+            return 0.0
+    try:
+        return float(value)
+    except ValueError:
+        return 0.0
 
 
 def is_ig_story_safe(video_info):
@@ -108,6 +143,41 @@ def is_ig_story_safe(video_info):
     if width <= 0 or height <= 0 or height <= width:
         return False
     return 3.0 <= duration <= 60.0
+
+
+def evaluate_ig_video_preflight(video_info, lane_name):
+    reasons = []
+    duration = float(video_info.get("duration_seconds") or 0)
+    size_bytes = int(video_info.get("size_bytes") or 0)
+    width = int(video_info.get("width") or 0)
+    fps = parse_avg_frame_rate(video_info.get("avg_frame_rate"))
+    bitrate = int(video_info.get("bit_rate") or 0)
+    codec = (video_info.get("codec_name") or "").lower()
+
+    if lane_name == "story":
+        max_bytes = IG_STORY_MAX_BYTES
+        max_seconds = IG_STORY_MAX_SECONDS
+    else:
+        max_bytes = IG_REEL_FEED_MAX_BYTES
+        max_seconds = IG_REEL_MAX_SECONDS
+
+    if size_bytes > max_bytes:
+        reasons.append(f"archivo {size_bytes / 1e6:.1f} MB > {max_bytes / 1e6:.0f} MB")
+    if width > IG_MAX_WIDTH:
+        reasons.append(f"ancho {width}px > {IG_MAX_WIDTH}px")
+    if duration < 3.0 or duration > max_seconds:
+        reasons.append(f"duracion {duration:.2f}s fuera de 3-{max_seconds}s")
+    if fps and (fps < IG_MIN_FPS or fps > IG_MAX_FPS):
+        reasons.append(f"fps {fps:.2f} fuera de {IG_MIN_FPS:.0f}-{IG_MAX_FPS:.0f}")
+    if bitrate and bitrate > IG_MAX_VIDEO_BITRATE_BPS:
+        reasons.append(f"bitrate {bitrate / 1e6:.2f} Mbps > {IG_MAX_VIDEO_BITRATE_BPS / 1e6:.0f} Mbps")
+    if codec and codec not in IG_ALLOWED_VIDEO_CODECS:
+        reasons.append(f"codec {codec} fuera de {sorted(IG_ALLOWED_VIDEO_CODECS)}")
+
+    return {
+        "compatible": not reasons,
+        "reasons": reasons,
+    }
 
 
 def build_caption(video_info, lane, publish_date):
@@ -191,7 +261,10 @@ def _invoke_with_status(label, func, *args):
 
 
 def _summarize_platform_results(platform_results):
-    ok = all(item["result"] for item in platform_results.values())
+    def _is_soft_skip(item):
+        return item["status"].get("kind") == "skipped_requires_second_jornada"
+
+    ok = all(item["result"] or _is_soft_skip(item) for item in platform_results.values())
     return ok, {
         key: {
             "result": value["result"],
@@ -201,20 +274,65 @@ def _summarize_platform_results(platform_results):
     }
 
 
+def _build_skipped_result(label, kind, message):
+    return {
+        "label": label,
+        "result": None,
+        "status": {
+            "kind": kind,
+            "phase": "preflight",
+            "message": message,
+            "transient": False,
+            "watchdog_alerted": False,
+        },
+    }
+
+
+def _summary_has_second_jornada_skip(summary):
+    return any(
+        value.get("status", {}).get("kind") == "skipped_requires_second_jornada"
+        for value in summary.values()
+    )
+
+
 def run_platform_pair(lane_name, video_info, publish_date):
     caption = build_caption(video_info, lane_name, publish_date)
+    platform_results = {}
+    ig_label = "instagram_reel" if lane_name == "reel" else "instagram_feed"
+    ig_preflight = evaluate_ig_video_preflight(video_info, lane_name)
+
     if lane_name == "reel":
         work = {
             "facebook_reel": (upload_fb_reel, video_info["path"], caption),
-            "instagram_reel": (lambda path, text: upload_ig_reel_resumable(path, text, share_to_feed=False), video_info["path"], caption),
         }
+        if ig_preflight["compatible"]:
+            work[ig_label] = (
+                lambda path, text: upload_ig_reel_resumable(path, text, share_to_feed=False),
+                video_info["path"],
+                caption,
+            )
     else:
         work = {
             "facebook_post": (upload_fb_video_standard, video_info["path"], caption),
-            "instagram_feed": (upload_ig_feed_video_resumable, video_info["path"], caption),
         }
+        if ig_preflight["compatible"]:
+            work[ig_label] = (upload_ig_feed_video_resumable, video_info["path"], caption)
 
-    platform_results = {}
+    if not ig_preflight["compatible"]:
+        reason_text = "; ".join(ig_preflight["reasons"])
+        logging.warning(
+            "Se omite %s para %s en jornada 1: el crudo no cumple specs oficiales de Instagram (%s). "
+            "Se deriva a segunda jornada.",
+            ig_label,
+            video_info["filename"],
+            reason_text,
+        )
+        platform_results[ig_label] = _build_skipped_result(
+            ig_label,
+            "skipped_requires_second_jornada",
+            reason_text,
+        )
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(work)) as executor:
         future_map = {
             executor.submit(_invoke_with_status, label, fn, *args): label
@@ -276,9 +394,10 @@ def execute_plan(plan, pause_between_assets=10):
                 video_info["duration_seconds"],
             )
             ok, summary = run_platform_pair(lane_name, video_info, publish_date)
+            lane_status = "published_with_ig_skip" if ok and _summary_has_second_jornada_skip(summary) else "published" if ok else "failed"
             day_entry[lane_name].update(
                 {
-                    "status": "published" if ok else "failed",
+                    "status": lane_status,
                     "results": summary,
                 }
             )

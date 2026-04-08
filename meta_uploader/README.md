@@ -77,6 +77,7 @@ Notas:
 - `Facebook Stories` sigue fuera del flujo automatizado actual.
 - El carril `Facebook Post` ahora arranca con chunk mayor y reduce temporalmente el chunk si detecta fallos transitorios.
 - El logging operativo se separa en tres archivos locales: `meta_uploader.log` (maestro), `meta_uploader_facebook.log` y `meta_uploader_instagram.log`.
+- El runner normal ahora hace preflight oficial de Instagram sobre los crudos. Si un asset viola limites de `REELS/share_to_feed` o `STORIES` (por ejemplo peso, ancho, bitrate o duracion), se omite el upload a IG en jornada 1 y se marca para segunda jornada en lugar de quemar la cola con un `ProcessingFailedError`.
 
 ## Documentacion publica para App Review
 

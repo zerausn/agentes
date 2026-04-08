@@ -327,3 +327,17 @@ con ruido tipo "sal y pimienta" y manchas de fotocopia. Extraer texto y exportar
 - Se mantiene intacto el resto del formato:
   - fecha del dia operativo
   - nombre original derivado del stem del archivo
+
+## Sesion 19 - Meta Uploader, preflight oficial para Instagram en jornada 1 (Codex, 2026-04-08)
+
+- Despues de que `20260310_183619.mp4` publicara en Facebook pero fallara en Instagram con `ProcessingFailedError`, se contrasto el asset crudo contra las especificaciones oficiales del flujo `REELS`/`share_to_feed`.
+- El hallazgo clave fue que el archivo crudo no es apto para Instagram en jornada 1:
+  - tamano `2.61 GB` (muy por encima del maximo oficial de `300 MB`)
+  - `3840x2160` (sobre el maximo oficial de `1920` columnas)
+  - bitrate de video `~143.96 Mbps` (sobre el maximo oficial de `25 Mbps`)
+- Se actualizo `run_jornada1_normal.py` para hacer preflight local de IG antes de intentar `instagram_feed`, `instagram_reel` o `instagram_story`.
+- Si el crudo no cumple specs oficiales, el runner:
+  - omite el upload a Instagram en jornada 1
+  - registra la razon exacta
+  - marca el asset como pendiente de segunda jornada
+  - permite que Facebook siga sin pausar la jornada por un fallo inevitable de IG
