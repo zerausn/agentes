@@ -341,3 +341,16 @@ con ruido tipo "sal y pimienta" y manchas de fotocopia. Extraer texto y exportar
   - registra la razon exacta
   - marca el asset como pendiente de segunda jornada
   - permite que Facebook siga sin pausar la jornada por un fallo inevitable de IG
+
+## Sesion 20 - Meta Uploader, transcodificador full-length API-safe para Instagram (Codex, 2026-04-08)
+
+- El usuario pidio resolver el caso en que Instagram movil acepta videos crudos grandes pero la API publica no, y pregunto si era posible generar una version compatible con la maxima calidad posible.
+- Se implemento `meta_uploader/second_pass/transcode_instagram_api_safe.py`.
+- La herramienta:
+  - trabaja sobre el video completo, no sobre un clip corto
+  - reescala preservando aspect ratio hasta un maximo de `1920` columnas
+  - transcodifica a `H.264 + AAC`
+  - calcula bitrate objetivo segun la duracion para entrar bajo un presupuesto seguro de archivo
+  - usa `two-pass` para apurar calidad sin pasarse del limite
+  - deja manifest propio y cola separada `second_pass/queues/pendientes_ig_feed_second_pass.json`
+- Con esto queda lista la solucion correcta de segunda jornada para crudos que Facebook si acepta pero Instagram API rechaza por specs.

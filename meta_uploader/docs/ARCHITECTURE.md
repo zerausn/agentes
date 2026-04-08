@@ -42,7 +42,10 @@ con una capa de automatizacion separada del repo contenedor.
   `second_pass/prepare_second_jornada_meta.py` derivan clips `shared_reel` e
   `instagram_story` desde material crudo, escriben colas separadas en
   `second_pass/queues/` y solo promocionan derivados a `pendientes_reels.json`
-  mediante opt-in explicito.
+  mediante opt-in explicito. Para full-length compatibles con IG existe
+  `second_pass/transcode_instagram_api_safe.py`, que exporta una version
+  completa H.264/AAC dentro del limite oficial y la deja en su propia cola de
+  segunda jornada.
 - **Preflight IG en jornada 1**: antes de intentar `instagram_feed` o
   `instagram_reel`, el runner valida el asset crudo contra limites oficiales
   del flujo `REELS`/`share_to_feed` y `STORIES` (tamano, ancho, fps, bitrate,

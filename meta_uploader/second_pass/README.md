@@ -40,6 +40,46 @@ uploader y deja lista la segunda jornada sin tocar originales:
 - puede fusionar los derivados reel dentro de `pendientes_reels.json` solo
   cuando lo pidas de forma explicita
 
+## Transcodificador full-length API-safe para Instagram
+
+`transcode_instagram_api_safe.py` existe para el caso en que un video crudo
+publique bien en Facebook pero falle en Instagram por limites del carril API.
+
+Objetivo:
+
+- conservar el video completo, no solo un clip
+- bajar el ancho a un maximo compatible
+- recalcular bitrate segun la duracion para entrar bajo el limite de tamano
+- exportar una version con la maxima calidad posible dentro del marco oficial
+  de Instagram Graph API
+
+Que hace:
+
+- reescala a un maximo de `1920` columnas preservando aspect ratio
+- transcodifica a `H.264 + AAC`
+- usa `two-pass` para acercarse al mejor bitrate posible sin pasarse del
+  presupuesto de archivo
+- deja un manifest en `second_pass/manifests/`
+- opcionalmente acumula una cola separada:
+  - `second_pass/queues/pendientes_ig_feed_second_pass.json`
+
+Ejemplo:
+
+```powershell
+python second_pass/transcode_instagram_api_safe.py `
+  --input "C:\ruta\video.mp4" `
+  --emit-queue
+```
+
+Ejemplo por carpeta, priorizando los mas pesados:
+
+```powershell
+python second_pass/transcode_instagram_api_safe.py `
+  --input-dir "C:\ruta\videos" `
+  --limit 3 `
+  --emit-queue
+```
+
 Ejemplo seguro, sin tocar la cola principal:
 
 ```powershell
