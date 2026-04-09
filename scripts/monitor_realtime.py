@@ -14,6 +14,7 @@ import os
 import re
 import sys
 import time
+import shutil
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -88,6 +89,21 @@ def format_percent(value: Optional[float]) -> str:
     if value is None:
         return "n/d"
     return f"{value:.1f}%"
+
+
+def get_terminal_size() -> tuple[int, int]:
+    size = shutil.get_terminal_size(fallback=(120, 32))
+    return max(40, size.columns), max(12, size.lines)
+
+
+def clip_display_text(text: str, width: int) -> str:
+    if width <= 1:
+        return ""
+    if len(text) <= width:
+        return text
+    if width <= 4:
+        return text[:width]
+    return text[: width - 1] + "…"
 
 
 def safe_read_json(path: Path) -> object | None:
@@ -524,7 +540,7 @@ class Monitor:
         lines.extend(extra_lines)
         return lines
 
-    def render(self) -> str:
+    def _build_lines(self) -> list[str]:
         fb_lines = self._render_section("META FACEBOOK", self.fb)
         ig_lines = self._render_section("META INSTAGRAM", self.ig)
         yt_bytes = self._estimate_youtube_bytes()
@@ -549,8 +565,17 @@ class Monitor:
         if self.youtube_index:
             uploaded = sum(1 for item in self.youtube_index if item.get("uploaded"))
             header.append(f"YouTube indice local: {uploaded} archivos marcados como uploaded")
-        body = header + [""] + fb_lines + [""] + ig_lines + [""] + yt_lines
-        return "\n".join(body)
+        return header + [""] + fb_lines + [""] + ig_lines + [""] + yt_lines
+
+    def render(self, width: int, height: int) -> str:
+        lines = self._build_lines()
+        if height > 0 and len(lines) > height:
+            keep_top = 7
+            keep_bottom = max(3, height - keep_top - 2)
+            if keep_top + keep_bottom < len(lines):
+                lines = lines[:keep_top] + ["..."] + lines[-keep_bottom:]
+        clipped = [clip_display_text(line, width) for line in lines]
+        return "\n".join(clipped)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -588,8 +613,11 @@ class ConsoleRenderer:
         self.use_vt = enable_virtual_terminal_processing()
         self.first_frame = True
         self.cursor_hidden = False
+        self.alt_screen = False
+        self.width, self.height = get_terminal_size()
 
     def draw(self, text: str) -> None:
+        self.width, self.height = get_terminal_size()
         if not self.use_vt:
             clear_screen()
             print(text)
@@ -597,8 +625,9 @@ class ConsoleRenderer:
 
         prefix = "\x1b[?25l"
         if self.first_frame:
-            prefix += "\x1b[2J\x1b[H"
+            prefix += "\x1b[?1049h\x1b[2J\x1b[H"
             self.first_frame = False
+            self.alt_screen = True
         else:
             prefix += "\x1b[H"
         sys.stdout.write(prefix)
@@ -608,6 +637,10 @@ class ConsoleRenderer:
         self.cursor_hidden = True
 
     def close(self) -> None:
+        if self.use_vt and self.alt_screen:
+            sys.stdout.write("\x1b[?25h\x1b[?1049l")
+            sys.stdout.flush()
+            return
         if self.use_vt and self.cursor_hidden:
             sys.stdout.write("\x1b[?25h")
             sys.stdout.flush()
@@ -628,7 +661,7 @@ def main() -> int:
     try:
         while True:
             monitor.refresh()
-            renderer.draw(monitor.render())
+            renderer.draw(monitor.render(renderer.width, renderer.height))
             if args.once:
                 return 0
             time.sleep(max(0.5, args.interval))

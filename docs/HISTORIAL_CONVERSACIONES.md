@@ -586,3 +586,19 @@ con ruido tipo "sal y pimienta" y manchas de fotocopia. Extraer texto y exportar
 - Impacto:
   - el monitor deja de limpiar toda la pantalla en cada ciclo
   - se reduce el parpadeo visible en PowerShell / Windows Terminal
+
+## Sesion 33 - Correccion del flooding del monitor (Codex, 2026-04-09)
+
+- El usuario reporto flooding despues del cambio a VT sequences.
+- Causa probable confirmada:
+  - lineas muy largas de errores y avisos estaban haciendo wrap en la terminal
+  - eso generaba scroll molesto aunque el monitor redibujara en sitio
+- Se corrigio `scripts/monitor_realtime.py` para:
+  - activar pantalla alterna `ESC[?1049h` y salir con `ESC[?1049l`
+  - recortar cada linea al ancho real de la terminal antes de imprimirla
+  - limitar la altura total del panel para que no empuje el buffer
+- Validacion:
+  - `--once` compila y corre
+  - ya no deja crecer la consola por textos largos del monitor
+- Alcance mantenido:
+  - no se toco `meta_uploader` ni `youtube_uploader`

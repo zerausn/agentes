@@ -41,3 +41,6 @@ ajustarse. No lo dejen desfasado respecto a los cambios de los runners.
 
 En Windows, evita volver a `cls` en cada ciclo. El monitor ya usa secuencias VT
 para redibujar en sitio y asi reducir el parpadeo de la terminal.
+
+Tambien recorta por ancho y usa pantalla alterna para que los mensajes largos no
+hagan flooding ni ensucien el buffer de la consola.
