@@ -266,6 +266,21 @@ def schedule_platform_pair(day_entry, lane_name, video_info):
     return True, summary
 
 
+def normalize_video_info(info):
+    if not info:
+        return None
+    if isinstance(info, dict):
+        return info
+    if isinstance(info, str):
+        path = Path(info)
+        return {
+            "path": str(path),
+            "filename": path.name,
+            "size_bytes": path.stat().st_size if path.exists() else 0,
+        }
+    return None
+
+
 def schedule_plan(plan):
     for day_entry in plan:
         summary_state = day_entry["summary"].get("status")
@@ -279,10 +294,13 @@ def schedule_plan(plan):
 
         tasks = []
         if day_entry.get("reel"):
-            tasks.append(("reel", day_entry["reel"]))
+            tasks.append(("reel", normalize_video_info(day_entry["reel"])))
         if day_entry.get("post"):
-            tasks.append(("post", day_entry["post"]))
+            tasks.append(("post", normalize_video_info(day_entry["post"])))
+
+        tasks = [(lane, info) for lane, info in tasks if info]
         tasks.sort(key=lambda item: item[1]["size_bytes"], reverse=True)
+        
         day_entry["summary"]["execution_order"] = [lane for lane, _ in tasks]
         day_entry["summary"]["status"] = day_entry["summary"].get("status") or "pending"
 
@@ -291,6 +309,12 @@ def schedule_plan(plan):
 
         for lane_name, video_info in tasks:
             lane_entry = day_entry[lane_name]
+            
+            # Si el lane_entry era un string, lo reemplazamos por el objeto normalizado
+            if isinstance(lane_entry, str):
+                day_entry[lane_name] = video_info
+                lane_entry = day_entry[lane_name]
+
             if lane_entry.get("status") in FINAL_LANE_STATUSES:
                 logging.info(
                     "[%s] %s ya estaba marcado como %s. Se conserva.",

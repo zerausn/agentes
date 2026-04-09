@@ -91,22 +91,28 @@ def now_iso():
     return datetime.now().isoformat(timespec="seconds")
 
 
+def _get_asset_path(asset):
+    if not asset:
+        return None
+    if isinstance(asset, dict):
+        return asset.get("path")
+    if isinstance(asset, str):
+        return asset
+    return None
+
+
 def build_day_signature(day_entry):
-    reel = day_entry.get("reel") or {}
-    post = day_entry.get("post") or {}
     return (
         day_entry.get("fecha"),
-        reel.get("path"),
-        post.get("path"),
+        _get_asset_path(day_entry.get("reel")),
+        _get_asset_path(day_entry.get("post")),
     )
 
 
 def build_asset_signature(day_entry):
-    reel = day_entry.get("reel") or {}
-    post = day_entry.get("post") or {}
     return (
-        reel.get("path"),
-        post.get("path"),
+        _get_asset_path(day_entry.get("reel")),
+        _get_asset_path(day_entry.get("post")),
     )
 
 
