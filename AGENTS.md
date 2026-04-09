@@ -16,3 +16,5 @@ Antes de cambiar archivos:
 - No subas secretos ni archivos locales.
 - No cambies decisiones documentadas sin registrar el motivo.
 - Si dejas trabajo complejo a medias, actualiza `docs/HANDOVER.md`.
+- Si cambias los formatos de salida de `meta_uploader` o `youtube_uploader`,
+  ajusta tambien `scripts/monitor_realtime.py` para que el monitoreo no se rompa.

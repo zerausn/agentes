@@ -7,7 +7,7 @@ import sys
 import time
 from pathlib import Path
 
-from run_jornada1_normal import clear_active_summary_fields, now_iso, write_calendar
+from run_jornada1_normal import clear_active_summary_fields, load_queue, now_iso, write_calendar
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -49,6 +49,7 @@ def inspect_calendar():
     if not plan:
         return {
             "all_completed": False,
+            "calendar_days": 0,
             "scheduled_days": 0,
             "pending_days": 0,
             "paused_days": 0,
@@ -74,11 +75,21 @@ def inspect_calendar():
     )
     return {
         "all_completed": scheduled_days == len(plan),
+        "calendar_days": len(plan),
         "scheduled_days": scheduled_days,
         "pending_days": len(plan) - scheduled_days,
         "paused_days": paused_days,
         "first_incomplete": first_incomplete,
     }
+
+
+def desired_calendar_days(args):
+    reels = load_queue("reels")
+    posts = load_queue("posts")
+    max_available = max(len(reels) - args.reel_start_index, len(posts) - args.post_start_index, 0)
+    if args.days is None:
+        return max_available
+    return min(args.days, max_available)
 
 
 def find_transient_failure(plan):
@@ -198,7 +209,7 @@ def main():
             "y resetea fallos transitorios para que el mismo asset se reintente automaticamente."
         )
     )
-    parser.add_argument("--days", type=int, default=7)
+    parser.add_argument("--days", type=int, default=None)
     parser.add_argument("--start-date", default=None)
     parser.add_argument("--reel-start-index", type=int, default=0)
     parser.add_argument("--post-start-index", type=int, default=0)
@@ -217,9 +228,18 @@ def main():
 
     while True:
         state = inspect_calendar()
+        target_days = desired_calendar_days(args)
         if state["all_completed"]:
-            logging.info("La agenda ya figura como completada. No hace falta relanzar nada.")
-            return 0
+            if target_days and state["calendar_days"] < target_days:
+                logging.info(
+                    "El calendario actual ya esta completo, pero solo cubre %s de %s dias posibles. "
+                    "Se relanza el scheduler para expandir la agenda.",
+                    state["calendar_days"],
+                    target_days,
+                )
+            else:
+                logging.info("La agenda ya figura como completada. No hace falta relanzar nada.")
+                return 0
 
         plan = load_calendar()
         if state["paused_days"]:

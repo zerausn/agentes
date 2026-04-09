@@ -492,3 +492,80 @@ con ruido tipo "sal y pimienta" y manchas de fotocopia. Extraer texto y exportar
   - `20260310_181709.mp4`
   - sigue en transferencia por `Facebook handle`
   - progreso observado alrededor de `32.9%`
+
+## Sesion 28 - Meta Uploader, relanzamiento con flujo chunked programado y menos overhead (Codex, 2026-04-09)
+
+- El usuario detecto dos problemas:
+  - el porcentaje visible bajaba entre intentos
+  - la subida de Meta estaba demasiado lenta
+- Diagnostico:
+  - el porcentaje bajaba porque el carril `Facebook handle` reiniciaba desde `0` tras cortes transitorios
+  - ademas estaba imprimiendo progreso demasiado frecuente, generando mucho overhead en `stdout`
+- Se corrigio el flujo:
+  - `schedule_jornada1_meta.py` paso a preferir `upload_fb_video_standard(..., scheduled_publish_time=...)` para `facebook_post`
+  - ese carril usa upload resumible por chunks y checkpoints locales
+  - `meta_uploader.py` quedo ajustado para aceptar `scheduled_publish_time` tambien en el finish del carril chunked
+  - se redujo la frecuencia de logs de progreso para no ahogar el proceso
+  - `run_jornada1_normal.py` tambien se endurecio para conservar la fecha asignada del mismo asset entre reinicios del calendario
+- Luego se relanzo `schedule_jornada1_supervisor.py` con el codigo nuevo.
+- Validacion viva:
+  - el nuevo hijo ya no muestra `Subiendo FB handle`
+  - en su lugar reporta chunks como `Subiendo FB 704643072-721420288: 100.0%`
+  - eso confirma que la primera jornada quedo corriendo con el flujo chunked programado y chunks de `16 MB`
+
+## Sesion 29 - Meta Uploader, verificacion final de la primera jornada programada (Codex, 2026-04-09)
+
+- Se reviso si el flujo nuevo seguia usando las mejoras aplicadas y si aun habia videos pendientes por programar.
+- Evidencia del flujo correcto:
+  - `schedule_jornada1_supervisor_stdout.log` ya no mostraba `Subiendo FB handle`
+  - el log mostraba chunks `Subiendo FB ...` de `16 MB`, confirmando el carril chunked/resumible
+- Cierre confirmado del ultimo asset:
+  - `20260310_185221.mp4`
+  - Meta confirmo el video `1462148335366242` como programado para `2026-04-15T17:00:00+0000`
+  - en horario Bogota eso corresponde a `2026-04-15 12:00:00 -05:00`
+- `meta_calendar.json` quedo con `PENDING 0`, es decir, sin dias pendientes en la tanda actual de primera jornada.
+- Conclusion operativa:
+  - las mejoras si quedaron aplicadas
+  - la programacion actual de primera jornada quedo completa
+
+## Sesion 30 - Monitor de logs en tiempo real para Meta y YouTube (Codex, 2026-04-09)
+
+- El usuario pidio una herramienta de consola para monitorear en paralelo:
+  - Meta Facebook
+  - Meta Instagram
+  - YouTube
+- Objetivo funcional:
+  - mostrar cuantos videos se subieron hoy por herramienta
+  - mostrar el video actual y el porcentaje en curso
+  - mostrar bytes absolutos cuando el log los expone
+  - mostrar hace cuanto no se completa una subida
+- Se implemento `scripts/monitor_realtime.py` como lector de logs de solo
+  lectura, mas `scripts/monitor_realtime.bat` como lanzador rapido.
+- Se documentaron las reglas de mantenimiento para futuras IAs:
+  - si cambian los formatos de salida de Meta o YouTube, tambien deben
+    actualizar el monitor para que no quede desfasado.
+
+## Sesion 31 - Integracion final del monitor y relanzamiento real de Meta (Codex, 2026-04-09)
+
+- Se detecto que el scheduler nuevo de Meta no estaba fallando por logica sino por entorno:
+  - dentro del sandbox no podia leer bien la carpeta `C:\Users\ZN-\Documents\ADM\Carpeta 1\videos subidos exitosamente`
+  - tampoco podia abrir sockets a Graph API, devolviendo `WinError 10013`
+- Se relanzo `meta_uploader` fuera del sandbox con el Python correcto del proyecto:
+  - `C:\Users\ZN-\Documents\Antigravity\.venv\Scripts\python.exe`
+  - launcher: `schedule_jornada1_supervisor.py`
+- Resultado operativo confirmado:
+  - `meta_calendar.json` paso de `7` a `33` dias
+  - quedaron `7` ya programados y `26` pendientes
+  - la nueva tanda arranco sobre `20260310_192005.mp4`
+  - el flujo activo confirmado sigue siendo el chunked de Facebook
+- Se ajusto el monitor en `scripts/monitor_realtime.py` para que:
+  - refresque tambien `meta_calendar.json` y `scanned_videos.json` en cada ciclo
+  - muestre el nombre real del archivo actual de YouTube
+  - estime bytes absolutos de YouTube aunque no pueda leer el video directo, usando `scanned_videos.json`
+  - no mezcle errores de Facebook dentro del panel de Instagram
+- Validacion del monitor:
+  - `--once` ya muestra `Meta Facebook`, `Meta Instagram` y `YouTube`
+  - reporta porcentaje, bytes, subidos hoy y tiempo desde la ultima subida exitosa
+- Se dejo lanzador listo para el usuario:
+  - repo: `scripts/monitor_realtime.bat`
+  - Escritorio: `C:\Users\ZN-\Desktop\MONITOR_LOGS_REDES.bat`

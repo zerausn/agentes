@@ -37,3 +37,12 @@ canal.
 - Decision: la capa `.antigravity/automation.json` se registra en la raiz del
   repo `agentes` y valida sintaxis de los subproyectos funcionales y del
   bootstrap `scripts/init-agents.ps1`.
+
+## 2026-04-09: Monitor de logs en tiempo real para Meta y YouTube
+- Contexto: el usuario necesita observar en consola el avance de Meta Facebook,
+  Meta Instagram y YouTube sin depender de preguntar a la IA cada vez.
+- Decision: agregar `scripts/monitor_realtime.py` como herramienta de solo
+  lectura sobre los logs locales, mas un launcher `.bat` reutilizable.
+- Consecuencia: si cambian los formatos de `meta_uploader.log`,
+  `meta_uploader_facebook.log`, `meta_uploader_instagram.log` o `uploader.log`,
+  tambien debe actualizarse el monitor para no romper la observabilidad.

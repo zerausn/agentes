@@ -17,3 +17,5 @@ Antes de cambiar archivos:
 - Si cambias autenticacion, polling o limites de publicacion, actualiza
   `docs/ARCHITECTURE.md` y `docs/DECISIONS.md`.
 - Si dejas trabajo complejo a medias, actualiza `docs/HANDOVER.md`.
+- Si cambias el formato de `meta_uploader.log` o de los logs por plataforma,
+  actualiza tambien `../scripts/monitor_realtime.py`.

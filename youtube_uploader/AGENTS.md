@@ -18,3 +18,5 @@ Antes de cambiar archivos:
 - Si cambias la rotacion de credenciales, el archivo `STOP` o la logica de
   programacion, actualiza `docs/ARCHITECTURE.md` y `docs/DECISIONS.md`.
 - Si dejas trabajo operativo a medias, actualiza `docs/HANDOVER.md`.
+- Si cambias el formato de `uploader.log` o del progreso que imprime
+  `uploader.py`, actualiza tambien `../scripts/monitor_realtime.py`.

@@ -8,6 +8,8 @@
   `scripts/init-agents.ps1`.
 - `meta_uploader/` ya tiene contexto local minimo y setup base, aunque su
   implementacion funcional sigue en desarrollo.
+- Se agrego un monitor de logs en tiempo real para Meta y YouTube en
+  `scripts/monitor_realtime.py`, con launcher `.bat` y nota para futuras IAs.
 
 ## Seguimiento operativo heredado de `youtube_uploader`
 
