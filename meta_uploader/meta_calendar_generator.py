@@ -35,17 +35,17 @@ def generate_calendar(start_date=None):
     logging.info("Distribuyendo %s reels y %s posts en el calendario...", len(reels), len(posts))
 
     calendar = []
-    max_days = max(len(reels), len(posts))
+    target_days = 400
 
-    for index in range(max_days):
+    for index in range(target_days):
         current_date = start_date + timedelta(days=index)
         date_str = current_date.strftime("%Y-%m-%d")
         entry = {
             "fecha": date_str,
             "reel": reels[index] if index < len(reels) else None,
-            "reel_time": f"{date_str}T18:00:00",
+            "reel_time": f"{date_str}T18:30:00",
             "post": posts[index] if index < len(posts) else None,
-            "post_time": f"{date_str}T12:00:00",
+            "post_time": f"{date_str}T18:30:00",
         }
         calendar.append(entry)
 
