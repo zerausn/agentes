@@ -74,5 +74,7 @@ Si recibes errores de `invalid_grant` o tokens expirados, puedes renovar todas l
 ## Documentacion Completa
 Ver [AI.md](AI.md) y la carpeta [docs](docs).
 
+**Para futuras IAs**: Si estás trabajando en este proyecto, revisa SIEMPRE el archivo [TODO.md](TODO.md) antes de empezar para conocer las tareas críticas pendientes, los bloqueadores de desarrollo y las mejoras técnicas planificadas.
+
 ## Privacidad
 Los archivos `config.json`, `credentials/` y `*.log` estan excluidos de Git.
