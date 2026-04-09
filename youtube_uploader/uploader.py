@@ -309,6 +309,12 @@ def upload_video(youtube, file_path, upload_metadata, publish_at_dt):
                 return None
     finally:
         watchdog.stop()
+        if hasattr(media, "_fd") and media._fd:
+            try:
+                media._fd.close()
+                logging.debug("Manejador de archivo cerrado para %s", file_path)
+            except Exception as exc:
+                logging.error("Error cerrando manejador de archivo: %s", exc)
 
     if not response or "id" not in response:
         logging.error("La API no devolvio un id de video para %s.", file_path)
