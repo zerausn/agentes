@@ -165,3 +165,54 @@
   handshake y confirmacion secuencial de Meta. El chunk adaptativo conserva un
   piso de seguridad de `1 MB`, pero evita quedar atrapado siempre en el peor
   caso de rendimiento.
+
+## D21: Persistir `meta_calendar.json` de forma atomica y reanudable
+- **Decision:** hacer que `run_jornada1_normal.py` escriba `meta_calendar.json`
+  mediante reemplazo atomico, marque el lane activo como `in_progress` antes de
+  subirlo y rehidrate el calendario existente al relanzar la jornada.
+- **Razon:** en la corrida real del `2026-04-08` el proceso desaparecio sin
+  dejar un error final claro, cuando el cuarto video iba por `~76.69%`. Sin
+  estado `in_progress` ni reanudacion del calendario, cada relanzamiento se
+  apoyaba en reconstruir el plan desde cero y dejaba ambiguo si habia que
+  repetir o saltar el asset actual.
+
+## D22: Supervisar jornada 1 con un wrapper local que relance salidas inesperadas
+- **Decision:** introducir `run_jornada1_supervisor.py` como wrapper operativo
+  recomendado para jornada 1. El supervisor relanza `run_jornada1_normal.py`
+  cuando el runner termina antes de completar el calendario y no dejo una pausa
+  explicita por fallo (`paused_on_failure`).
+- **Razon:** el problema observado ya no era solo fallo transitorio de red
+  dentro del upload, sino tambien la posibilidad de que el runner completo
+  desapareciera sin completar el lote. El supervisor crea una capa simple de
+  autorecuperacion sin convertir un fallo funcional genuino en un loop ciego.
+
+## D23: Persistir checkpoints del upload resumible de Facebook
+- **Decision:** guardar checkpoints locales por asset/endpoint en
+  `.fb_upload_checkpoints/`, incluyendo `video_id`, `upload_session_id` y
+  `current_offset`, y reintentarlos en los flujos `upload_fb_video_standard`
+  y `upload_fb_reel`.
+- **Razon:** aun con supervisor, una caida a mitad de un archivo de `2-3 GB`
+  seguia implicando volver a cero. El checkpoint local reduce ese costo cuando
+  Meta mantiene viva la sesion resumible y, si esa sesion ya no sirve, el
+  cliente limpia el checkpoint y vuelve a crear una sesion nueva.
+
+## D24: Cortar la jornada viva a un solo dia real
+- **Decision:** mantener `--days` como horizonte de planificacion, pero hacer
+  que `run_jornada1_normal.py` ejecute como maximo un solo dia real por
+  corrida (`--max-live-days=1` por defecto) y que `run_jornada1_supervisor.py`
+  deje de relanzar cuando el siguiente `fecha` del calendario aun es futuro.
+- **Razon:** el lote del `2026-04-08` demostro que el calendario por si solo no
+  espacía publicaciones; sin esta barrera el runner seguia avanzando por
+  `2026-04-09`, `2026-04-10`, `2026-04-11`, etc. dentro de la misma noche.
+  La regla operativa del usuario es publicar `1 por dia`, asi que la ejecucion
+  viva debe frenarse en cuanto complete el cupo del dia.
+
+## D25: Consultar Meta antes de reintentar un asset
+- **Decision:** agregar una guardia remota previa a cada dupla del runner,
+  consultando `/{page}/videos` y `/{ig-user}/media` para detectar si el stem
+  del archivo ya existe publicado. Cuando aparece un match, el resultado se
+  registra como `already_exists_remote` y no se vuelve a subir ese asset.
+- **Razon:** `20260310_183619.mp4` termino duplicado en Facebook con ids
+  `1882074735828642` y `2143750206382044` porque hubo publicaciones reales en
+  distintos intentos del runner. El calendario local por si solo no basta para
+  deduplicar despues de caidas o confirmaciones tardias de Meta.

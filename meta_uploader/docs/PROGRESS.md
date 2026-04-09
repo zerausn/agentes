@@ -41,6 +41,11 @@
 - [x] Logging separado por plataforma: `meta_uploader_facebook.log` y `meta_uploader_instagram.log`, manteniendo `meta_uploader.log` como vista maestra.
 - [x] Preflight oficial de Instagram en `run_jornada1_normal.py` para no reintentar crudos incompatibles; ahora se marcan para segunda jornada en vez de tumbar la dupla con `ProcessingFailedError`.
 - [x] Herramienta separada `second_pass/transcode_instagram_api_safe.py` para generar versiones full-length compatibles con IG API con la maxima calidad posible dentro de los limites oficiales.
+- [x] Reanudacion de jornada 1 desde `meta_calendar.json`, con estado `in_progress`, escritura atomica del calendario y supervisor local `run_jornada1_supervisor.py` para relanzar salidas inesperadas sin perder los dias ya completados.
+- [x] Checkpoints locales del upload resumible de Facebook (`upload_session_id` + `current_offset`) para intentar retomar archivos grandes sin recomenzar siempre desde cero; verificacion en vivo hecha con reinicio controlado del runner y reanudacion desde offset persistido.
+- [x] Guardia remota anti-duplicados en `run_jornada1_normal.py` usando consultas de Meta para detectar un stem ya publicado y marcarlo como `already_exists_remote`.
+- [x] Regla operativa de `1 publicacion por dia real` aplicada en vivo: el runner y el supervisor ya no avanzan a fechas futuras del calendario dentro de la misma corrida.
+- [x] Confirmacion en vivo de duplicado real para `20260310_183619.mp4` en Facebook con ids `1882074735828642` y `2143750206382044`; el flujo nuevo evita volverlo a publicar.
 - [ ] Revalidar en vivo `Facebook Post` despues del fix de `upload_session_id`; el retry puntual fue interrumpido por el usuario.
 - [ ] Investigar por que `Instagram Story` e `Instagram Reel` del clip vertical derivado fallan con `ProcessingFailedError` en `rupload`.
 - [ ] Validar en vivo el flujo dual completo con assets reel-safe y confirmar Facebook sin reset remoto.

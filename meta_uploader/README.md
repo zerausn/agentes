@@ -68,11 +68,20 @@ $env:META_ENABLE_UPLOAD = "1"
 python run_jornada1_normal.py --days 7 --post-start-index 0 --reel-start-index 0
 ```
 
+Uso recomendado para corridas largas y reanudables:
+
+```powershell
+$env:META_ENABLE_UPLOAD = "1"
+python run_jornada1_supervisor.py --days 7 --post-start-index 0 --reel-start-index 0
+```
+
 Notas:
 
 - Usa siempre videos crudos; no toca originales ni depende de `second_pass/`.
 - Se apoya en `pendientes_reels.json` y `pendientes_posts.json`, que ya vienen priorizados por peso.
 - Escribe `meta_calendar.json` como calendario operativo local, fuera de Git.
+- Si el runner se cae de forma inesperada, `run_jornada1_normal.py` ya puede reanudar desde `meta_calendar.json`; el supervisor agrega relanzamiento automatico sobre esa misma base.
+- El carril Facebook ahora deja checkpoints locales del upload resumible para intentar retomar un video grande desde el ultimo offset confirmado cuando Meta conserva viva la sesion.
 - Si falla la dupla principal de un asset (`FB+IG`), pausa la jornada para no quemar cola.
 - `IG Story` se trata como carril best-effort sobre el reel vertical del dia.
 - `Facebook Stories` sigue fuera del flujo automatizado actual.

@@ -11,6 +11,8 @@ from pathlib import Path
 
 from meta_uploader import (
     diagnose_meta_connectivity,
+    find_existing_facebook_video_by_caption_marker,
+    find_existing_instagram_media_by_caption_marker,
     get_last_operation_status,
     upload_fb_reel,
     upload_fb_video_standard,
@@ -24,6 +26,14 @@ BASE_DIR = Path(__file__).resolve().parent
 CALENDAR_FILE = BASE_DIR / "meta_calendar.json"
 DATE_STEM_RE = re.compile(r"(?P<date>\d{8})_(?P<time>\d{6})")
 __test__ = False
+PUBLISHED_STATUSES = {
+    "published",
+    "published_with_ig_skip",
+    "scheduled",
+    "scheduled_with_ig_skip",
+}
+ACTIVE_STATUSES = {"in_progress", "running"}
+WAITING_STATUSES = {"waiting_for_next_day", "daily_limit_reached"}
 IG_REEL_FEED_MAX_BYTES = 300 * 1024 * 1024
 IG_STORY_MAX_BYTES = 100 * 1024 * 1024
 IG_MAX_WIDTH = 1920
@@ -56,8 +66,114 @@ def load_queue(name):
 
 
 def write_calendar(plan):
-    with open(CALENDAR_FILE, "w", encoding="utf-8") as handle:
+    temp_path = CALENDAR_FILE.with_suffix(f"{CALENDAR_FILE.suffix}.tmp")
+    with open(temp_path, "w", encoding="utf-8") as handle:
         json.dump(plan, handle, indent=2, ensure_ascii=False)
+    os.replace(temp_path, CALENDAR_FILE)
+
+
+def load_existing_calendar():
+    if not CALENDAR_FILE.exists():
+        return None
+    try:
+        with open(CALENDAR_FILE, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        return payload if isinstance(payload, list) else None
+    except Exception as exc:
+        logging.warning("No se pudo leer %s para reanudar la jornada: %s", CALENDAR_FILE.name, exc)
+        return None
+
+
+def now_iso():
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def build_day_signature(day_entry):
+    reel = day_entry.get("reel") or {}
+    post = day_entry.get("post") or {}
+    return (
+        day_entry.get("fecha"),
+        reel.get("path"),
+        post.get("path"),
+    )
+
+
+def build_asset_signature(day_entry):
+    reel = day_entry.get("reel") or {}
+    post = day_entry.get("post") or {}
+    return (
+        reel.get("path"),
+        post.get("path"),
+    )
+
+
+def _copy_lane_runtime_metadata(new_lane, existing_lane):
+    for field in ("attempt_count", "last_attempt_started_at", "last_attempt_finished_at"):
+        if existing_lane.get(field) is not None:
+            new_lane[field] = existing_lane[field]
+
+
+def merge_existing_calendar(plan, existing_plan):
+    existing_by_signature = {
+        build_day_signature(day_entry): day_entry
+        for day_entry in existing_plan
+        if isinstance(day_entry, dict)
+    }
+    existing_by_assets = {
+        build_asset_signature(day_entry): day_entry
+        for day_entry in existing_plan
+        if isinstance(day_entry, dict) and any(build_asset_signature(day_entry))
+    }
+    resumed_days = 0
+
+    for day_entry in plan:
+        existing_day = existing_by_signature.get(build_day_signature(day_entry))
+        if not existing_day:
+            existing_day = existing_by_assets.get(build_asset_signature(day_entry))
+        if not existing_day:
+            continue
+
+        resumed_days += 1
+        if existing_day.get("fecha"):
+            day_entry["fecha"] = existing_day["fecha"]
+        existing_summary = existing_day.get("summary") or {}
+        if existing_summary.get("execution_order"):
+            day_entry["summary"]["execution_order"] = existing_summary["execution_order"]
+
+        for lane_name in ("reel", "post"):
+            new_lane = day_entry.get(lane_name)
+            existing_lane = (existing_day.get(lane_name) or {}) if isinstance(existing_day.get(lane_name), dict) else None
+            if not new_lane or not existing_lane:
+                continue
+            if existing_lane.get("path") != new_lane.get("path"):
+                continue
+
+            existing_status = existing_lane.get("status")
+            if existing_status in PUBLISHED_STATUSES:
+                day_entry[lane_name] = existing_lane
+                continue
+
+            _copy_lane_runtime_metadata(new_lane, existing_lane)
+            if existing_status == "in_progress":
+                new_lane["status"] = "pending"
+                new_lane["resume_note"] = "retry_after_unexpected_stop"
+            elif existing_status:
+                new_lane["status"] = existing_status
+
+            if existing_lane.get("results") and existing_status == "failed":
+                new_lane["results"] = existing_lane["results"]
+
+        if existing_summary.get("status") == "completed":
+            day_entry["summary"] = existing_summary
+        elif existing_summary.get("status") == "paused_on_failure":
+            day_entry["summary"] = existing_summary
+        elif existing_summary.get("status") in ACTIVE_STATUSES:
+            day_entry["summary"]["status"] = "pending"
+            day_entry["summary"]["resume_note"] = "retry_after_unexpected_stop"
+
+    if resumed_days:
+        logging.info("Se reaplico estado previo de %s dia(s) desde %s.", resumed_days, CALENDAR_FILE.name)
+    return plan
 
 
 def parse_source_datetime(video_path):
@@ -288,6 +404,26 @@ def _build_skipped_result(label, kind, message):
     }
 
 
+def _build_existing_remote_result(label, remote_item):
+    result_id = str(remote_item.get("id") or "")
+    remote_time = remote_item.get("created_time") or remote_item.get("timestamp") or "sin fecha"
+    permalink = remote_item.get("permalink_url") or remote_item.get("permalink")
+    message = f"ya existia remoto con id {result_id} ({remote_time})"
+    if permalink:
+        message = f"{message} | {permalink}"
+    return {
+        "label": label,
+        "result": result_id,
+        "status": {
+            "kind": "already_exists_remote",
+            "phase": "remote_guard",
+            "message": message,
+            "transient": False,
+            "watchdog_alerted": False,
+        },
+    }
+
+
 def _summary_has_second_jornada_skip(summary):
     return any(
         value.get("status", {}).get("kind") == "skipped_requires_second_jornada"
@@ -295,27 +431,81 @@ def _summary_has_second_jornada_skip(summary):
     )
 
 
+def mark_lane_in_progress(day_entry, lane_name, video_info):
+    lane_entry = day_entry[lane_name]
+    lane_entry["status"] = "in_progress"
+    lane_entry["attempt_count"] = int(lane_entry.get("attempt_count") or 0) + 1
+    lane_entry["last_attempt_started_at"] = now_iso()
+    lane_entry.pop("results", None)
+
+    day_entry["summary"]["status"] = "running"
+    day_entry["summary"]["active_lane"] = lane_name
+    day_entry["summary"]["active_filename"] = video_info["filename"]
+    day_entry["summary"]["last_updated_at"] = now_iso()
+
+
+def clear_active_summary_fields(day_entry):
+    day_entry["summary"].pop("active_lane", None)
+    day_entry["summary"].pop("active_filename", None)
+
+
+def mark_lane_finished(day_entry, lane_name, lane_status, summary):
+    day_entry[lane_name].update(
+        {
+            "status": lane_status,
+            "results": summary,
+            "last_attempt_finished_at": now_iso(),
+        }
+    )
+    day_entry["summary"]["last_updated_at"] = now_iso()
+    clear_active_summary_fields(day_entry)
+
+
 def run_platform_pair(lane_name, video_info, publish_date):
     caption = build_caption(video_info, lane_name, publish_date)
     platform_results = {}
     ig_label = "instagram_reel" if lane_name == "reel" else "instagram_feed"
     ig_preflight = evaluate_ig_video_preflight(video_info, lane_name)
+    caption_marker = Path(video_info["path"]).stem
+    fb_label = "facebook_reel" if lane_name == "reel" else "facebook_post"
+
+    existing_facebook = find_existing_facebook_video_by_caption_marker(caption_marker)
+    if existing_facebook:
+        logging.warning(
+            "Se detecto %s ya publicado en Facebook para %s con id %s. Se evita duplicado.",
+            fb_label,
+            video_info["filename"],
+            existing_facebook["id"],
+        )
+        platform_results[fb_label] = _build_existing_remote_result(fb_label, existing_facebook)
+
+    existing_instagram = None
+    if ig_preflight["compatible"]:
+        existing_instagram = find_existing_instagram_media_by_caption_marker(caption_marker)
+        if existing_instagram:
+            logging.warning(
+                "Se detecto %s ya publicado en Instagram para %s con id %s. Se evita duplicado.",
+                ig_label,
+                video_info["filename"],
+                existing_instagram["id"],
+            )
+            platform_results[ig_label] = _build_existing_remote_result(ig_label, existing_instagram)
 
     if lane_name == "reel":
-        work = {
-            "facebook_reel": (upload_fb_reel, video_info["path"], caption),
-        }
-        if ig_preflight["compatible"]:
+        work = {}
+        if fb_label not in platform_results:
+            work[fb_label] = (upload_fb_reel, video_info["path"], caption)
+        if ig_preflight["compatible"] and ig_label not in platform_results:
             work[ig_label] = (
                 lambda path, text: upload_ig_reel_resumable(path, text, share_to_feed=False),
                 video_info["path"],
                 caption,
             )
     else:
-        work = {
-            "facebook_post": (upload_fb_video_standard, video_info["path"], caption),
-        }
-        if ig_preflight["compatible"]:
+        work = {}
+        if fb_label not in platform_results:
+            work[fb_label] = (upload_fb_video_standard, video_info["path"], caption)
+        if ig_preflight["compatible"] and ig_label not in platform_results:
             work[ig_label] = (upload_ig_feed_video_resumable, video_info["path"], caption)
 
     if not ig_preflight["compatible"]:
@@ -333,14 +523,15 @@ def run_platform_pair(lane_name, video_info, publish_date):
             reason_text,
         )
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(work)) as executor:
-        future_map = {
-            executor.submit(_invoke_with_status, label, fn, *args): label
-            for label, (fn, *args) in work.items()
-        }
-        for future in concurrent.futures.as_completed(future_map):
-            label = future_map[future]
-            platform_results[label] = future.result()
+    if work:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(work)) as executor:
+            future_map = {
+                executor.submit(_invoke_with_status, label, fn, *args): label
+                for label, (fn, *args) in work.items()
+            }
+            for future in concurrent.futures.as_completed(future_map):
+                label = future_map[future]
+                platform_results[label] = future.result()
 
     ok, summary = _summarize_platform_results(platform_results)
     if not ok:
@@ -371,9 +562,36 @@ def run_ig_story_if_enabled(day_entry):
     return story
 
 
-def execute_plan(plan, pause_between_assets=10):
+def execute_plan(plan, pause_between_assets=10, max_live_days=1):
+    today = datetime.now().date()
+    processed_live_days = 0
+
     for day_entry in plan:
         publish_date = day_entry["fecha"]
+        publish_day = datetime.strptime(publish_date, "%Y-%m-%d").date()
+        if day_entry["summary"].get("status") == "completed":
+            logging.info("Se conserva %s como completado desde el calendario existente.", publish_date)
+            continue
+        if day_entry["summary"].get("status") == "paused_on_failure":
+            logging.error(
+                "La jornada sigue pausada por un fallo previo en %s. Revisa meta_calendar.json antes de continuar.",
+                publish_date,
+            )
+            return False, "paused_on_failure"
+        if publish_day > today:
+            logging.info(
+                "Se detiene antes de %s porque aun es futuro frente a %s. Regla activa: 1 publicacion por dia real.",
+                publish_date,
+                today.isoformat(),
+            )
+            return True, "waiting_for_next_day"
+        if max_live_days is not None and processed_live_days >= max_live_days:
+            logging.info(
+                "Se completo el cupo de %s dia(s) en esta corrida. Se detiene para respetar 1 publicacion por dia real.",
+                max_live_days,
+            )
+            return True, "daily_limit_reached"
+
         tasks = []
         if day_entry["reel"]:
             tasks.append(("reel", day_entry["reel"]))
@@ -381,11 +599,22 @@ def execute_plan(plan, pause_between_assets=10):
             tasks.append(("post", day_entry["post"]))
         tasks.sort(key=lambda item: item[1]["size_bytes"], reverse=True)
         day_entry["summary"]["execution_order"] = [lane for lane, _ in tasks]
+        if not day_entry["summary"].get("status"):
+            day_entry["summary"]["status"] = "pending"
 
         logging.info("======== Jornada 1 | %s ========", publish_date)
         logging.info("Orden del dia: %s", ", ".join(day_entry["summary"]["execution_order"]) or "sin assets")
 
         for lane_name, video_info in tasks:
+            if day_entry[lane_name].get("status") in PUBLISHED_STATUSES:
+                logging.info(
+                    "[%s] %s ya estaba marcado como %s. Se conserva y se continua.",
+                    lane_name.upper(),
+                    video_info["filename"],
+                    day_entry[lane_name]["status"],
+                )
+                continue
+
             logging.info(
                 "[%s] %s | %.2f MB | %.2fs",
                 lane_name.upper(),
@@ -393,23 +622,27 @@ def execute_plan(plan, pause_between_assets=10):
                 video_info["size_bytes"] / 1e6,
                 video_info["duration_seconds"],
             )
+            mark_lane_in_progress(day_entry, lane_name, video_info)
+            write_calendar(plan)
             ok, summary = run_platform_pair(lane_name, video_info, publish_date)
-            lane_status = "published_with_ig_skip" if ok and _summary_has_second_jornada_skip(summary) else "published" if ok else "failed"
-            day_entry[lane_name].update(
-                {
-                    "status": lane_status,
-                    "results": summary,
-                }
+            lane_status = (
+                "published_with_ig_skip"
+                if ok and _summary_has_second_jornada_skip(summary)
+                else "published"
+                if ok
+                else "failed"
             )
+            mark_lane_finished(day_entry, lane_name, lane_status, summary)
             write_calendar(plan)
             if not ok:
                 day_entry["summary"]["status"] = "paused_on_failure"
+                day_entry["summary"]["last_updated_at"] = now_iso()
                 write_calendar(plan)
                 logging.error(
                     "Se pausa la jornada 1 en %s para no quemar cola. Revisa meta_uploader.log y meta_calendar.json.",
                     video_info["filename"],
                 )
-                return False
+                return False, "paused_on_failure"
             time.sleep(pause_between_assets)
 
             if lane_name == "reel":
@@ -422,9 +655,18 @@ def execute_plan(plan, pause_between_assets=10):
                     )
 
         day_entry["summary"]["status"] = "completed"
+        day_entry["summary"]["last_updated_at"] = now_iso()
+        clear_active_summary_fields(day_entry)
         write_calendar(plan)
+        processed_live_days += 1
+        if max_live_days is not None and processed_live_days >= max_live_days:
+            logging.info(
+                "Se completo %s y se frena la corrida para respetar la regla de una publicacion por dia real.",
+                publish_date,
+            )
+            return True, "daily_limit_reached"
 
-    return True
+    return True, "completed"
 
 
 def main():
@@ -437,6 +679,12 @@ def main():
     parser.add_argument("--post-start-index", type=int, default=0)
     parser.add_argument("--pause-between-assets", type=int, default=10)
     parser.add_argument(
+        "--max-live-days",
+        type=int,
+        default=1,
+        help="Maximo de dias reales a ejecutar por corrida. Default: 1 para respetar la regla operativa.",
+    )
+    parser.add_argument(
         "--disable-ig-stories",
         action="store_true",
         help="Desactiva el intento best-effort de IG Story sobre el reel vertical del dia.",
@@ -446,32 +694,61 @@ def main():
         action="store_true",
         help="Solo genera meta_calendar.json sin ejecutar subidas.",
     )
+    parser.add_argument(
+        "--rebuild-plan",
+        action="store_true",
+        help="Ignora el calendario existente y reconstruye el plan desde las colas actuales.",
+    )
     args = parser.parse_args()
 
-    if not require_upload_opt_in():
-        return
+    try:
+        if not require_upload_opt_in():
+            return 1
 
-    reels = load_queue("reels")
-    posts = load_queue("posts")
-    plan = build_plan(
-        reels,
-        posts,
-        reel_start_index=args.reel_start_index,
-        post_start_index=args.post_start_index,
-        days=args.days,
-        start_date=args.start_date,
-        enable_ig_stories=not args.disable_ig_stories,
-    )
-    write_calendar(plan)
-    logging.info("Calendario operativo guardado en %s con %s dias.", CALENDAR_FILE.name, len(plan))
+        reels = load_queue("reels")
+        posts = load_queue("posts")
+        plan = build_plan(
+            reels,
+            posts,
+            reel_start_index=args.reel_start_index,
+            post_start_index=args.post_start_index,
+            days=args.days,
+            start_date=args.start_date,
+            enable_ig_stories=not args.disable_ig_stories,
+        )
+        if not args.rebuild_plan:
+            existing_plan = load_existing_calendar()
+            if existing_plan:
+                plan = merge_existing_calendar(plan, existing_plan)
 
-    if args.plan_only:
-        return
+        write_calendar(plan)
+        logging.info("Calendario operativo guardado en %s con %s dias.", CALENDAR_FILE.name, len(plan))
 
-    ok = execute_plan(plan, pause_between_assets=args.pause_between_assets)
-    if ok:
-        logging.info("Jornada 1 completada segun el calendario operativo.")
+        if args.plan_only:
+            return 0
+
+        ok, reason = execute_plan(
+            plan,
+            pause_between_assets=args.pause_between_assets,
+            max_live_days=args.max_live_days,
+        )
+        if ok:
+            if reason in WAITING_STATUSES:
+                logging.info(
+                    "Jornada 1 queda en espera del siguiente dia operativo. Motivo: %s.",
+                    reason,
+                )
+            else:
+                logging.info("Jornada 1 completada segun el calendario operativo.")
+            return 0
+        return 2
+    except KeyboardInterrupt:
+        logging.warning("Jornada 1 interrumpida manualmente.")
+        return 130
+    except Exception:
+        logging.exception("Fallo fatal no controlado en el runner normal de jornada 1.")
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

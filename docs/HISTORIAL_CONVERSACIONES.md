@@ -4,6 +4,8 @@ Este documento registra el contexto de las conversaciones con IAs que han trabaj
 para que cualquier desarrollador o IA futura pueda entender la historia y continuar sin perder contexto.
 
 > Actualizacion 2026-04-08 (Antigravity + OpenAI Codex; Claude Code no intervino en esta sesion): se ejecuto la auditoria operativa en `agentes/meta_uploader` sobre `C:\Users\ZN-\Documents\ADM\Carpeta 1\videos subidos exitosamente` para evitar duplicados entre Facebook e Instagram antes de lanzar jornada 1. Se consultaron APIs oficiales de Meta y se detecto `1` coincidencia ya publicada en ambas plataformas (`20260310_184517.mp4`, FB id `1863981500985541`, IG id `18578908267001931`). Se generaron los archivos `listado_ya_subidos_fb_ig.txt` y `listado_ya_subidos_fb_ig.json` (copiados tambien en la carpeta fuente), se movio ese asset a `C:\Users\ZN-\Documents\ADM\Carpeta 1\ya_subidos_fb_ig\` y se reclasifico la carpeta para jornada 1 (`33` pendientes, `0` reels compartidos). Luego se inicio la subida real con `run_jornada1_normal.py --days 7` y `META_ENABLE_UPLOAD=1`; el proceso quedo activo en background (`python.exe` PID `13408`) transfiriendo `20260310_185649.mp4` por chunks de `8 MB`, con omision explicita de `instagram_feed` para ese crudo por exceder specs oficiales de IG (`~2796.5 MB > 315 MB`).
+> Actualizacion 2026-04-08 (Antigravity + OpenAI Codex; Claude Code no intervino en esta sesion): el usuario priorizo la subida de YouTube. Se verifico que `agentes/youtube_uploader/uploader.py` ya estaba activo desde las `19:53` y subiendo de verdad. Hallazgo operativo: el uploader completo `20260304_190054.mp4` con video id `2lrdekrU9lU` y luego siguio con `20260304_181602.mp4`, que quedo avanzando por encima de `50%`. Para no dividir ancho de banda con Meta, se detuvieron los procesos de `run_jornada1_supervisor.py` y `run_jornada1_normal.py`; la reanudacion de Meta quedo protegida por los checkpoints resumibles ya implementados.
+> Actualizacion 2026-04-08 (Antigravity + OpenAI Codex; Claude Code no intervino en esta sesion): tras confirmar que la corrida de Meta se habia detenido sola despues de `3` videos completos, se endurecio la operacion de jornada 1. `run_jornada1_normal.py` ahora escribe `meta_calendar.json` de forma atomica, marca lanes como `in_progress`, conserva dias completados al relanzar y devuelve codigos de salida utiles. Ademas se agrego `run_jornada1_supervisor.py`, un wrapper local que relanza el runner si termina antes de completar el calendario y no dejo una pausa explicita por fallo, y `meta_uploader.py` ahora guarda checkpoints locales del upload resumible de Facebook (`upload_session_id` + `current_offset`) para intentar retomar videos grandes desde el ultimo offset confirmado. El cuarto video afectado por la caida fue `20260310_183619.mp4`; quedo con ultimo avance confirmado de `2,004,877,312 / 2,614,367,574 bytes` (`76.69%`) antes de reiniciar la estrategia operativa. Luego se hizo una prueba controlada real: se mato el hijo `run_jornada1_normal.py`, el supervisor lo relanzo en `15s` y el uploader retomo `20260310_183619.mp4` desde el checkpoint persistido en `125,829,120 bytes` en lugar de reiniciar desde cero.
 > Actualizacion 2026-04-08 (Antigravity + OpenAI Codex; reindexacion puntual de `Carpeta 1` para YouTube): se detuvo `youtube_uploader` de forma controlada con `STOP`, se reescaneo solo `C:\Users\ZN-\Documents\ADM\Carpeta 1` excluyendo manualmente `videos subidos exitosamente` y `videos_excluidos_ya_en_youtube`, y se fusionaron `138` registros nuevos en `scanned_videos.json` (`248` totales). Luego se corrio `check_channel_videos.py` contra el canal real (`813` videos auditados) y no aparecieron repeticiones nuevas para mover. Hallazgo clave: `20260302_190317.mp4` quedo indexado como `uploaded: false` y paso a la posicion `1` del carril `video` con `2448.97 MB`; adicionalmente se confirmo que en esta maquina no hay `ffprobe`, por lo que los nuevos archivos grandes quedaron sin `type` y el uploader los tratara como `video` por defecto hasta instalar esa herramienta.
 > Actualizacion 2026-04-08 (Antigravity + OpenAI Codex; verificacion operativa de exclusiones YouTube): se auditó la carpeta `C:\Users\ZN-\Documents\ADM\Carpeta 1\videos_excluidos_ya_en_youtube` contra el canal real. Resultado: los `7/7` archivos ya existen en YouTube. Se detectaron duplicados programados para `20260310_184517`, `20260310_185649` y `20260310_190454`, cada uno con dos entradas privadas y fechas distintas; `20260201_191557` aparecio como `unlisted` sin fecha y los demas como `private` con `publishAt`.
 > Actualizacion 2026-04-08 (Antigravity + OpenAI Codex; Claude Code no intervino en esta sesion): se hizo auditoria real del canal de YouTube antes de continuar `agentes/youtube_uploader`. Hallazgos: `798` videos analizados en el canal, `603` publicos, `128` ocultos, `65` privados programados y `2` borradores reales sin fecha. En la ventana de 45 dias desde `2026-04-08`, el primer hueco de `video` estaba en `2026-04-08` y el primer hueco de `short` en `2026-04-16`, lo que confirmo que faltaba separar la prioridad por carril en vez de seguir subiendo por peso global.
@@ -362,3 +364,131 @@ con ruido tipo "sal y pimienta" y manchas de fotocopia. Extraer texto y exportar
   - usa `two-pass` para apurar calidad sin pasarse del limite
   - deja manifest propio y cola separada `second_pass/queues/pendientes_ig_feed_second_pass.json`
 - Con esto queda lista la solucion correcta de segunda jornada para crudos que Facebook si acepta pero Instagram API rechaza por specs.
+
+## Sesion 21 - Meta Uploader, deduplicacion remota y regla real de 1 publicacion por dia (Codex, 2026-04-08)
+
+- El usuario detecto que `20260310_183619.mp4` aparecia dos veces y ademas reclamo que el runner estaba publicando varios dias del calendario en una sola noche.
+- Se verifico por API que el duplicado era real en Facebook:
+  - `1882074735828642` con descripcion `Jornada 1 post | 2026-04-08 | 20260310_183619`
+  - `2143750206382044` con descripcion `PW | 2026-04-11 | 20260310_183619`
+- La causa funcional encontrada fue doble:
+  - el runner usaba `fecha` solo como plan/caption, no como barrera de ejecucion real
+  - tras caidas/reintentos, el calendario local no alcanzaba para impedir una republicacion si Meta ya habia aceptado un asset en un intento anterior
+- Se corrigio `meta_uploader.py` para consultar remotamente Facebook e Instagram antes de subir:
+  - nuevos helpers para inspeccionar `/{page}/videos` y `/{ig-user}/media`
+  - si el stem del archivo ya aparece remoto, el runner registra `already_exists_remote` y no vuelve a publicar ese asset
+- Se corrigio `run_jornada1_normal.py` para respetar la regla operativa:
+  - `--days` sigue planificando varios dias
+  - la corrida viva ahora ejecuta como maximo `1` dia real por defecto (`--max-live-days=1`)
+  - si el siguiente `fecha` del calendario todavia es futuro, la corrida se detiene
+- Se corrigio `run_jornada1_supervisor.py` para no relanzar el runner cuando el siguiente dia pendiente aun no corresponde frente a la fecha real.
+- Validaciones hechas:
+  - `python -m py_compile meta_uploader.py run_jornada1_normal.py run_jornada1_supervisor.py`
+  - `run_jornada1_supervisor.py --days 7` ahora corta con mensaje explicito al ver `2026-04-13` como siguiente dia pendiente futuro
+  - `run_platform_pair(...)` sobre `20260310_183619.mp4` devuelve `already_exists_remote` en Facebook en lugar de disparar otra subida
+
+## Sesion 22 - Meta Uploader, agenda programada por fecha para Facebook e Instagram (Codex, 2026-04-08)
+
+- El usuario aclaro que no queria publicar todo el mismo dia, sino cargar y programar cada asset para que salga en su dia calendario.
+- Tambien aclaro la regla operativa:
+  - por dia debe existir `1` publicacion de cada tipo soportado en Facebook
+  - por dia debe existir `1` publicacion de cada tipo soportado en Instagram
+- Se reviso el patron usado en `youtube_uploader` y se adapto el flujo de Meta a agenda:
+  - se creo `meta_uploader/schedule_jornada1_meta.py` para construir el calendario y programar por fecha
+  - se creo `meta_uploader/publish_due_meta.py` para publicar los items locales de Instagram cuando llegue su hora
+- El nuevo flujo aplica guardas remotas antes de programar:
+  - si Facebook o Instagram ya tienen un asset con el stem del archivo, se marca `already_exists_remote`
+  - eso evita reprogramar duplicados como `20260310_183619.mp4`
+- Para Facebook se habilito confirmacion de estado programado en `meta_uploader.py`, aceptando `scheduled` como resultado exitoso del flujo de subida.
+- Para Instagram jornada 1 se mantuvo la restriccion oficial de specs:
+  - los crudos grandes siguen marcandose como `skipped_requires_second_jornada`
+  - la programacion local queda separada del flujo de segunda pasada/transcodificacion
+
+## Sesion 23 - Meta Uploader, diagnostico de atasco en la agenda de 2026-04-13 (Codex, 2026-04-08)
+
+- Ante la duda de si algun video habia quedado colgado, se revisaron proceso, log y calendario operativo.
+- Hallazgo principal:
+  - el proceso `schedule_jornada1_meta.py --days 7 --rebuild-plan` siguio abierto
+  - pero el calendario quedo detenido en `20260310_181709.mp4` para la fecha `2026-04-13`
+- Evidencia:
+  - `meta_calendar.json` no se movio despues de `2026-04-08 21:37:50`
+  - el ultimo punto activo del calendario quedo como `summary.status = scheduling`, `active_filename = 20260310_181709.mp4`
+  - `meta_uploader.log` registro un fallo previo de subida binaria y luego un `HTTP 500` en la consulta de videos de Facebook usada por la guarda remota
+- Verificacion remota:
+  - se consulto Facebook por el marcador `20260310_181709`
+  - no aparecio ningun video existente, asi que el archivo no quedo programado ni duplicado en remoto
+- Conclusion operativa:
+  - el asset colgado es `20260310_181709.mp4`
+  - el problema actual parece ser un atasco del proceso durante la verificacion remota/reintentos, no un duplicado ya creado en Meta
+
+## Sesion 24 - Meta Uploader, correccion de carga de datos y reanudacion de la agenda (Codex, 2026-04-08)
+
+- Despues del diagnostico, el calendario termino registrando el error exacto al intentar programar `20260310_181709.mp4`:
+  - `HTTP 500`
+  - mensaje de Meta: `Please reduce the amount of data you're asking for, then retry your request`
+- Se ajusto la deduplicacion remota para pedir menos informacion y menos volumen por pagina:
+  - `find_existing_facebook_video_by_caption_marker(...)` paso a consultar menos campos y a usar defaults mas chicos
+  - `find_existing_instagram_media_by_caption_marker(...)` tambien quedo reducido
+  - `schedule_jornada1_meta.py` ahora llama esas guardas con `page_size` y `max_pages` mas conservadores y deja trazas explicitas del chequeo remoto
+- Luego se recompilo:
+  - `meta_uploader.py`
+  - `schedule_jornada1_meta.py`
+- Se relanzo `schedule_jornada1_meta.py --days 7 --rebuild-plan`.
+- Validacion de reanudacion:
+  - el nuevo proceso avanzo otra vez hasta `20260310_181709.mp4`
+  - la salida directa del scheduler mostro progreso real de `Subiendo FB handle`
+  - se confirmo avance continuo, pasando aproximadamente de `11.4%` a `14.0%`
+- Estado operativo al cierre de esta sesion:
+  - la agenda ya no esta pegada en la consulta remota
+  - `20260310_181709.mp4` sigue en transferencia hacia Facebook para quedar programado en `2026-04-13`
+
+## Sesion 25 - Meta Uploader, supervisor dedicado para la agenda programada (Codex, 2026-04-08)
+
+- El usuario pidio reanudar Meta y remarco que no debia quedarse parado si aparecian cortes transitorios.
+- Se verifico que el supervisor existente solo cubria `run_jornada1_normal.py`, no el flujo nuevo de agenda `schedule_jornada1_meta.py`.
+- Se creo `meta_uploader/schedule_jornada1_supervisor.py`.
+- El nuevo supervisor:
+  - relanza `schedule_jornada1_meta.py` cuando el proceso termina antes de completar la agenda
+  - inspecciona `meta_calendar.json`
+  - si detecta `paused_on_failure` con error `transient`, resetea ese mismo lane a `pending`
+  - conserva contador local de reintentos por lane (`supervisor_retry_count`)
+  - vuelve a intentar el mismo asset en vez de dejar la agenda detenida
+  - arranca al hijo con reintentos HTTP/binarios mas altos
+- En la reanudacion viva:
+  - el supervisor detecto el fallo transitorio de `20260310_181709.mp4`
+  - lo reseteo a `pending` con `supervisor_retry_count = 1`
+  - relanzo `schedule_jornada1_meta.py`
+  - se confirmo progreso real otra vez en `Subiendo FB handle`, alrededor de `5.4%` al ultimo corte observado
+- Con esto ya queda una capa de autorecuperacion para la agenda programada, sin tocar `youtube_uploader`.
+
+## Sesion 26 - Meta Uploader, reanudacion confirmada de la primera jornada (Codex, 2026-04-09)
+
+- El usuario pidio volver a subir videos con la primera jornada.
+- Se reviso el estado real antes de reiniciar para no romper una transferencia viva.
+- Hallazgo:
+  - `schedule_jornada1_supervisor.py` seguia activo
+  - `schedule_jornada1_meta.py` tambien seguia activo
+  - el calendario continuaba en `20260310_181709.mp4` para `2026-04-13`
+- Se verifico el progreso real por `schedule_jornada1_supervisor_stdout.log`:
+  - el archivo estaba creciendo en tiempo real
+  - la subida de `Facebook handle` avanzaba, pasando de alrededor de `30.4%` a `40.8%`
+- Decision operativa:
+  - no se relanzo el proceso a ciegas
+  - se dejo la primera jornada corriendo sobre el supervisor ya activo
+  - no se toco `youtube_uploader`
+
+## Sesion 27 - Meta Uploader, conteo acumulado real desde el reinicio del 2026-04-09 (Codex, 2026-04-09)
+
+- El usuario pidio revisar cuantos videos iban acumulados desde el reinicio de hoy.
+- Se cruzaron dos fuentes:
+  - `meta_calendar.json`
+  - consulta real por API a Facebook e Instagram para publicaciones creadas en fecha local `2026-04-09` (Bogota)
+- Resultado:
+  - el calendario si avanzo y dejo `5` dias marcados como `scheduled` / `scheduled_with_ig_skip` con `last_updated_at` de hoy
+  - ese avance fue por deduplicacion remota (`already_exists_remote`) y no por publicaciones nuevas creadas hoy
+  - la API devolvio `0` publicaciones nuevas en Facebook hoy
+  - la API devolvio `0` publicaciones nuevas en Instagram hoy
+- Estado del video en curso al momento del corte:
+  - `20260310_181709.mp4`
+  - sigue en transferencia por `Facebook handle`
+  - progreso observado alrededor de `32.9%`

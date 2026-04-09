@@ -18,3 +18,4 @@ second_pass/normalized/
 second_pass/optimized_videos/
 second_pass/manifests/
 second_pass/queues/
+.fb_upload_checkpoints/
