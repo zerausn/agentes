@@ -569,3 +569,20 @@ con ruido tipo "sal y pimienta" y manchas de fotocopia. Extraer texto y exportar
 - Se dejo lanzador listo para el usuario:
   - repo: `scripts/monitor_realtime.bat`
   - Escritorio: `C:\Users\ZN-\Desktop\MONITOR_LOGS_REDES.bat`
+
+## Sesion 32 - Eliminacion del parpadeo en el monitor de terminal (Codex, 2026-04-09)
+
+- El usuario reporto molestia por el parpadeo del monitor en consola.
+- Se hizo una verificacion externa breve y se confirmo la recomendacion de
+  Microsoft Learn para Windows Console:
+  - habilitar `ENABLE_VIRTUAL_TERMINAL_PROCESSING`
+  - usar secuencias VT para mover el cursor y redibujar, en vez de invocar
+    `cls` en cada refresco
+- Se ajusto `scripts/monitor_realtime.py` para:
+  - habilitar VT en Windows cuando la terminal lo soporta
+  - ocultar temporalmente el cursor mientras el monitor esta vivo
+  - reposicionar el cursor al inicio y reescribir el panel en sitio
+  - conservar `cls` solo como fallback si VT no esta disponible
+- Impacto:
+  - el monitor deja de limpiar toda la pantalla en cada ciclo
+  - se reduce el parpadeo visible en PowerShell / Windows Terminal

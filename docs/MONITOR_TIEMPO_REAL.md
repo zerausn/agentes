@@ -38,3 +38,6 @@ Para una sola captura:
 Si cambian los formatos de `meta_uploader.log`, `meta_uploader_facebook.log`,
 `meta_uploader_instagram.log` o `uploader.log`, este monitor tambien debe
 ajustarse. No lo dejen desfasado respecto a los cambios de los runners.
+
+En Windows, evita volver a `cls` en cada ciclo. El monitor ya usa secuencias VT
+para redibujar en sitio y asi reducir el parpadeo de la terminal.

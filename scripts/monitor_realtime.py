@@ -8,6 +8,7 @@ desde la ultima subida confirmada.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
 import os
 import re
@@ -560,7 +561,56 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def clear_screen() -> None:
-    os.system("cls")
+    os.system("cls" if os.name == "nt" else "clear")
+
+
+def enable_virtual_terminal_processing() -> bool:
+    if os.name != "nt" or not sys.stdout.isatty():
+        return False
+    try:
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.GetStdHandle(-11)
+        if handle in (0, -1):
+            return False
+        mode = ctypes.c_uint()
+        if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            return False
+        enable_vt = 0x0004
+        if mode.value & enable_vt:
+            return True
+        return bool(kernel32.SetConsoleMode(handle, mode.value | enable_vt))
+    except Exception:
+        return False
+
+
+class ConsoleRenderer:
+    def __init__(self) -> None:
+        self.use_vt = enable_virtual_terminal_processing()
+        self.first_frame = True
+        self.cursor_hidden = False
+
+    def draw(self, text: str) -> None:
+        if not self.use_vt:
+            clear_screen()
+            print(text)
+            return
+
+        prefix = "\x1b[?25l"
+        if self.first_frame:
+            prefix += "\x1b[2J\x1b[H"
+            self.first_frame = False
+        else:
+            prefix += "\x1b[H"
+        sys.stdout.write(prefix)
+        sys.stdout.write(text)
+        sys.stdout.write("\x1b[J")
+        sys.stdout.flush()
+        self.cursor_hidden = True
+
+    def close(self) -> None:
+        if self.use_vt and self.cursor_hidden:
+            sys.stdout.write("\x1b[?25h")
+            sys.stdout.flush()
 
 
 def main() -> int:
@@ -573,14 +623,17 @@ def main() -> int:
     args = parser.parse_args()
     repo_root = Path(__file__).resolve().parents[1]
     monitor = Monitor(repo_root)
+    renderer = ConsoleRenderer()
 
-    while True:
-        monitor.refresh()
-        clear_screen()
-        print(monitor.render())
-        if args.once:
-            return 0
-        time.sleep(max(0.5, args.interval))
+    try:
+        while True:
+            monitor.refresh()
+            renderer.draw(monitor.render())
+            if args.once:
+                return 0
+            time.sleep(max(0.5, args.interval))
+    finally:
+        renderer.close()
 
 
 if __name__ == "__main__":
