@@ -60,13 +60,22 @@ def inspect_calendar():
         1 for day in plan if (day.get("summary") or {}).get("status") in FINAL_DAY_STATUSES
     )
     paused_days = sum(1 for day in plan if (day.get("summary") or {}).get("status") == "paused_on_failure")
+    def get_filename(entry):
+        if not entry:
+            return None
+        if isinstance(entry, dict):
+            return entry.get("filename")
+        if isinstance(entry, str):
+            return os.path.basename(entry)
+        return None
+
     first_incomplete = next(
         (
             {
                 "fecha": day.get("fecha"),
                 "status": (day.get("summary") or {}).get("status"),
-                "post": ((day.get("post") or {}).get("filename") if day.get("post") else None),
-                "reel": ((day.get("reel") or {}).get("filename") if day.get("reel") else None),
+                "post": get_filename(day.get("post")),
+                "reel": get_filename(day.get("reel")),
             }
             for day in plan
             if (day.get("summary") or {}).get("status") not in FINAL_DAY_STATUSES
