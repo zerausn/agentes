@@ -9,6 +9,8 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 from meta_uploader import (
     diagnose_meta_connectivity,
     find_existing_facebook_video_by_caption_marker,
@@ -23,6 +25,7 @@ from meta_uploader import (
 
 
 BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
 CALENDAR_FILE = BASE_DIR / "meta_calendar.json"
 DATE_STEM_RE = re.compile(r"(?P<date>\d{8})_(?P<time>\d{6})")
 __test__ = False

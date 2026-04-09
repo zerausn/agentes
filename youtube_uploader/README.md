@@ -71,6 +71,16 @@ Si recibes errores de `invalid_grant` o tokens expirados, puedes renovar todas l
    ```
    Cada comando abrira una ventana en el navegador para la autorizacion.
 
+## Estrategia y Seguridad
+
+- **Ciclo de 400 días**: El sistema gestiona un calendario de largo plazo en `meta_calendar.json`.
+- **Bandera de Seguridad**: Requiere `META_ENABLE_UPLOAD=1` en el archivo `.env`. El sistema carga este archivo automáticamente.
+- **Cierre de Handles**: El uploader ahora cierra explícitamente todos los archivos después de la subida para evitar bloqueos en Windows.
+- **Higiene Automática**: Se incluye `periodic_mover.py`, un servicio que organiza videos finalizados y libera espacio automáticamente.
+- **Monetización Global**: Configurado por defecto a las 14:00 (Hora Col) para maximizar CPM global.
+
+Para más detalles sobre la operación diaria, consulta el manual maestro en [MAINTENANCE.md](../MAINTENANCE.md).
+
 ## Documentacion Completa
 Ver [AI.md](AI.md) y la carpeta [docs](docs).
 
