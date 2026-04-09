@@ -298,3 +298,51 @@ def is_managed_title(title):
     if LEGACY_TITLE_MARKER in normalized:
         return True
     return bool(TIMESTAMP_STEM_RE.search(normalized))
+
+def apply_faststart(file_path, runner=None):
+    from pathlib import Path
+    import subprocess
+    import tempfile
+    import shutil
+    import logging
+
+    file_path = Path(file_path)
+    if not file_path.exists():
+        return False
+
+    runner = runner or subprocess.run
+    ffmpeg_binary = resolve_ffmpeg_binary(Path(__file__).resolve().parent)
+    
+    # We create a temporary file in the same directory to ensure fast moving
+    temp_file = file_path.with_suffix(f".faststart.tmp{file_path.suffix}")
+    
+    command = [
+        str(ffmpeg_binary),
+        "-y",
+        "-i", str(file_path),
+        "-c", "copy",
+        "-movflags", "+faststart",
+        str(temp_file)
+    ]
+    
+    try:
+        logging.info(f"Aplicando faststart a {file_path.name}...")
+        result = runner(command, capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            logging.error(f"Fallo al aplicar faststart: {result.stderr}")
+            if temp_file.exists():
+                temp_file.unlink()
+            return False
+            
+        # Overwrite the original file
+        shutil.move(str(temp_file), str(file_path))
+        logging.info(f"Faststart aplicado exitosamente a {file_path.name}.")
+        return True
+    except Exception as e:
+        logging.error(f"Error inesperado al aplicar faststart: {e}")
+        if temp_file.exists():
+            try:
+                temp_file.unlink()
+            except OSError:
+                pass
+        return False

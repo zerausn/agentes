@@ -18,6 +18,7 @@ from video_helpers import build_upload_metadata
 from video_helpers import enrich_video_record
 from video_helpers import load_config
 from video_helpers import save_json_file
+from video_helpers import apply_faststart
 
 UPLOAD_STALL_CHECK_SECONDS = 10
 UPLOAD_STALL_MAX_NO_PROGRESS_CHECKS = 2
@@ -498,6 +499,12 @@ def main():
 
         if enrich_video_record(video, include_probe=True):
             save_json_file(JSON_DB, videos)
+
+        if not video.get("faststart_applied"):
+            logging.info("Aplicando optimizacion faststart previa a la subida...")
+            if apply_faststart(file_path):
+                video["faststart_applied"] = True
+                save_json_file(JSON_DB, videos)
 
         upload_metadata = build_upload_metadata(video, config)
 
