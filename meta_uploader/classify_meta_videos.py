@@ -74,9 +74,14 @@ def is_shared_safe_reel(props):
 
 
 def iter_video_files(target_path):
-    for file_path in target_path.rglob("*"):
-        if file_path.is_file() and file_path.suffix.lower() in SUPPORTED_SUFFIXES:
-            yield file_path
+    exclude_dirs = {"videos subidos exitosamente", "videos_excluidos_ya_en_youtube", "ya_subidos_fb_ig", "ya_subidos_meta"}
+    
+    for root, dirs, files in os.walk(target_path):
+        dirs[:] = [d for d in dirs if d.lower() not in exclude_dirs]
+        for file in files:
+            file_path = Path(root) / file
+            if file_path.suffix.lower() in SUPPORTED_SUFFIXES:
+                yield file_path
 
 
 def classify_directory(target_dir):

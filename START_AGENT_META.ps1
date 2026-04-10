@@ -2,7 +2,7 @@ $Host.UI.RawUI.WindowTitle = "Agente Meta (Sube videos a Meta)"
 
 $BASE_DIR = "C:\Users\ZN-\Documents\Antigravity\agentes"
 $VENV_PYTHON = "C:\Users\ZN-\Documents\Antigravity\.venv\Scripts\python.exe"
-$TARGET_DIR = "C:\Users\ZN-\Documents\ADM\Carpeta 1\videos subidos exitosamente"
+$TARGET_DIR = "C:\Users\ZN-\Documents\ADM\Carpeta 1"
 
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host " INICIANDO AGENTE DIARIO: SUBE VIDEOS A META " -ForegroundColor Cyan
