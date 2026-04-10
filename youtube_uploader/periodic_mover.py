@@ -79,7 +79,17 @@ def move_uploaded_videos():
     elif moved_count == 0:
         logging.debug("No hay archivos pendientes por mover o todos estan bloqueados.")
 
+import sys
+
 def main():
+    if "--run-once" in sys.argv:
+        logging.info("--- Iniciando Servicio de Limpieza (Un Solo Ciclo) ---")
+        try:
+            move_uploaded_videos()
+        except Exception as exc:
+            logging.error("Error en la limpieza: %s", exc)
+        return
+        
     logging.info("--- Iniciando Servicio de Limpieza Periodica (Cada 10 min) ---")
     while True:
         try:

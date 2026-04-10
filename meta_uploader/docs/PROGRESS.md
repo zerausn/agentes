@@ -31,7 +31,7 @@
 - [x] Runner normal unificado de jornada 1 (`run_jornada1_normal.py`) para videos crudos: calendario por dias, prioridad por peso dentro del dia, `FB Reel + IG Reel`, `FB Post + IG Feed`, `IG Story` best-effort y `Facebook Stories` como salto explicito.
 - [x] Validacion local del runner normal con `python -m py_compile ...` y generacion real de `meta_calendar.json` en modo `--plan-only`.
 - [x] Correccion del `second_pass` para acumular colas optimizadas sin sobrescribirlas al procesar multiples fuentes.
-- [x] Nuevo preparador `second_pass/prepare_second_jornada_meta.py` para derivar `shared_reel` e `instagram_story` desde colas crudas y promocionar reels optimizados al main queue solo con opt-in.
+- [x] Nuevo preparador `second_pass/prepare_second_jornada_meta.py` para derivar videos optimizados `shared_reel` e `instagram_story` desde colas crudas y promocionar reels optimizados al main queue solo con opt-in.
 - [x] Validacion local real del `second_pass`: dos clips pequenos generaron y acumularon correctamente `pendientes_reels_second_pass.json` y `pendientes_ig_stories_second_pass.json`.
 - [x] Herramienta experimental separada `second_pass/experimental_yolo_reframer.py` para probar reencuadre YOLO 9:16 antes de integrarlo al clipping real.
 - [x] Validacion inicial del experimento YOLO a nivel de CLI/compilacion (`py_compile`, `--help`).
@@ -39,8 +39,8 @@
 - [x] Modelo `yolov8n.pt` reubicado a `second_pass/outputs/yolo_reframe_experiments/models/` para no ensuciar la raiz del repo.
 - [x] Optimizado el carril `Facebook Post/Reel` con sesion HTTP persistente por hilo y chunk objetivo de `8 MB`, con reduccion automatica hasta `1 MB` cuando aparecen fallos transitorios.
 - [x] Logging separado por plataforma: `meta_uploader_facebook.log` y `meta_uploader_instagram.log`, manteniendo `meta_uploader.log` como vista maestra.
-- [x] Preflight oficial de Instagram en `run_jornada1_normal.py` para no reintentar crudos incompatibles; ahora se marcan para segunda jornada en vez de tumbar la dupla con `ProcessingFailedError`.
-- [x] Herramienta separada `second_pass/transcode_instagram_api_safe.py` para generar versiones full-length compatibles con IG API con la maxima calidad posible dentro de los limites oficiales.
+- [x] Preflight oficial de Instagram en `run_jornada1_normal.py` para no reintentar crudos incompatibles; ahora se marcan para videos optimizados en vez de tumbar la dupla con `ProcessingFailedError`.
+- [x] Herramienta separada `second_pass/transcode_instagram_api_safe.py` para generar versiones full-length compatibles con IG API con la maxima calidad posible dentro de los limites oficiales de videos optimizados.
 - [x] Reanudacion de jornada 1 desde `meta_calendar.json`, con estado `in_progress`, escritura atomica del calendario y supervisor local `run_jornada1_supervisor.py` para relanzar salidas inesperadas sin perder los dias ya completados.
 - [x] Checkpoints locales del upload resumible de Facebook (`upload_session_id` + `current_offset`) para intentar retomar archivos grandes sin recomenzar siempre desde cero; verificacion en vivo hecha con reinicio controlado del runner y reanudacion desde offset persistido.
 - [x] Guardia remota anti-duplicados en `run_jornada1_normal.py` usando consultas de Meta para detectar un stem ya publicado y marcarlo como `already_exists_remote`.

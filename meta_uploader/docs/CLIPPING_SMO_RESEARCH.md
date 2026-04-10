@@ -1,4 +1,4 @@
-# Investigacion - Clipping, SMO y Segunda Jornada Local
+# Investigacion - Clipping, SMO y Videos Optimizados Locales
 
 ## Tesis operativa
 
@@ -36,7 +36,7 @@ Lo que **no** conviene prometer como automatizable al 100% en esta fase:
 
 El modelo de GaryVee lo resume muy bien: partir de una pieza "pillar" y
 reconvertirla en docenas de piezas cortas para distintas plataformas. Eso es
-exactamente lo que esta segunda jornada debe hacer de forma local.
+exactamente lo que este carril de videos optimizados debe hacer de forma local.
 
 Fuente:
 - [GaryVee - How We Created 7 Million Extra Views](https://garyvaynerchuk.com/content-marketing-strategy/)
@@ -74,7 +74,7 @@ Fuentes:
 - no tocar el uploader base
 - mantener compatibilidad con el flujo actual de Meta
 
-### Jornada 2
+### Videos optimizados
 
 - analizar el archivo fuente localmente
 - seleccionar ventanas candidatas
@@ -114,7 +114,7 @@ Fuente:
 
 ## Herramientas locales que si sirven para esto
 
-FFmpeg ya trae casi todo lo que necesitamos para la segunda jornada:
+FFmpeg ya trae casi todo lo que necesitamos para los videos optimizados:
 
 - `crop` para recorte local
 - `cropdetect` para detectar area util o barras
@@ -147,7 +147,7 @@ Fuentes:
 - analiza
 - renderiza clips derivados
 - guarda manifests
-- emite colas separadas de segunda jornada
+- emite colas separadas de videos optimizados
 
 ## Heuristicas utiles para la primera version
 

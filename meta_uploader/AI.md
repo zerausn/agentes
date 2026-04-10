@@ -7,6 +7,14 @@ Este contexto aplica solo a `meta_uploader/`.
 Automatizar publicaciones hacia Facebook e Instagram usando las APIs oficiales
 de Meta, sin mezclar esta logica con `youtube_uploader`.
 
+## Convencion operativa
+
+- Si el usuario dice `sube videos a Meta`, interpreta eso como el flujo
+  programado actual de Meta, no como una invocacion directa a `meta_uploader.py`.
+- El entrypoint humano recomendado es `schedule_jornada1_supervisor.py`.
+- El nombre operativo nuevo es `videos optimizados`, aunque `second_pass/`
+  pueda seguir existiendo internamente.
+
 ## Reglas operativas
 
 - Usa solo endpoints documentados por Meta.
@@ -19,8 +27,8 @@ de Meta, sin mezclar esta logica con `youtube_uploader`.
   reel-safe -> `FB Reel + IG Reel`; no reel-safe -> `FB Post + IG Feed`;
   `IG Story` solo como intento best-effort cuando el asset vertical pasa una
   politica conservadora; `Facebook Stories` sigue fuera del flujo automatizado.
-- La segunda jornada puede derivar `shared_reel` e `instagram_story` desde
-  `pendientes_posts.json` usando `second_pass/prepare_second_jornada_meta.py`.
+- Los `videos optimizados` pueden derivar `shared_reel` e `instagram_story`
+  desde `pendientes_posts.json` usando `second_pass/prepare_second_jornada_meta.py`.
   Solo debe fusionar esos derivados dentro de `pendientes_reels.json` cuando se
   pida de forma explicita; por defecto las colas optimizadas viven separadas.
 - El uploader de Facebook usa sesion HTTP persistente por hilo y chunk adaptativo:

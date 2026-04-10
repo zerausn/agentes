@@ -10,6 +10,9 @@
   implementacion funcional sigue en desarrollo.
 - Se agrego un monitor de logs en tiempo real para Meta y YouTube en
   `scripts/monitor_realtime.py`, con launcher `.bat` y nota para futuras IAs.
+- La convencion operativa de Meta quedo unificada en documentacion: "sube
+  videos a Meta" significa usar `schedule_jornada1_supervisor.py`, y el carril
+  previo de Meta pasa a llamarse "videos optimizados" en los docs.
 
 ## Seguimiento operativo heredado de `youtube_uploader`
 

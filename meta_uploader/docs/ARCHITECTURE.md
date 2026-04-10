@@ -45,19 +45,19 @@ con una capa de automatizacion separada del repo contenedor.
   dia cumple una politica conservadora (`<=60s`, vertical). `Facebook Stories`
   permanece fuera del alcance automatizado actual hasta versionar soporte
   oficial especifico para ese flujo.
-- **Carril segunda jornada**: `second_pass/local_clip_optimizer.py` y
+- **Carril videos optimizados**: `second_pass/local_clip_optimizer.py` y
   `second_pass/prepare_second_jornada_meta.py` derivan clips `shared_reel` e
   `instagram_story` desde material crudo, escriben colas separadas en
   `second_pass/queues/` y solo promocionan derivados a `pendientes_reels.json`
   mediante opt-in explicito. Para full-length compatibles con IG existe
   `second_pass/transcode_instagram_api_safe.py`, que exporta una version
   completa H.264/AAC dentro del limite oficial y la deja en su propia cola de
-  segunda jornada.
+  videos optimizados.
 - **Preflight IG en jornada 1**: antes de intentar `instagram_feed` o
   `instagram_reel`, el runner valida el asset crudo contra limites oficiales
   del flujo `REELS`/`share_to_feed` y `STORIES` (tamano, ancho, fps, bitrate,
   duracion, codec). Si el crudo no cumple, IG se marca como salto operativo
-  hacia segunda jornada en vez de disparar un upload condenado a fallar.
+  hacia videos optimizados en vez de disparar un upload condenado a fallar.
 - **Persistencia y reanudacion de jornada 1**: el calendario local registra
   estados `pending`, `in_progress`, `published`, `published_with_ig_skip` y
   `paused_on_failure`. Si el proceso cae sin cerrar el dia, un reinicio del
@@ -77,6 +77,9 @@ con una capa de automatizacion separada del repo contenedor.
   al completar un solo dia real o cuando el siguiente `fecha` del calendario
   todavia es futuro. `run_jornada1_supervisor.py` tambien se detiene en ese
   punto y no relanza el runner hasta que corresponda el siguiente dia.
+- **Entrypoint humano recomendado**: cuando el operador diga "sube videos a
+  Meta", debe arrancarse `run_jornada1_supervisor.py` para la jornada de
+  publicacion programada.
 - **Carril experimental YOLO**: `second_pass/experimental_yolo_reframer.py`
   existe como laboratorio aparte para comparar recorte centrado vs reencuadre
   guiado por deteccion de personas. Sus planes y renders viven bajo

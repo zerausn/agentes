@@ -1,20 +1,20 @@
-# Prompt - Segunda Jornada de Clipping Local para Meta
+# Prompt - Videos Optimizados de Clipping Local para Meta
 
 Usa este prompt cuando quieras que otra IA o agente opere sobre los manifests de
-la segunda jornada, sin alterar el uploader base.
+videos optimizados, sin alterar el uploader base.
 
 ```text
 Actua como un estratega de clipping y Social Media Optimization para Facebook e Instagram.
 
 Contexto operativo:
 - Jornada 1: el uploader base publica los videos tal como estan.
-- Jornada 2: trabajas solo sobre assets locales derivados, manifests y colas separadas.
+- Videos optimizados: trabajas solo sobre assets locales derivados, manifests y colas separadas.
 - No debes reescribir el flujo base del uploader.
 
 Tu objetivo:
 - revisar el manifest JSON generado por second_pass/local_clip_optimizer.py
 - elegir las mejores ventanas para convertir un video largo en piezas cortas con alta retencion
-- proponer que clips vale la pena renderizar o publicar en una segunda jornada
+- proponer que clips vale la pena renderizar o publicar en videos optimizados
 
 Prioridades:
 1. Hook inmediato. Prefiere clips que entren rapido en tension, curiosidad, conflicto, contraste, promesa, sorpresa o frase fuerte.

@@ -587,6 +587,78 @@ con ruido tipo "sal y pimienta" y manchas de fotocopia. Extraer texto y exportar
   - el monitor deja de limpiar toda la pantalla en cada ciclo
   - se reduce el parpadeo visible en PowerShell / Windows Terminal
 
+## Sesion 33 - Revision operativa de Meta y relanzamiento de YouTube (Codex, 2026-04-10)
+
+- El usuario pidio:
+  - ubicar el archivo que programa publicaciones futuras en Meta
+  - identificar de donde salen las rutas de la carpeta fuente
+  - contar cuantas publicaciones quedaron programadas el 2026-04-09
+  - relanzar `youtube_uploader`
+- Se verifico el flujo de Meta:
+  - el scheduler de fechas futuras sigue siendo `schedule_jornada1_meta.py`
+  - las fechas programadas se construyen con `build_slot_payload(...)`
+  - las rutas fuente no estan hardcodeadas en el scheduler; llegan desde `pendientes_posts.json` / `pendientes_reels.json`, que a su vez nacen del clasificador ejecutado con una carpeta objetivo
+- Hallazgo de Meta del 2026-04-09:
+  - hubo `28` confirmaciones de Facebook como programado
+  - equivalen a `25` archivos unicos, porque `20260310_181709.mp4` y `20260310_185221.mp4` tuvieron reintentos duplicados
+  - la tanda unica efectiva quedo programada desde `2026-04-14` hasta `2026-05-08`
+- Se relanzo `youtube_uploader` el 2026-04-10:
+  - proceso `uploader.py` activo otra vez
+  - ultimo arranque confirmado en `uploader.log` a las `09:37:18` hora Bogota
+  - archivo en curso: `20260201_200546.mp4`
+  - progreso verificado en log: al menos `61%` al ultimo corte revisado
+
+## Sesion 34 - Limpieza local de archivos ya programados en Meta (Codex, 2026-04-10)
+
+- El usuario pidio despejar `C:\Users\ZN-\Documents\ADM\Carpeta 1\videos subidos exitosamente`
+  de los archivos que ya quedaron programados en Facebook para fechas futuras.
+- Se creo la carpeta destino:
+  - `C:\Users\ZN-\Documents\ADM\Carpeta 1\ya_subidos_meta`
+- Se movieron `25` archivos ya programados en Meta desde:
+  - `C:\Users\ZN-\Documents\ADM\Carpeta 1\videos subidos exitosamente`
+  hacia:
+  - `C:\Users\ZN-\Documents\ADM\Carpeta 1\ya_subidos_meta`
+- Validacion:
+  - `25` movidos
+  - `0` faltantes del listado solicitado por el usuario
+
+## Sesion 35 - Verificacion de 5 archivos ya despejados de la fuente Meta (Codex, 2026-04-10)
+
+- El usuario pidio quitar tambien `5` archivos adicionales que ya habian sido
+  detectados anteriormente como existentes en remoto para Meta.
+- Se verifico su ubicacion actual:
+  - `20260310_185649.mp4`
+  - `20260201_191557.mp4`
+  - `20260310_190454.mp4`
+  - `20260310_183619.mp4`
+  - `20260302_190317.mp4`
+- Resultado:
+  - ya no estaban en `C:\Users\ZN-\Documents\ADM\Carpeta 1\videos subidos exitosamente`
+  - ya estaban resguardados en `C:\Users\ZN-\Documents\ADM\Carpeta 1\ya_subidos_fb_ig`
+- Verificacion operativa:
+  - tambien quedaron fuera de `pendientes_posts.json`
+  - tambien quedaron fuera de `pendientes_reels.json`
+  - tampoco siguen como pendientes en `meta_calendar.json`
+- Conclusion:
+  - no hacia falta mover nada adicional para despejar la carpeta fuente de Meta
+  - se conservaron en `ya_subidos_fb_ig` para no perder la distincion de que ya
+    estaban identificados como subidos en Facebook e Instagram
+
+## Sesion 36 - Unificacion de la convención operativa de Meta (Codex, 2026-04-10)
+
+- El usuario pidio que la frase `sube videos a Meta` apuntara al flujo
+  programado vigente de Meta y que lo que antes se llamaba `segunda jornada`
+  pasara a nombrarse `videos optimizados`.
+- Se actualizo la documentacion de `meta_uploader/` y `docs/` para dejar como
+  entrypoint humano recomendado `schedule_jornada1_supervisor.py`.
+- Se dejo una nota local en la carpeta de videos fuente:
+  - `C:\Users\ZN-\Documents\ADM\Carpeta 1\videos subidos exitosamente\NOTA_META_FLUJO_DIARIO.txt`
+- La nota aclara:
+  - `run_jornada1_normal.py` construye/rehidrata el calendario
+  - `meta_uploader.py` es la capa de subida de bajo nivel
+  - `second_pass/` sigue existiendo tecnicamente, pero la documentacion ya usa
+    `videos optimizados`
+
 ## Sesion 33 - Correccion del flooding del monitor (Codex, 2026-04-09)
 
 - El usuario reporto flooding despues del cambio a VT sequences.

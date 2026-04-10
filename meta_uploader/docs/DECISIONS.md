@@ -135,17 +135,18 @@
   subida normal. Mantener la jornada 1 como un runner propio evita seguir
   mezclando scripts de prueba con operacion real, permite ordenar la cola por
   dias/fechas y deja trazabilidad local del estado del batch sin tocar los
-  videos originales ni depender de la jornada 2.
+  videos originales ni depender de los videos optimizados.
 
-## D18: Mantener la promocion de reels optimizados bajo opt-in explicito
-- **Decision:** usar la segunda jornada para derivar clips `shared_reel` e
-  `instagram_story` en `second_pass/queues/`, y solo fusionar esos derivados
-  dentro de `pendientes_reels.json` cuando el operador lo pida de forma
-  explicita con `--sync-main-reels-queue`.
-- **Razon:** la jornada 1 y la jornada 2 deben mantenerse desacopladas. La
-  segunda jornada existe para "hacer encajar" el material crudo en los carriles
-  `FB Reel + IG Reel` e `IG Story`, pero no debe contaminar la cola principal
-  de produccion hasta que el operador decida que esos derivados ya estan listos.
+## D18: Mantener la promocion de videos optimizados bajo opt-in explicito
+- **Decision:** usar el carril de videos optimizados para derivar clips
+  `shared_reel` e `instagram_story` en `second_pass/queues/`, y solo fusionar
+  esos derivados dentro de `pendientes_reels.json` cuando el operador lo pida
+  de forma explicita con `--sync-main-reels-queue`.
+- **Razon:** la jornada 1 y los videos optimizados deben mantenerse
+  desacoplados. Este carril existe para "hacer encajar" el material crudo en
+  los carriles `FB Reel + IG Reel` e `IG Story`, pero no debe contaminar la
+  cola principal de produccion hasta que el operador decida que esos derivados
+  ya estan listos.
 
 ## D19: Dejar YOLO como laboratorio separado antes de cualquier integracion
 - **Decision:** encapsular el reencuadre inteligente inspirado en
@@ -154,7 +155,7 @@
 - **Razon:** el usuario quiere probar primero si el enfoque aporta valor real.
   Mantenerlo como laboratorio reduce riesgo, evita meter dependencias pesadas
   en el flujo estable y permite comparar resultados antes de decidir una
-  integracion en la segunda jornada.
+  integracion en videos optimizados.
 
 ## D20: Subir el chunk objetivo de Facebook y reutilizar conexiones
 - **Decision:** cambiar el carril `Facebook Post/Reel` para usar sesion HTTP
@@ -216,3 +217,11 @@
   `1882074735828642` y `2143750206382044` porque hubo publicaciones reales en
   distintos intentos del runner. El calendario local por si solo no basta para
   deduplicar despues de caidas o confirmaciones tardias de Meta.
+
+## D26: Unificar el lenguaje humano de Meta
+- **Decision:** cuando el usuario diga "sube videos a Meta", el entrypoint
+  humano recomendado debe ser `schedule_jornada1_supervisor.py`, mientras
+  `run_jornada1_normal.py` queda como constructor/runner base y
+  `meta_uploader.py` como cliente de bajo nivel.
+- **Razon:** esta separacion evita confusion entre la capa de orquestacion y la
+  capa de transporte, y deja un solo comando mental para el operador.

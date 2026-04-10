@@ -46,3 +46,13 @@ canal.
 - Consecuencia: si cambian los formatos de `meta_uploader.log`,
   `meta_uploader_facebook.log`, `meta_uploader_instagram.log` o `uploader.log`,
   tambien debe actualizarse el monitor para no romper la observabilidad.
+
+## 2026-04-10: Unificar la convención de Meta
+- Contexto: el usuario decidio que "sube videos a Meta" debe apuntar al flujo
+  programado vigente, y que el carril previo de Meta pase a llamarse
+  "videos optimizados".
+- Decision: documentar `meta_uploader/schedule_jornada1_supervisor.py` como
+  entrypoint humano recomendado para Meta, dejando `run_jornada1_normal.py`
+  como constructor/runner base y `meta_uploader.py` como capa de subida.
+- Consecuencia: los docs del repo deben usar "videos optimizados" para el
+  carril `second_pass/`, aunque el folder tecnico siga existiendo por ahora.

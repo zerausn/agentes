@@ -3,6 +3,16 @@
 Este subproyecto automatiza publicaciones de video hacia Facebook e Instagram
 usando APIs oficiales de Meta.
 
+## Convencion operativa
+
+- Si el usuario dice `sube videos a Meta`, el entrypoint humano recomendado es
+  `schedule_jornada1_supervisor.py`.
+- El nombre operativo nuevo es `videos optimizados`. El directorio interno
+  `second_pass/` puede seguir existiendo por ahora, pero la documentacion ya
+  debe hablar de `videos optimizados`.
+- `run_jornada1_normal.py` sigue siendo el constructor/runner del calendario
+  base, y `meta_uploader.py` sigue siendo la capa de subida de bajo nivel.
+
 ## Estado
 
 En desarrollo activo. Ya existen scripts de clasificacion, diagnostico, subida
@@ -55,9 +65,9 @@ generadas ni videos transcodificados.
 - `test_batch_upload.py` y `test_batch_upload_v2.py`: scripts manuales con opt-in explicito
 - `test_single_scheduled.py`: sonda manual de un solo asset pesado para probar formatos activos y dejar evidencia estructurada local
 - `run_jornada1_normal.py`: runner operativo de jornada 1 para videos crudos. Genera `meta_calendar.json` por dias, prioriza lo mas pesado primero dentro de cada fecha, ejecuta `FB Reel + IG Reel` en el carril compartido, `FB Post + IG Feed` para el resto, intenta `IG Story` solo cuando el asset vertical pasa una politica conservadora y deja `Facebook Stories` como salto explicito por soporte no versionado.
-- `second_pass/prepare_second_jornada_meta.py`: prepara derivados de segunda jornada desde colas crudas, acumula colas `reel/story` optimizadas y puede promocionar esos reels a `pendientes_reels.json` solo con opt-in explicito.
+- `second_pass/prepare_second_jornada_meta.py`: prepara derivados de videos optimizados desde colas crudas, acumula colas `reel/story` optimizadas y puede promocionar esos reels a `pendientes_reels.json` solo con opt-in explicito.
 - `second_pass/experimental_yolo_reframer.py`: herramienta aparte para probar reencuadre inteligente 9:16 con YOLO antes de integrarlo al clipping real.
-- `second_pass/transcode_instagram_api_safe.py`: genera una version full-length compatible con la API de Instagram, usando el maximo ancho/bitrate/tamano razonable dentro de los limites oficiales para segunda jornada.
+- `second_pass/transcode_instagram_api_safe.py`: genera una version full-length compatible con la API de Instagram, usando el maximo ancho/bitrate/tamano razonable dentro de los limites oficiales para videos optimizados.
 
 ## Jornada 1
 
@@ -75,6 +85,10 @@ $env:META_ENABLE_UPLOAD = "1"
 python run_jornada1_supervisor.py --days 7 --post-start-index 0 --reel-start-index 0
 ```
 
+Este es el punto de entrada recomendado cuando quieres que la IA o un operador
+humano "suba videos a Meta" sin tener que decidir manualmente si usar el runner
+base o la capa de supervision.
+
 Notas:
 
 - Usa siempre videos crudos; no toca originales ni depende de `second_pass/`.
@@ -87,7 +101,8 @@ Notas:
 - `Facebook Stories` sigue fuera del flujo automatizado actual.
 - El carril `Facebook Post` ahora arranca con chunk mayor y reduce temporalmente el chunk si detecta fallos transitorios.
 - El logging operativo se separa en tres archivos locales: `meta_uploader.log` (maestro), `meta_uploader_facebook.log` y `meta_uploader_instagram.log`.
-- El runner normal ahora hace preflight oficial de Instagram sobre los crudos. Si un asset viola limites de `REELS/share_to_feed` o `STORIES` (por ejemplo peso, ancho, bitrate o duracion), se omite el upload a IG en jornada 1 y se marca para segunda jornada en lugar de quemar la cola con un `ProcessingFailedError`.
+- El runner normal ahora hace preflight oficial de Instagram sobre los crudos. Si un asset viola limites de `REELS/share_to_feed` o `STORIES` (por ejemplo peso, ancho, bitrate o duracion), se omite el upload a IG en jornada 1 y se marca para videos optimizados en lugar de quemar la cola con un `ProcessingFailedError`.
+- El carril de `videos optimizados` sigue separado del runner base y vive en `second_pass/` mientras se estabiliza su nomenclatura y su flujo de produccion.
 
 ## Documentacion publica para App Review
 

@@ -16,6 +16,14 @@ Este repo no es un solo producto ejecutable. Funciona como contenedor de:
 - `youtube_uploader/`: subproyecto funcional de YouTube con contexto propio
 - `meta_uploader/`: subproyecto funcional de Meta en desarrollo
 
+## Convenciones operativas
+
+- Cuando el usuario diga "sube videos a Meta", el entrypoint humano
+  recomendado es `meta_uploader/schedule_jornada1_supervisor.py`.
+- El carril previo de Meta ahora debe nombrarse en la documentacion como
+  "videos optimizados", aunque el directorio tecnico `second_pass/` siga
+  existiendo por compatibilidad.
+
 ## Regla de contexto
 
 El contexto del repo raiz no debe eclipsar a un subproyecto con memoria local.
