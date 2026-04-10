@@ -5,9 +5,9 @@ Esta guía centraliza el conocimiento operativo para mantener el sistema de subi
 ## 🏗️ Arquitectura del Sistema
 
 El sistema se compone de tres pilares que deben correr de forma independiente:
-1. **YouTube Uploader (`uploader.py`)**: Gestiona la cola de YouTube.
-2. **Sube videos a Meta / Agente Diario (`START_AGENT_META.ps1`)**: Gestiona la limpieza diaria, la clasificación y el calendario de 400 días usando `schedule_jornada1_supervisor.py`. (El proceso secundario para videos descartados se conoce como "Sube videos optimizados").
-3. **Conserje Automático (`periodic_mover.py`)**: Limpia archivos bloqueados y organiza los videos finalizados cada 10 minutos.
+1. **YouTube Uploader (`START_AGENT_youtube.ps1`)**: Gestiona la cola y la purga diaria de su base de datos de manera automática, asegurando procesar cada día en limpio de pesados a ligeros usando `uploader.py` y el escáner.
+2. **Sube videos a Meta / Agente Diario (`START_AGENT_META.ps1`)**: Gestiona la limpieza diaria, la clasificación y el calendario de 400 días (Empalmando hacia adelante según el último de Meta) usando `schedule_jornada1_supervisor.py`.
+3. **Conserje Automático (`periodic_mover.py`)**: Ya fusionado orgánicamente dentro de cada script principal para liberar carpetas.
 
 
 ---

@@ -16,6 +16,9 @@ while ($true) {
     Write-Host "Paso 1: Limpiando tu carpeta externa (Moviendo videos ya subidos)..." -ForegroundColor Yellow
     & $VENV_PYTHON "youtube_uploader\periodic_mover.py" --run-once
 
+    Write-Host "Paso 1.5: Purgando memoria vieja para garantizar escaneo limpio y orden por peso..." -ForegroundColor Yellow
+    Remove-Item -Path "youtube_uploader\scanned_videos.json" -ErrorAction SilentlyContinue
+
     Write-Host "Paso 2: Escaneando en busca de nuevos videos..." -ForegroundColor Yellow
     & $VENV_PYTHON "youtube_uploader\video_scanner.py"
 
