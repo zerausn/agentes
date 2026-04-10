@@ -4,11 +4,22 @@ Esta guía centraliza el conocimiento operativo para mantener el sistema de subi
 
 ## 🏗️ Arquitectura del Sistema
 
-El sistema se compone de tres pilares que deben correr de forma independiente:
-1. **YouTube Uploader (`START_AGENT_youtube.ps1`)**: Gestiona la cola y la purga diaria de su base de datos de manera automática, asegurando procesar cada día en limpio de pesados a ligeros usando `uploader.py` y el escáner.
-2. **Sube videos a Meta / Agente Diario (`START_AGENT_META.ps1`)**: Gestiona la limpieza diaria, la clasificación y el calendario de 400 días (Empalmando hacia adelante según el último de Meta) usando `schedule_jornada1_supervisor.py`.
-3. **Conserje Automático (`periodic_mover.py`)**: Ya fusionado orgánicamente dentro de cada script principal para liberar carpetas.
+El sistema se compone de dos agentes diarios que deben correr preferiblemente mediante el ejecutable `Iniciar Agentes Meta y YouTube.bat`:
 
+1. **Agente YouTube (`START_AGENT_youtube.ps1`)**:
+   - Actúa sobre la bandeja principal (`C:\Users\ZN-\Documents\ADM\Carpeta 1`).
+   - Purga diariamente la caché para mantener el orden (los pesados primero).
+   - Sube videos, los programa, y descarga el archivo superado a `videos subidos exitosamente`.
+
+2. **Agente Meta (`START_AGENT_META.ps1`)**:
+   - Actúa como el segundo eslabón de la cascada. Toma los archivos procesados por YouTube de `videos subidos exitosamente`.
+   - Limpia, sube a Facebook e Instagram, los amarra a la fecha máxima programada, y finalmente los mueve al baúl final: `ya_subidos_fb_ig`.
+
+### 🌊 El Pipeline en Cascada (Tu única tarea)
+Gracias a estos agentes infinitos, **tu única labor diaria es arrastrar tus videos a `C:\Users\ZN-\Documents\ADM\Carpeta 1`**. El sistema hará lo siguiente:
+1. YouTube los lee de allí -> los sube -> los mueve a `videos subidos exitosamente`.
+2. Meta se despierta -> lee de `videos subidos exitosamente` -> los sube -> los entierra en `ya_subidos_fb_ig`.
+3. Todas las subcarpetas del descarte están **estrictamente excluidas**, impidiendo fugas o repeticiones de envíos a la nube.
 
 ---
 
