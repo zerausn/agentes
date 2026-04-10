@@ -16,7 +16,7 @@ except ImportError:
     exit(1)
 
 BASE_DIR = Path(__file__).resolve().parent
-EXTERNAL_SRC = Path(r"C:\Users\ZN-\Documents\ADM\Carpeta 1")
+EXTERNAL_SRC = Path(r"C:\Users\ZN-\Documents\ADM\Carpeta 1\videos subidos exitosamente")
 EXTERNAL_DST = Path(r"C:\Users\ZN-\Documents\ADM\Carpeta 1\ya_subidos_fb_ig")
 
 def reconcile_folder(folder_path, label):
