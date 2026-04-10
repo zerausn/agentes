@@ -38,10 +38,10 @@ FINAL_LANE_STATUSES = {
     "scheduled_with_ig_skip",
 }
 SCHEDULE_LABEL_TIMES = {
-    "facebook_post": (12, 0),
-    "instagram_feed": (12, 5),
-    "facebook_reel": (18, 0),
-    "instagram_reel": (18, 5),
+    "facebook_post": (18, 30),
+    "instagram_feed": (18, 35),
+    "facebook_reel": (18, 30),
+    "instagram_reel": (18, 35),
     "instagram_story": (20, 0),
 }
 FB_REMOTE_GUARD_PAGE_SIZE = 25
@@ -62,6 +62,15 @@ def build_slot_payload(publish_date, label):
         microsecond=0,
         tzinfo=BOGOTA_TZ,
     )
+    # Salvavidas: si la hora ya pasó (o falta menos de 15 min), avanzar al día siguiente
+    now_local = datetime.now(BOGOTA_TZ)
+    from datetime import timedelta
+    if slot_local <= now_local + timedelta(minutes=15):
+        slot_local = slot_local + timedelta(days=1)
+        logging.info(
+            "Slot de '%s' para '%s' ya pasó o es muy próximo. Avanzando al día siguiente: %s",
+            label, publish_date, slot_local.strftime("%Y-%m-%d %H:%M %Z")
+        )
     slot_utc = slot_local.astimezone(timezone.utc)
     return {
         "label": label,
