@@ -558,6 +558,30 @@ def find_existing_instagram_media_by_caption_marker(marker, *, page_size=25, max
     return None
 
 
+def get_latest_scheduled_facebook_date():
+    """
+    Consulta la API de Graph para obtener el timestamp ('scheduled_publish_time')
+    del post programado más lejano en el tiempo de la página actual.
+    Retorna un timestamp entero (ej. 1778259600) o None si no hay nada programado.
+    """
+    if not FB_PAGE_ID or not META_FB_PAGE_TOKEN:
+        return None
+
+    max_time = 0
+    for item in _iter_graph_collection(
+        f"{FB_PAGE_ID}/scheduled_posts",
+        access_token=META_FB_PAGE_TOKEN,
+        fields="id,scheduled_publish_time",
+        page_size=50,
+        max_pages=10
+    ):
+        st_time = item.get("scheduled_publish_time")
+        if st_time:
+            max_time = max(max_time, int(st_time))
+
+    return max_time if max_time > 0 else None
+
+
 def _get_http_session():
     session = getattr(_HTTP_THREAD_LOCAL, "session", None)
     if session is None:

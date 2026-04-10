@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 
+from meta_uploader import get_latest_scheduled_facebook_date
+
 BASE_DIR = Path(__file__).resolve().parent
 LOG_FILE = BASE_DIR / "calendar.log"
 REELS_FILE = BASE_DIR / "pendientes_reels.json"
@@ -28,7 +30,16 @@ def load_queue(path):
 
 def generate_calendar(start_date=None):
     if start_date is None:
-        start_date = datetime.now()
+        latest_timestamp = get_latest_scheduled_facebook_date()
+        if latest_timestamp:
+            fb_date = datetime.fromtimestamp(latest_timestamp)
+            start_date = fb_date + timedelta(days=1)
+            logging.info("Meta tiene post programado maximo el %s. Encadenando nuevo calendario a partir de: %s", 
+                         fb_date.strftime("%Y-%m-%d"), start_date.strftime("%Y-%m-%d"))
+        else:
+            start_date = datetime.now()
+            logging.info("Meta no tiene contenidos programados. Iniciando desde hoy: %s", start_date.strftime("%Y-%m-%d"))
+
 
     reels = load_queue(REELS_FILE)
     posts = load_queue(POSTS_FILE)
