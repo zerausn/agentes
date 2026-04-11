@@ -52,31 +52,44 @@ def generate_calendar(start_date=None):
 
     calendar = []
     
-    # Mapeamos cada item a un slot ciclico
+    # Mapeamos cada item a un slot diferenciado
+    # Slot 0 = 07:00:00 (Reels)
+    # Slot 1 = 18:30:00 (Feed)
     for i in range(max_items):
         day_offset = i % HORIZON_DAYS
-        slot_index = (i // HORIZON_DAYS) % len(GOLD_SLOTS)
         
         current_date = start_date + timedelta(days=day_offset)
         date_str = current_date.strftime("%Y-%m-%d")
-        time_str = GOLD_SLOTS[slot_index]
         
-        # Cada item tiene su propia entrada para no mezclar en el mismo slot
-        # Pero el usuario menciono "Video 1 Slot A, Video 2 Slot B..."
-        # Asi que distribuiremos Reels y Posts en los mismos slots.
+        reel_time_str = GOLD_SLOTS[0]
+        post_time_str = GOLD_SLOTS[1]
         
+        # Inteligencia anti-publicacion inmediata: 
+        # Si el slot de hoy ya paso, lo movemos al dia siguiente (o al proximo disponible)
+        now = datetime.now()
+        
+        def adjust_if_past(d_str, t_str):
+            dt = datetime.strptime(f"{d_str}T{t_str}", "%Y-%m-%dT%H:%M:%S")
+            if dt < now:
+                # Si ya paso hoy, lo movemos al dia 30 (fuera de la ventana critica) o simplemente +1 dia
+                dt += timedelta(days=1)
+            return dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+        entry_reel_time = adjust_if_past(date_str, reel_time_str)
+        entry_post_time = adjust_if_past(date_str, post_time_str)
+
         entry = {
             "fecha": date_str,
             "summary": {"status": "pending"},
             "reel": reels[i] if i < total_reels else None,
-            "reel_time": f"{date_str}T{time_str}",
+            "reel_time": entry_reel_time,
             "post": posts[i] if i < total_posts else None,
-            "post_time": f"{date_str}T{time_str}",
+            "post_time": entry_post_time,
         }
         calendar.append(entry)
 
     # Ordenar por fecha y hora para que el scheduler vaya en orden cronologico
-    calendar.sort(key=lambda x: (x["fecha"], x["reel_time"] if x["reel"] else x["post_time"]))
+    calendar.sort(key=lambda x: (x["fecha"], x["post_time"]))
 
     with open(CALENDAR_FILE, "w", encoding="utf-8") as handle:
         json.dump(calendar, handle, indent=2, ensure_ascii=False)

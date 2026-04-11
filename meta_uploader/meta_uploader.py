@@ -1441,7 +1441,11 @@ def _finalize_facebook_upload(endpoint, payload, video_id, *, allow_scheduled=Fa
             _set_operation_status("accepted_without_confirmation", "facebook_finish", str(video_id), transient=False)
             return video_id
 
-        logging.info("Facebook confirmo la publicacion del video %s.", video_id)
+        success_msg = f"Facebook confirmo la publicacion del video {video_id}."
+        if payload.get("file_name"):
+            success_msg = f"Facebook confirmo la publicacion del video {video_id} para {payload['file_name']}."
+            
+        logging.info(success_msg)
         _set_operation_status("success", "facebook_finish", str(video_id), transient=False)
         return video_id
 
@@ -1590,7 +1594,7 @@ def upload_fb_video_standard(video_path, description, scheduled_publish_time=Non
                 file_path.name,
             )
             _delete_fb_upload_checkpoint(page_endpoint, str(file_path))
-            return upload_fb_video_standard(video_path, description, _allow_fresh_retry=False)
+            return upload_fb_video_standard(video_path, description, scheduled_publish_time=scheduled_publish_time, _allow_fresh_retry=False, is_draft=is_draft)
         return None
 
     result = _finish_fb_upload(
@@ -1701,7 +1705,7 @@ def upload_fb_file_handle(video_path, description, scheduled_publish_time=None, 
         logging.warning("File handle aceptado para %s, pero sin confirmacion final aun.", video_id)
         return str(video_id)
 
-    logging.info("Facebook confirmo el video publicado via file handle: %s", video_id)
+    logging.info("Facebook confirmo el video %s publicado via file handle para %s.", video_id, file_path.name)
     return str(video_id)
 
 
@@ -1744,9 +1748,10 @@ def republish_draft_to_scheduled(video_id, scheduled_unix_time):
         return False
 
 
-def get_facebook_page_feed(limit=10):
+def get_facebook_page_feed(limit=10, after=None):
     """
     Obtiene las publicaciones publicadas mas recientes de la pagina de Facebook.
+    Soporta paginacion mediante el cursor 'after'.
     """
     if not FB_PAGE_ID or not META_FB_PAGE_TOKEN:
         logging.error("Faltan FB_PAGE_ID o META_FB_PAGE_TOKEN para leer el feed.")
@@ -1758,6 +1763,9 @@ def get_facebook_page_feed(limit=10):
         "limit": limit,
         "access_token": META_FB_PAGE_TOKEN
     }
+    if after:
+        params["after"] = after
+        
     return _request_json("GET", url, params=params)
 
 
