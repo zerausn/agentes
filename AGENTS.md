@@ -8,11 +8,13 @@ Antes de cambiar archivos:
 - lee `AI.md`
 - lee `README.md`
 - revisa `docs/DECISIONS.md` y `docs/PROGRESS.md`
-- si vas a trabajar en `agentes/youtube_uploader`, cambia al contexto local de
-  ese subproyecto porque es mas especifico que este archivo
+- si vas a trabajar en `youtube_uploader`, cambia al contexto local de ese
+  subproyecto porque es mas especifico que este archivo
 
 ## Reglas operativas
 
 - No subas secretos ni archivos locales.
 - No cambies decisiones documentadas sin registrar el motivo.
 - Si dejas trabajo complejo a medias, actualiza `docs/HANDOVER.md`.
+- Si cambias los formatos de salida de `meta_uploader` o `youtube_uploader`,
+  ajusta tambien `scripts/monitor_realtime.py` para que el monitoreo no se rompa.

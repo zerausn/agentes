@@ -1,0 +1,32 @@
+# Credenciales y tokens
+credentials/
+*.json
+!scanned_videos.json
+!config.example.json
+
+# Logs
+*.log
+__pycache__/
+
+# Python env
+venv/
+.env
+
+# AI Memory
+AI.local.md
+MEMORY.md
+
+# Test artifacts
+tests/.tmp/
+
+# Second pass artifacts
+second_pass/manifests/
+second_pass/normalized/
+second_pass/optimized_videos/
+second_pass/queues/
+
+# Local tools
+tools/
+
+*.out
+*.err

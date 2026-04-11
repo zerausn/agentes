@@ -3,6 +3,10 @@
 !.env.example
 *.secret
 *.secrets
+*.log
+*.pyc
+*.pyo
+__pycache__/
 secrets/
 local/
 tmp/
