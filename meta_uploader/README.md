@@ -104,6 +104,27 @@ Notas:
 - El runner normal ahora hace preflight oficial de Instagram sobre los crudos. Si un asset viola limites de `REELS/share_to_feed` o `STORIES` (por ejemplo peso, ancho, bitrate o duracion), se omite el upload a IG en jornada 1 y se marca para videos optimizados en lugar de quemar la cola con un `ProcessingFailedError`.
 - El carril de `videos optimizados` sigue separado del runner base y vive en `second_pass/` mientras se estabiliza su nomenclatura y su flujo de produccion.
 
+## Innovaciones Estratégicas (Versión 4.5+)
+
+### 1. Agente Vigía Meta 3.2
+El **Vigía** es un sistema autónomo de reconciliación que detecta discrepancias entre Facebook e Instagram.
+- **Escaneo Profundo**: Implementa paginación por cursores (`after`) para navegar por el historial completo de la página, no solo los últimos posts.
+- **Polling Adaptativo**: El bot ajusta su frecuencia de chequeo:
+    - **Modo Backlog (10 min)**: Goteo rápido cuando detecta trabajo pendiente.
+    - **Modo Reposo (24 horas)**: Cuando el sistema está al día.
+- **Rescate Automático**: Descarga y re-publica contenido huérfano de FB hacia IG.
+
+### 2. Estrategia "Doble Impacto" (Facebook Dual)
+Para maximizar el alcance orgánico, el sistema ahora realiza dos acciones por cada asset:
+1. **Reel Inmediato**: Crea un clip nativo de 60s y lo publica al instante para capturar tráfico viral.
+2. **Video Full Programado**: Agenda el video completo en un **Gold Slot** futuro para retención de audiencia.
+
+### 3. Apilamiento Cíclico Concentrado
+Diseñado para vaciar discos duros masivos (ej: 152+ videos) sin violar las políticas de programación de Meta.
+- **Ventana Estricta**: Todo se programa entre el día +1 y el día +28 (Límite de seguridad).
+- **Concentración de Oro**: Solo usa los slots de **07:00 AM** (Global) y **18:30 PM** (Local Prime).
+- **Lógica de Laps (Vueltas)**: Si hay más videos que días disponibles, el bot vuelve a empezar en el Día 1 pero con un desfase de 1 minuto (07:01, 18:31, etc.), permitiendo "apilar" capas infinitas de contenido en las mejores horas.
+
 ## Documentacion publica para App Review
 
 - [`docs/PRIVACY_POLICY.md`](./docs/PRIVACY_POLICY.md)
