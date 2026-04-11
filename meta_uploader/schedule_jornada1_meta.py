@@ -12,6 +12,7 @@ from meta_uploader import (
     upload_fb_reel,
     upload_fb_video_standard,
     upload_fb_file_handle,
+    republish_draft_to_scheduled,
 )
 from run_jornada1_normal import (
     ACTIVE_STATUSES,
@@ -53,31 +54,33 @@ IG_REMOTE_GUARD_MAX_PAGES = 2
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
 
-def build_slot_payload(publish_date, label):
-    hour, minute = SCHEDULE_LABEL_TIMES[label]
-    slot_local = datetime.strptime(publish_date, "%Y-%m-%d").replace(
-        hour=hour,
-        minute=minute,
-        second=0,
-        microsecond=0,
-        tzinfo=BOGOTA_TZ,
-    )
-    # Salvavidas: si la hora ya pasó (o falta menos de 15 min), avanzar al día siguiente
+def build_slot_payload(iso_time_str, label):
+    """
+    Convierte un tiempo ISO del calendario en un slot de programacion UTC para Meta.
+    """
+    # iso_time_str formato: 2026-04-11T07:00:00
+    slot_local = datetime.fromisoformat(iso_time_str).replace(tzinfo=BOGOTA_TZ)
+    
+    # Salvavidas: si la hora ya paso (o falta menos de 15 min), avanzar al dia siguiente
     now_local = datetime.now(BOGOTA_TZ)
     from datetime import timedelta
     if slot_local <= now_local + timedelta(minutes=15):
         slot_local = slot_local + timedelta(days=1)
         logging.info(
-            "Slot de '%s' para '%s' ya pasó o es muy próximo. Avanzando al día siguiente: %s",
-            label, publish_date, slot_local.strftime("%Y-%m-%d %H:%M %Z")
+            "Slot de '%s' (%s) ya paso o es muy proximo. Forzando reprogramacion segura.",
+            label, iso_time_str
         )
+    
     slot_utc = slot_local.astimezone(timezone.utc)
+    
     return {
         "label": label,
         "scheduled_local": slot_local.isoformat(),
         "scheduled_utc": slot_utc.isoformat().replace("+00:00", "Z"),
         "scheduled_unix": int(slot_utc.timestamp()),
+        "is_draft": False, # Todo es programado en la boveda de 29 dias
     }
+
 
 
 def build_existing_remote_result(label, remote_item, slot):
@@ -101,13 +104,16 @@ def build_existing_remote_result(label, remote_item, slot):
 
 
 def build_scheduled_remote_result(label, result_id, slot):
+    is_draft = slot.get("is_draft")
+    kind_label = "draft_remote" if is_draft else "scheduled_remote"
+    msg_suffix = " (BORRADOR)" if is_draft else ""
     return {
         "result": str(result_id),
         "scheduled": slot,
         "status": {
-            "kind": "scheduled_remote",
+            "kind": kind_label,
             "phase": "facebook_schedule",
-            "message": f"{result_id} -> {slot['scheduled_local']}",
+            "message": f"{result_id} -> {slot['scheduled_local']}{msg_suffix}",
             "transient": False,
             "watchdog_alerted": False,
         },
@@ -178,12 +184,17 @@ def schedule_platform_pair(day_entry, lane_name, video_info):
     ig_preflight = evaluate_ig_video_preflight(video_info, lane_name)
     summary = {}
 
-    fb_slot = build_slot_payload(publish_date, fb_label)
+    # Leer tiempos exactos del calendario apilado
+    fb_time = day_entry.get(f"{lane_name}_time") or f"{publish_date}T18:30:00"
+    ig_time = day_entry.get(f"instagram_{lane_name}_time") or fb_time
+
+    fb_slot = build_slot_payload(fb_time, fb_label)
+        
     logging.info(
         "Revisando remoto %s para %s antes de programar %s.",
         fb_label,
         video_info["filename"],
-        publish_date,
+        fb_time,
     )
     existing_facebook = find_existing_facebook_video_by_caption_marker(
         caption_marker,
@@ -199,34 +210,38 @@ def schedule_platform_pair(day_entry, lane_name, video_info):
         )
         summary[fb_label] = build_existing_remote_result(fb_label, existing_facebook, fb_slot)
     else:
+        # Flujo estandar: hay que subir a Facebook (Ya no hay borradores, todo es directo)
         if lane_name == "reel":
             fb_result = upload_fb_reel(
                 video_info["path"],
                 caption,
                 scheduled_publish_time=fb_slot["scheduled_unix"],
+                is_draft=False
             )
         else:
             fb_result = upload_fb_video_standard(
                 video_info["path"],
                 caption,
                 scheduled_publish_time=fb_slot["scheduled_unix"],
+                is_draft=False
             )
-            if not fb_result:
-                last_status = get_last_operation_status()
-                fallback_allowed = (
-                    last_status.get("kind") in {"http_400", "request_exception", "finish_not_confirmed"}
-                    and not last_status.get("transient")
+        if not fb_result:
+            last_status = get_last_operation_status()
+            fallback_allowed = (
+                last_status.get("kind") in {"http_400", "request_exception", "finish_not_confirmed"}
+                and not last_status.get("transient")
+            )
+            if fallback_allowed:
+                logging.warning(
+                    "El finish programado chunked no se confirmo para %s. Se intenta fallback por file handle.",
+                    video_info["filename"],
                 )
-                if fallback_allowed:
-                    logging.warning(
-                        "El finish programado chunked no se confirmo para %s. Se intenta fallback por file handle.",
-                        video_info["filename"],
-                    )
-                    fb_result = upload_fb_file_handle(
-                        video_info["path"],
-                        caption,
-                        scheduled_publish_time=fb_slot["scheduled_unix"],
-                    )
+                fb_result = upload_fb_file_handle(
+                    video_info["path"],
+                    caption,
+                    scheduled_publish_time=fb_slot["scheduled_unix"],
+                    is_draft=False
+                )
         if not fb_result:
             return False, {
                 fb_label: {
@@ -237,25 +252,20 @@ def schedule_platform_pair(day_entry, lane_name, video_info):
             }
         summary[fb_label] = build_scheduled_remote_result(fb_label, fb_result, fb_slot)
 
-    if not ig_preflight["compatible"]:
-        reason_text = "; ".join(ig_preflight["reasons"])
-        logging.warning(
-            "Se omite %s para %s en jornada 1: el crudo no cumple specs oficiales de Instagram (%s). "
-            "Se deriva a segunda jornada.",
-            ig_label,
-            video_info["filename"],
-            reason_text,
-        )
-        summary[ig_label] = build_skipped_result("skipped_requires_second_jornada", reason_text)
-        return True, summary
+    # Optimizacion Fast Slice para Instagram si es necesario
+    from meta_uploader import ensure_ig_compatibility
+    optimized_path = video_info["path"]
+    if ig_preflight["compatible"]:
+        optimized_path = ensure_ig_compatibility(video_info["path"])
 
-    ig_slot = build_slot_payload(publish_date, ig_label)
+    ig_slot = build_slot_payload(ig_time, ig_label)
     logging.info(
         "Revisando remoto %s para %s antes de agendar %s.",
         ig_label,
         video_info["filename"],
-        publish_date,
+        ig_time,
     )
+
     existing_instagram = find_existing_instagram_media_by_caption_marker(
         caption_marker,
         page_size=IG_REMOTE_GUARD_PAGE_SIZE,
@@ -292,6 +302,12 @@ def normalize_video_info(info):
 
 def schedule_plan(plan):
     for day_entry in plan:
+        if "summary" not in day_entry:
+            day_entry["summary"] = {"status": "pending"}
+        if "instagram_story" not in day_entry:
+            day_entry["instagram_story"] = {"enabled": False, "status": "skipped_not_story_safe"}
+        if "facebook_story" not in day_entry:
+            day_entry["facebook_story"] = {"enabled": False, "status": "skipped_unsupported"}
         summary_state = day_entry["summary"].get("status")
         if summary_state == "paused_on_failure":
             logging.error(
@@ -388,20 +404,20 @@ def main():
 
     reels = load_queue("reels")
     posts = load_queue("posts")
-    plan = build_plan(
-        reels,
-        posts,
-        reel_start_index=args.reel_start_index,
-        post_start_index=args.post_start_index,
-        days=args.days,
-        start_date=args.start_date,
-        enable_ig_stories=not args.disable_ig_stories,
-    )
-
-    if not args.rebuild_plan:
-        existing_plan = load_existing_calendar()
-        if existing_plan:
-            plan = merge_existing_calendar(plan, existing_plan)
+    existing_plan = load_existing_calendar() if not args.rebuild_plan else None
+    
+    if existing_plan:
+        plan = existing_plan
+    else:
+        plan = build_plan(
+            reels,
+            posts,
+            reel_start_index=args.reel_start_index,
+            post_start_index=args.post_start_index,
+            days=args.days,
+            start_date=args.start_date,
+            enable_ig_stories=not args.disable_ig_stories,
+        )
 
     write_calendar(plan)
     logging.info("Calendario operativo guardado en %s con %s dias.", CALENDAR_FILE.name, len(plan))

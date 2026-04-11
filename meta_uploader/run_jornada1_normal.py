@@ -21,6 +21,7 @@ from meta_uploader import (
     upload_ig_feed_video_resumable,
     upload_ig_reel_resumable,
     upload_ig_story_video_resumable,
+    ensure_ig_compatibility,
 )
 
 
@@ -68,11 +69,26 @@ def load_queue(name):
         return []
 
 
+import time
+
 def write_calendar(plan):
     temp_path = CALENDAR_FILE.with_suffix(f"{CALENDAR_FILE.suffix}.tmp")
     with open(temp_path, "w", encoding="utf-8") as handle:
         json.dump(plan, handle, indent=2, ensure_ascii=False)
-    os.replace(temp_path, CALENDAR_FILE)
+    
+    # Retry loop for Windows file locking
+    for i in range(5):
+        try:
+            if CALENDAR_FILE.exists():
+                os.remove(CALENDAR_FILE)
+            os.replace(temp_path, CALENDAR_FILE)
+            return
+        except PermissionError:
+            if i == 4: raise
+            time.sleep(0.5)
+        except Exception:
+            if i == 4: raise
+            time.sleep(0.5)
 
 
 def load_existing_calendar():
@@ -307,7 +323,7 @@ def evaluate_ig_video_preflight(video_info, lane_name):
 
 def build_caption(video_info, lane, publish_date):
     stem = Path(video_info["path"]).stem
-    return f"PW | {publish_date} | {stem}"
+    return f"{stem} #PW"
 
 
 def build_plan(reels, posts, *, reel_start_index, post_start_index, days, start_date, enable_ig_stories):
@@ -471,6 +487,11 @@ def mark_lane_finished(day_entry, lane_name, lane_status, summary):
 
 
 def run_platform_pair(lane_name, video_info, publish_date):
+    # Horarios Gold Slots: 07:00 para Reels, 18:30 para Posts
+    hour, minute = (7, 0) if lane_name == "reel" else (18, 30)
+    scheduled_dt = datetime.strptime(publish_date, "%Y-%m-%d").replace(hour=hour, minute=minute)
+    scheduled_timestamp = int(scheduled_dt.timestamp())
+
     caption = build_caption(video_info, lane_name, publish_date)
     platform_results = {}
     ig_label = "instagram_reel" if lane_name == "reel" else "instagram_feed"
@@ -500,22 +521,28 @@ def run_platform_pair(lane_name, video_info, publish_date):
             )
             platform_results[ig_label] = _build_existing_remote_result(ig_label, existing_instagram)
 
-    if lane_name == "reel":
-        work = {}
-        if fb_label not in platform_results:
-            work[fb_label] = (upload_fb_reel, video_info["path"], caption)
-        if ig_preflight["compatible"] and ig_label not in platform_results:
-            work[ig_label] = (
-                lambda path, text: upload_ig_reel_resumable(path, text, share_to_feed=False),
-                video_info["path"],
-                caption,
-            )
-    else:
-        work = {}
-        if fb_label not in platform_results:
-            work[fb_label] = (upload_fb_video_standard, video_info["path"], caption)
-        if ig_preflight["compatible"] and ig_label not in platform_results:
-            work[ig_label] = (upload_ig_feed_video_resumable, video_info["path"], caption)
+    work = {}
+    
+    # --- LOGICA FACEBOOK DUAL ---
+    if fb_label not in platform_results:
+        # 1. Reel Inmediato (max 60s) para impacto viral
+        logging.info("[%s] Generando Reel inmediato (60s) para Facebook...", fb_label.upper())
+        fb_reel_path = ensure_ig_compatibility(video_info["path"], max_duration=60)
+        work[f"{fb_label}_reel_now"] = (upload_fb_reel, fb_reel_path, caption)
+        
+        # 2. Video Completo Programado (Gold Slot)
+        logging.info("[%s] Programando Video completo para %s @ %sh...", fb_label.upper(), publish_date, hour)
+        work[f"{fb_label}_full_scheduled"] = (upload_fb_video_standard, video_info["path"], caption, scheduled_timestamp)
+
+    # --- LOGICA INSTAGRAM ---
+    if ig_preflight["compatible"] and ig_label not in platform_results:
+        # Aplicamos Deep Clean para asegurar estabilidad en Instagram
+        ig_path = ensure_ig_compatibility(video_info["path"], force_recode=True)
+        work[ig_label] = (
+            lambda path, text: upload_ig_reel_resumable(path, text, share_to_feed=False),
+            ig_path,
+            caption,
+        )
 
     if not ig_preflight["compatible"]:
         reason_text = "; ".join(ig_preflight["reasons"])
@@ -587,13 +614,13 @@ def execute_plan(plan, pause_between_assets=10, max_live_days=1):
                 publish_date,
             )
             return False, "paused_on_failure"
-        if publish_day > today:
+        # Eliminamos el bloqueo de futuro para permitir programacion masiva (Wraparound 29 dias)
+        if (publish_day - today).days > 29:
             logging.info(
-                "Se detiene antes de %s porque aun es futuro frente a %s. Regla activa: 1 publicacion por dia real.",
+                "Se detiene en %s porque supera el limite maximo de programacion de Meta (29 dias).",
                 publish_date,
-                today.isoformat(),
             )
-            return True, "waiting_for_next_day"
+            return True, "max_future_reached"
         if max_live_days is not None and processed_live_days >= max_live_days:
             logging.info(
                 "Se completo el cupo de %s dia(s) en esta corrida. Se detiene para respetar 1 publicacion por dia real.",
@@ -643,6 +670,23 @@ def execute_plan(plan, pause_between_assets=10, max_live_days=1):
             )
             mark_lane_finished(day_entry, lane_name, lane_status, summary)
             write_calendar(plan)
+
+            # --- MONITOR SENTINEL: REPORTE DE ALTA VISIBILIDAD ---
+            if ok:
+                target_info = "Publicado AHORA"
+                # Intentamos extraer el timestamp de programación si existe
+                for res in summary.values():
+                    sch = res.get("scheduled") or res.get("status", {}).get("message")
+                    if isinstance(sch, dict) and sch.get("scheduled_local"):
+                        target_info = f"Programado: {sch['scheduled_local']}"
+                        break
+                    elif isinstance(sch, str) and " -> " in sch:
+                        # Formato legacy de algunos status messages
+                        target_info = f"Programado: {sch.split(' -> ')[1]}"
+                        break
+                
+                print(f"\n[MONITOR] \033[92mÚLTIMA SUBIDA EXITOSA\033[0m: {video_info['filename']} -> {target_info}\n")
+            
             if not ok:
                 day_entry["summary"]["status"] = "paused_on_failure"
                 day_entry["summary"]["last_updated_at"] = now_iso()
@@ -690,8 +734,8 @@ def main():
     parser.add_argument(
         "--max-live-days",
         type=int,
-        default=1,
-        help="Maximo de dias reales a ejecutar por corrida. Default: 1 para respetar la regla operativa.",
+        default=29,
+        help="Maximo de dias reales a ejecutar por corrida (Programacion Masiva Segura - Limite 29 dias).",
     )
     parser.add_argument(
         "--disable-ig-stories",

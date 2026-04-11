@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 import requests
+import subprocess
 from requests.adapters import HTTPAdapter
 
 try:
@@ -50,11 +51,30 @@ _LAST_OPERATION_STATUS = {
 _HTTP_THREAD_LOCAL = threading.local()
 
 
+import threading
+import uuid
+
 def _write_json_atomic(path, payload):
-    temp_path = path.with_suffix(f"{path.suffix}.tmp")
-    with open(temp_path, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2, ensure_ascii=False)
-    os.replace(temp_path, path)
+    temp_path = path.with_suffix(f"{path.suffix}.{uuid.uuid4().hex[:8]}.tmp")
+    try:
+        with open(temp_path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, ensure_ascii=False)
+        os.replace(temp_path, path)
+    except PermissionError as e:
+        logging.warning("No se pudo escribir el checkpoint atómico por bloqueo de permisos en %s: %s", temp_path.name, e)
+        # Fallback to direct write just in case
+        try:
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, indent=2, ensure_ascii=False)
+        except Exception:
+            pass
+    except Exception as e:
+        logging.error("Fallo inesperado al escribir json atómico: %s", e)
+        try:
+            if temp_path.exists():
+                temp_path.unlink()
+        except:
+            pass
 
 
 def _fb_checkpoint_path(page_endpoint, file_path):
@@ -1006,10 +1026,13 @@ def _create_ig_video_container(media_type, caption="", share_to_feed=None):
         "upload_type": "resumable",
         "access_token": IG_ACCESS_TOKEN,
     }
-    if share_to_feed is not None:
+    # Estandarizacion API 2026: Tanto Feed como Reels usan el tipo REELS.
+    if media_type == "REELS" and share_to_feed is not None:
         payload["share_to_feed"] = "true" if share_to_feed else "false"
+    
     if caption:
         payload["caption"] = caption
+
 
     result = _request_json("POST", graph_url(f"{IG_USER_ID}/media"), data=payload)
     if not result:
@@ -1427,7 +1450,7 @@ def _finalize_facebook_upload(endpoint, payload, video_id, *, allow_scheduled=Fa
     return None
 
 
-def upload_fb_reel(video_path, caption, scheduled_publish_time=None, _allow_fresh_retry=True):
+def upload_fb_reel(video_path, caption, scheduled_publish_time=None, _allow_fresh_retry=True, is_draft=False):
     """
     Flujo asincrono de Facebook Reels:
     1. start
@@ -1437,6 +1460,9 @@ def upload_fb_reel(video_path, caption, scheduled_publish_time=None, _allow_fres
     """
     if not _validate_facebook_credentials():
         return None
+
+    if is_draft:
+        scheduled_publish_time = None
 
     file_path = Path(video_path)
     if not file_path.exists():
@@ -1493,20 +1519,30 @@ def upload_fb_reel(video_path, caption, scheduled_publish_time=None, _allow_fres
         str(video_id),
         caption,
         str(upload_session_id),
-        publish=not bool(scheduled_publish_time),
+        publish=not is_draft,
         scheduled_publish_time=scheduled_publish_time,
     )
     if result:
         _delete_fb_upload_checkpoint(page_endpoint, str(file_path))
+    elif checkpoint and _allow_fresh_retry and not get_last_operation_status().get("transient"):
+        logging.warning(
+            "Finish rechazo la sesion de Facebook Reel reanudada de %s. Se limpia el checkpoint caducado y se reinicia.",
+            file_path.name,
+        )
+        _delete_fb_upload_checkpoint(page_endpoint, str(file_path))
+        return upload_fb_reel(video_path, caption, scheduled_publish_time=scheduled_publish_time, _allow_fresh_retry=False, is_draft=is_draft)
     return result
 
 
-def upload_fb_video_standard(video_path, description, scheduled_publish_time=None, _allow_fresh_retry=True):
+def upload_fb_video_standard(video_path, description, scheduled_publish_time=None, _allow_fresh_retry=True, is_draft=False):
     """
     Flujo de videos estandar de pagina usando start/upload/finish y validacion.
     """
     if not _validate_facebook_credentials():
         return None
+
+    if is_draft:
+        scheduled_publish_time = None
 
     file_path = Path(video_path)
     if not file_path.exists():
@@ -1562,22 +1598,31 @@ def upload_fb_video_standard(video_path, description, scheduled_publish_time=Non
         str(video_id),
         description,
         str(upload_session_id),
-        publish=not bool(scheduled_publish_time),
+        publish=not is_draft,
         scheduled_publish_time=scheduled_publish_time,
     )
     if result:
         _delete_fb_upload_checkpoint(page_endpoint, str(file_path))
+    elif checkpoint and _allow_fresh_retry and not get_last_operation_status().get("transient"):
+        logging.warning(
+            "Finish rechazo la sesion de Facebook Post reanudada de %s. Se limpia el checkpoint caducado y se reinicia.",
+            file_path.name,
+        )
+        _delete_fb_upload_checkpoint(page_endpoint, str(file_path))
+        return upload_fb_video_standard(video_path, description, scheduled_publish_time=scheduled_publish_time, _allow_fresh_retry=False, is_draft=is_draft)
     return result
 
 
-def upload_fb_file_handle(video_path, description, scheduled_publish_time=None):
+def upload_fb_file_handle(video_path, description, scheduled_publish_time=None, is_draft=False):
     """
     Flujo avanzado de file handle para videos grandes.
     Soporta programación si se provee scheduled_publish_time (timestamp UNIX).
     """
     if not _validate_facebook_credentials(require_app_id=True):
-
         return None
+        
+    if is_draft:
+        scheduled_publish_time = None
 
     file_path = Path(video_path)
     if not file_path.exists():
@@ -1620,6 +1665,8 @@ def upload_fb_file_handle(video_path, description, scheduled_publish_time=None):
     if scheduled_publish_time:
         payload_publish["published"] = "false"
         payload_publish["scheduled_publish_time"] = str(scheduled_publish_time)
+    elif is_draft:
+        payload_publish["published"] = "false"
 
     publish_result = _request_json(
         "POST",
@@ -1656,6 +1703,257 @@ def upload_fb_file_handle(video_path, description, scheduled_publish_time=None):
 
     logging.info("Facebook confirmo el video publicado via file handle: %s", video_id)
     return str(video_id)
+
+
+def republish_draft_to_scheduled(video_id, scheduled_unix_time):
+    """
+    Toma un Borrador alojado en Facebook (Draft) y le asigna su scheduled_publish_time
+    para graduarlo a Post Programado, completando la estrategia de goteo.
+    """
+    if not _validate_facebook_credentials():
+        return False
+        
+    url = graph_url(str(video_id))
+    payload = {
+        "scheduled_publish_time": str(scheduled_unix_time),
+        "access_token": META_FB_PAGE_TOKEN,
+    }
+    
+    # Hacer request por fuera de la maquinaria de finish
+    import requests
+    try:
+        resp = requests.post(url, data=payload, timeout=30)
+        if resp.ok and resp.json().get("success"):
+            _set_operation_status(
+                "scheduled_remote", "facebook_republish", f"Borrador promovido exitosamente a: {scheduled_unix_time}"
+            )
+            return str(video_id)
+        else:
+            logging.error("Fallo al graduar el Borrador %s: %s", video_id, resp.text[:300])
+            try:
+                error_data = resp.json()
+                _set_operation_status(
+                    "http_400", "facebook_republish", f"Error API: {error_data.get('error', {}).get('message', 'Desconocido')}"
+                )
+            except Exception:
+                _set_operation_status("http_500", "facebook_republish", "Respuesta irreconocible")
+            return False
+    except Exception as e:
+        logging.error("Excepcion graduating draft %s: %s", video_id, e)
+        _set_operation_status("request_exception", "facebook_republish", str(e))
+        return False
+
+
+def get_facebook_page_feed(limit=10):
+    """
+    Obtiene las publicaciones publicadas mas recientes de la pagina de Facebook.
+    """
+    if not FB_PAGE_ID or not META_FB_PAGE_TOKEN:
+        logging.error("Faltan FB_PAGE_ID o META_FB_PAGE_TOKEN para leer el feed.")
+        return None
+    
+    url = graph_url(f"{FB_PAGE_ID}/published_posts")
+    params = {
+        "fields": "id,message,created_time,full_picture,attachments{media,type,subattachments}",
+        "limit": limit,
+        "access_token": META_FB_PAGE_TOKEN
+    }
+    return _request_json("GET", url, params=params)
+
+
+def create_ig_media_container_from_url(media_url, media_type="IMAGE", caption="", target="FEED"):
+    """
+    Crea un contenedor de Instagram a partir de una URL publica (Meta-a-Meta).
+    Targets soportados: FEED, REELS, STORIES.
+    """
+    if not IG_USER_ID or not IG_ACCESS_TOKEN:
+        logging.error("Faltan IG_USER_ID o token de Instagram para crear contenedor via URL.")
+        return None
+
+    payload = {
+        "caption": caption,
+        "access_token": IG_ACCESS_TOKEN
+    }
+
+    # Normalizacion de media_type para Meta
+    is_video = media_type.upper() in {"VIDEO", "REELS"}
+
+    if target == "REELS":
+        if not is_video:
+            logging.error("No se puede crear Reel desde una imagen estatica via API.")
+            return None
+        payload["video_url"] = media_url
+        payload["media_type"] = "REELS"
+        payload["share_to_feed"] = "true"
+    elif target == "STORIES":
+        payload["media_type"] = "STORIES"
+        if is_video:
+            payload["video_url"] = media_url
+        else:
+            payload["image_url"] = media_url
+    else: # Default: FEED
+        if is_video:
+            payload["video_url"] = media_url
+            payload["media_type"] = "REELS"
+            payload["share_to_feed"] = "true"
+        else:
+            payload["image_url"] = media_url
+
+    result = _request_json("POST", graph_url(f"{IG_USER_ID}/media"), data=payload)
+    if not result:
+        return None
+
+    creation_id = result.get("id")
+    if not creation_id:
+        logging.error("No se recibio creation_id al crear contenedor IG %s via URL: %s", target, result)
+        return None
+
+    logging.info("Contenedor IG (%s) via URL creado: %s", target, creation_id)
+    return creation_id
+
+
+def get_instagram_user_feed(limit=25):
+    """
+    Obtiene las ultimas publicaciones del feed de Instagram para procesos de reconciliacion.
+    """
+    if not IG_USER_ID or not IG_ACCESS_TOKEN:
+        logging.error("Faltan IG_USER_ID o token de Instagram para leer el feed.")
+        return None
+    
+    url = graph_url(f"{IG_USER_ID}/media")
+    params = {
+        "fields": "id,caption,media_type,timestamp,permalink",
+        "limit": limit,
+        "access_token": IG_ACCESS_TOKEN
+    }
+    return _request_json("GET", url, params=params)
+
+
+def ensure_ig_compatibility(file_path, max_duration=None, force_recode=False):
+    """
+    Optimiza el archivo para IG:
+    1. Si excede 300MB -> Aplica Fast Slice (-fs 290M).
+    2. Si es para Stories -> Aplica recorte de tiempo (-t 60).
+    3. Si force_recode -> Transcodifica a perfil High 4.1 (Deep Clean).
+    4. Por defecto -> Remuxea (-c copy) para "limpiar" el contenedor.
+    """
+    if not file_path or not os.path.exists(file_path):
+        return file_path
+    
+    file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+    needs_size_slice = file_size_mb > 300
+    
+    # Si el archivo ya es compatible y NO necesitamos recortar duracion ni forzar recode, saltamos.
+    if "ig_compat_" in os.path.basename(file_path) and not force_recode and not max_duration:
+        return file_path
+
+    if max_duration:
+        logging.info("Aplicando Recorte Temporal (Max %ss) a %s...", 
+                     max_duration, os.path.basename(file_path))
+    elif force_recode:
+        logging.info("Aplicando Deep Clean (Transcoding) a %s para estabilidad total...", 
+                     os.path.basename(file_path))
+    else:
+        logging.info("Aplicando Quick Clean (Remuxing) a %s para estabilidad Meta...", 
+                     os.path.basename(file_path))
+    
+    temp_dir = Path(file_path).parent / ".ig_temp"
+    temp_dir.mkdir(exist_ok=True)
+    
+    # Nombrado de salida evadiendo recursividad y colisiones por duracion
+    duration_tag = f"_{max_duration}s" if max_duration else ""
+    prefix = "slice" if max_duration else "ig_compat"
+    output_path = temp_dir / f"{prefix}{duration_tag}_{os.path.basename(file_path)}"
+    
+    # Base del comando (SIEMPRE con faststart para streaming eficiente en Meta)
+    cmd = ["ffmpeg", "-y", "-i", file_path, "-movflags", "+faststart"]
+    
+    if force_recode:
+        # Perfil de compatibilidad maxima para Instagram
+        cmd += [
+            "-c:v", "libx264",
+            "-preset", "ultrafast",   # Minimo impacto en CPU
+            "-crf", "23",             # Calidad balanceada
+            "-profile:v", "high",
+            "-level:v", "4.1",
+            "-pix_fmt", "yuv420p",    # Vital para IG
+            "-g", "60",               # Keyframes frecuentes para estabilidad
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-ac", "2",
+            "-ar", "44100"
+        ]
+    else:
+        # Copia directa (Quick Clean)
+        cmd += ["-c", "copy"]
+
+    
+    if max_duration:
+        cmd += ["-t", str(max_duration)]
+    if needs_size_slice:
+        cmd += ["-fs", "290M"]
+        
+    cmd.append(str(output_path))
+    
+    try:
+        # Capturamos stderr para diagnostico real
+        proc = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        logging.info("Fast Slice completado: %s (%.2f MB)", 
+                     output_path.name, os.path.getsize(output_path)/(1024*1024))
+        return str(output_path)
+    except subprocess.CalledProcessError as e:
+        error_msg = e.stderr or str(e)
+        logging.error("Fallo ffmpeg Fast Slice: %s. Se intentara subir original.", error_msg.strip())
+        return file_path
+    except Exception as e:
+        logging.error("Fallo inesperado en Fast Slice: %s", e)
+        return file_path
+
+def probe_video(video_path):
+    """
+    Inspecciona metadatos tecnicos de un video usando ffprobe.
+    """
+    cmd = [
+        "ffprobe",
+        "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=width,height,duration,codec_name,avg_frame_rate,pix_fmt,bit_rate",
+        "-of", "json",
+        video_path,
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        stream = (data.get("streams") or [{}])[0]
+        return {
+            "path": video_path,
+            "filename": Path(video_path).name,
+            "size_bytes": Path(video_path).stat().st_size,
+            "duration_seconds": float(stream.get("duration") or 0),
+            "width": int(stream.get("width") or 0),
+            "height": int(stream.get("height") or 0),
+            "codec_name": (stream.get("codec_name") or "").lower(),
+            "avg_frame_rate": stream.get("avg_frame_rate") or "0/0",
+            "pix_fmt": stream.get("pix_fmt") or "",
+            "bit_rate": int(stream.get("bit_rate") or 0),
+        }
+    except Exception as exc:
+        logging.error("No se pudo inspeccionar %s: %s", video_path, exc)
+        return {
+            "path": video_path,
+            "filename": Path(video_path).name,
+            "size_bytes": Path(video_path).stat().st_size if Path(video_path).exists() else 0,
+            "duration_seconds": 0,
+            "width": 0,
+            "height": 0,
+            "codec_name": "",
+            "avg_frame_rate": "0/0",
+            "pix_fmt": "",
+            "bit_rate": 0,
+        }
+
+
+
 
 
 def main():
