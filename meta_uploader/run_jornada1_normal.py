@@ -486,10 +486,14 @@ def mark_lane_finished(day_entry, lane_name, lane_status, summary):
     clear_active_summary_fields(day_entry)
 
 
-def run_platform_pair(lane_name, video_info, publish_date):
-    # Horarios Gold Slots: 07:00 para Reels, 18:30 para Posts
-    hour, minute = (7, 0) if lane_name == "reel" else (18, 30)
-    scheduled_dt = datetime.strptime(publish_date, "%Y-%m-%d").replace(hour=hour, minute=minute)
+def run_platform_pair(lane_name, video_info, publish_date, target_time_str=None):
+    if target_time_str:
+        scheduled_dt = datetime.strptime(target_time_str, "%Y-%m-%dT%H:%M:%S")
+        hour = scheduled_dt.hour
+    else:
+        hour, minute = (7, 0) if lane_name == "reel" else (18, 30)
+        scheduled_dt = datetime.strptime(publish_date, "%Y-%m-%d").replace(hour=hour, minute=minute)
+    
     scheduled_timestamp = int(scheduled_dt.timestamp())
 
     caption = build_caption(video_info, lane_name, publish_date)
@@ -660,7 +664,8 @@ def execute_plan(plan, pause_between_assets=10, max_live_days=1):
             )
             mark_lane_in_progress(day_entry, lane_name, video_info)
             write_calendar(plan)
-            ok, summary = run_platform_pair(lane_name, video_info, publish_date)
+            target_time_str = day_entry.get(f"{lane_name}_time")
+            ok, summary = run_platform_pair(lane_name, video_info, publish_date, target_time_str)
             lane_status = (
                 "published_with_ig_skip"
                 if ok and _summary_has_second_jornada_skip(summary)

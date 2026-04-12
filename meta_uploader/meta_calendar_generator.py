@@ -47,20 +47,24 @@ def generate_calendar(start_date=None):
     calendar = []
     
     for i in range(max_items):
-        # Lógica de vueltas (Laps)
-        # Cada vuelta llena 28 días x 2 slots = 56 videos
-        lap_size = HORIZON_DAYS * len(GOLD_SLOTS)
-        lap_index = i // lap_size
-        slot_index = (i // HORIZON_DAYS) % len(GOLD_SLOTS)
-        day_offset = (i % HORIZON_DAYS) + 1  # Empezamos mañana (Día 1 offset)
+        # Lógica Cíclica: Primera vuelta de 29 días, luego vueltas de 28 días empezando en el Día 2
+        if i < 29:
+            day_offset = i + 1
+            lap = 0
+        else:
+            shifted_i = i - 29
+            lap = (shifted_i // 28) + 1
+            day_offset = (shifted_i % 28) + 2
+            
+        slot_index = lap % len(GOLD_SLOTS)
+        minute_offset = lap // len(GOLD_SLOTS)
         
         current_date_base = start_date + timedelta(days=day_offset)
         date_str = current_date_base.strftime("%Y-%m-%d")
         
-        # Calculamos la hora final sumando el offset de minutos por vuelta
         time_base_str = GOLD_SLOTS[slot_index]
         time_obj = datetime.strptime(time_base_str, "%H:%M:%S")
-        final_time_obj = time_obj + timedelta(minutes=lap_index)
+        final_time_obj = time_obj + timedelta(minutes=minute_offset)
         final_time_str = final_time_obj.strftime("%H:%M:%S")
         
         entry = {
@@ -73,8 +77,8 @@ def generate_calendar(start_date=None):
         }
         calendar.append(entry)
 
-    # Ordenar cronológicamente
-    calendar.sort(key=lambda x: (x["fecha"], x["post_time"]))
+    # NO se ordena por fecha. Se mantiene el orden cronológico absoluto de generación
+    # para que la jornada empuje 1 de cada fecha antes de empezar la siguiente capa.
 
     with open(CALENDAR_FILE, "w", encoding="utf-8") as handle:
         json.dump(calendar, handle, indent=2, ensure_ascii=False)
