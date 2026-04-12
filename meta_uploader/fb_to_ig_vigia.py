@@ -263,16 +263,13 @@ def process_new_posts(dry_run=False):
             if success_all:
                 history.add(post_id)
                 page_rescues += 1
+                new_count += 1
                 save_history(history)
             
-            # Si hemos procesado items exitosamente en esta pagina, aumentamos contador global
-            new_count += page_rescues
-
-        # Logica de paginacion: 
-        # Si todos los posts de esta pagina ya eran conocidos, dejamos de escanear el pasado.
-        if page_already_known == len(fb_feed["data"]):
-            logging.info("Pagina completa ya conocida. Backlog reconciliado.")
-            break
+        # Logica de paginacion:
+        # Se elimina el freno de 'pagina conocida' a peticion del usuario para 
+        # realizar una barrida (Deep Scan) total del historial de Facebook cada ciclo.
+        logging.info("Revision de la pagina completada. Reconciliados previamente: %s/%s", page_already_known, len(fb_feed["data"]))
             
         # Obtener cursor para la siguiente pagina
         after_cursor = (fb_feed.get("paging") or {}).get("cursors", {}).get("after")
