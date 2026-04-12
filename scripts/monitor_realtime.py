@@ -32,7 +32,10 @@ FB_CHUNK_RE = re.compile(
     r"Facebook transfer chunk (?P<start>\d+)-(?P<end>\d+)/(?P<total>\d+) para (?P<file>.+)$"
 )
 FB_SUCCESS_RE = re.compile(
-    r"Facebook confirmo (?:el video (?P<video_id>\d+) como programado para (?P<scheduled>.+?)|la programacion del video (?P<video_id_alt>\d+)|la publicacion del video (?P<video_id_pub>\d+))\."
+    r"Facebook (?:confirmo|acepto) (?:el video (?P<video_id>\d+)|la programacion del video (?P<video_id_alt>\d+)|la publicacion del video (?P<video_id_pub>\d+))(?: como programado para (?P<scheduled>.+?)| .+?|)(?: para (?P<file>.+?)|)\.?"
+)
+FB_HANDLE_SUCCESS_RE = re.compile(
+    r"Facebook confirmo el video (?P<video_id>\d+) publicado via file handle para (?P<file>.+?)\."
 )
 FB_EXISTING_REMOTE_RE = re.compile(r"ya existia remoto con id (?P<video_id>\d+)")
 
@@ -134,15 +137,14 @@ class UploadState:
     confirmed_bytes: Optional[int] = None
     total_bytes: Optional[int] = None
     last_event_at: Optional[datetime] = None
-    last_success_at: Optional[datetime] = None
-    last_success_id: Optional[str] = None
-    last_success_label: Optional[str] = None
+    last_success_item: Optional[str] = None
+    last_success_target: Optional[str] = None
     last_error: Optional[str] = None
     last_warning: Optional[str] = None
     last_skip_reason: Optional[str] = None
     successes: dict[str, SuccessRecord] = field(default_factory=dict)
 
-    def register_success(self, event_id: str, timestamp: datetime, source: str, label: str) -> None:
+    def register_success(self, event_id: str, timestamp: datetime, source: str, label: str, target: Optional[str] = None) -> None:
         if event_id not in self.successes:
             self.successes[event_id] = SuccessRecord(event_id, timestamp, source, label)
         else:
@@ -150,6 +152,8 @@ class UploadState:
         self.last_success_at = timestamp
         self.last_success_id = event_id
         self.last_success_label = label
+        self.last_success_item = label
+        self.last_success_target = target
 
     def count_today(self, today: datetime) -> int:
         return sum(1 for record in self.successes.values() if record.timestamp.date() == today.date())
@@ -356,8 +360,18 @@ class Monitor:
                 video_id = next(
                     group for group in (m.group("video_id"), m.group("video_id_alt"), m.group("video_id_pub")) if group
                 )
-                label = self.fb.current_item or f"video_id={video_id}"
-                self.fb.register_success(video_id, timestamp, source, label)
+                scheduled_info = m.group("scheduled") or "Publicado AHORA"
+                file_from_log = m.group("file")
+                label = file_from_log or self.fb.current_item or f"video_id={video_id}"
+                self.fb.register_success(video_id, timestamp, source, label, target=scheduled_info)
+                self.fb.current_stage = "done"
+                self.fb.last_event_at = timestamp
+                return
+
+            if m := FB_HANDLE_SUCCESS_RE.search(msg):
+                video_id = m.group("video_id")
+                label = m.group("file") or self.fb.current_item or f"video_id={video_id}"
+                self.fb.register_success(video_id, timestamp, source, label, target="Publicado AHORA")
                 self.fb.current_stage = "done"
                 self.fb.last_event_at = timestamp
                 return
@@ -520,9 +534,14 @@ class Monitor:
                 )
         lines.append(f"  Subidos hoy: {tracker.count_today(now)}")
         if tracker.last_success_at is not None:
+            detail = ""
+            if tracker.last_success_item:
+                target = f" -> {tracker.last_success_target}" if tracker.last_success_target else ""
+                detail = f" | {tracker.last_success_item}{target}"
+            
             lines.append(
                 f"  Ultima subida exitosa: {tracker.last_success_at.strftime('%Y-%m-%d %H:%M:%S')}"
-                f" (hace {format_duration((now - tracker.last_success_at).total_seconds())})"
+                f" (hace {format_duration((now - tracker.last_success_at).total_seconds())}){detail}"
             )
         else:
             lines.append("  Ultima subida exitosa: n/d")

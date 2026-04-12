@@ -1227,10 +1227,11 @@ def wait_for_fb_video_status(video_id, *, allow_scheduled=False):
 
         scheduled_publish_time = result.get("scheduled_publish_time")
         if allow_scheduled and scheduled_publish_time:
+            clean_time = str(scheduled_publish_time).strip().replace("\n", "").replace("\r", "")
             logging.info(
-                "Facebook confirmo el video %s como programado para %s.",
+                "Facebook confirmo el video %s como programado para %s",
                 video_id,
-                scheduled_publish_time,
+                clean_time,
             )
             return "scheduled"
 
@@ -1689,10 +1690,11 @@ def upload_fb_file_handle(video_path, description, scheduled_publish_time=None, 
     if status_result is False:
         return None
     if status_result == "scheduled":
+        clean_time2 = str(scheduled_publish_time).strip().replace("\n", "").replace("\r", "")
         logging.info(
-            "Facebook acepto el video %s y quedo programado para %s.",
+            "Facebook acepto el video %s y quedo programado para %s",
             video_id,
-            scheduled_publish_time,
+            clean_time2,
         )
         _set_operation_status(
             "scheduled_remote",
