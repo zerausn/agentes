@@ -1877,15 +1877,18 @@ def ensure_ig_compatibility(file_path, max_duration=None, force_recode=False):
     cmd = ["ffmpeg", "-y", "-i", file_path, "-movflags", "+faststart"]
     
     if force_recode:
-        # Perfil de compatibilidad maxima para Instagram
+        # Perfil de compatibilidad maxima para Instagram (Deep Clean 2.0)
         cmd += [
             "-c:v", "libx264",
-            "-preset", "ultrafast",   # Minimo impacto en CPU
+            "-preset", "veryfast",    # Mas estable que ultrafast para Meta
             "-crf", "23",             # Calidad balanceada
             "-profile:v", "high",
             "-level:v", "4.1",
             "-pix_fmt", "yuv420p",    # Vital para IG
+            "-bf", "2",               # B-frames controlados para streaming
+            "-flags", "+cgop",        # Closed GOP (vital para Meta)
             "-g", "60",               # Keyframes frecuentes para estabilidad
+            "-color_range", "tv",     # Rango de color estandar
             "-c:a", "aac",
             "-b:a", "128k",
             "-ac", "2",

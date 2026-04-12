@@ -231,10 +231,14 @@ def process_new_posts(dry_run=False):
                         creation_id = _create_ig_video_container("REELS", caption=final_caption, share_to_feed=True)
                     
                     if item["type"] == "VIDEO":
-                        if creation_id and upload_ig_binary(creation_id, path_for_target):
-                            if wait_for_ig_container(creation_id):
-                                ig_id = publish_ig_container(creation_id)
-                                if ig_id: logging.info("Video %s publicado en IG %s", post_id, target_type)
+                        if creation_id:
+                            logging.info("Contenedor %s listo. Esperando estabilizacion en Meta...", target_type)
+                            time.sleep(2)  # Pausa de propagación requerida para archivos pesados
+                            if upload_ig_binary(creation_id, path_for_target):
+                                if wait_for_ig_container(creation_id):
+                                    ig_id = publish_ig_container(creation_id)
+                                    if ig_id: logging.info("Video %s publicado en IG %s", post_id, target_type)
+                                    else: success_all = False
                                 else: success_all = False
                             else: success_all = False
                         else: success_all = False
@@ -309,9 +313,6 @@ def main():
             logging.info("Todo al dia. Durmiendo 24 horas hasta el proximo escaneo diario...")
             
         time.sleep(wait_time)
-
-if __name__ == "__main__":
-    main()
 
 if __name__ == "__main__":
     main()
