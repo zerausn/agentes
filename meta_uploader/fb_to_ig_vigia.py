@@ -199,7 +199,7 @@ def process_new_posts(dry_run=False):
 
                 for target_type in active_targets:
                     if not check_ig_publish_limit():
-                        logging.error("Limite IG alcanzado (25/dia). Abortando ciclo.")
+                        logging.error("Limite oficial de Instagram de la API alcanzado. Abortando ciclo temporalmente.")
                         backlog_scan_active = False # Salimos de todo el escaneo
                         success_all = False
                         break
