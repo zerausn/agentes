@@ -134,7 +134,8 @@ def main():
             # Forzamos lanzamiento del runner para poblar
             args.rebuild_plan = True 
         
-        elif calendar_state["paused_days"]:
+        # Si el calendario tiene errores pero queremos reconstruir o es el inicio, ignoramos el bloqueo
+        elif calendar_state["paused_days"] and not (args.rebuild_plan or initial_run):
             logging.error("Pausa por fallo en %s. Reintentando en 60s...", calendar_state["first_incomplete"])
             time.sleep(60)
             continue
