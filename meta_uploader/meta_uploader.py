@@ -601,18 +601,17 @@ def get_facebook_library_batch(max_pages=80):
         markers.add(description)
     
     # 2. Barrido de Videos PROGRAMADOS (Futuros)
-    # Usamos promotable_posts?is_published=false que es el endpoint más estable para v19.0+
+    # Filtramos la colección de videos por is_published=false para ver los programados
     logging.info("Descargando catálogo remoto de Facebook (Programados - Caché de hasta %s videos)...", max_pages * 25)
     for item in _iter_graph_collection(
-        f"{FB_PAGE_ID}/promotable_posts",
+        f"{FB_PAGE_ID}/videos?is_published=false",
         access_token=META_FB_PAGE_TOKEN,
-        fields="id,message",
+        fields="id,description",
         page_size=25,
         max_pages=max_pages
     ):
-        # En promotable_posts, el marcador suele estar en 'message'
-        message = str(item.get("message") or "")
-        markers.add(message)
+        description = str(item.get("description") or "")
+        markers.add(description)
     
     return markers
 
