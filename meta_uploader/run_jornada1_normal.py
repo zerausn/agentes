@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import time
+import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -51,6 +52,11 @@ IG_ALLOWED_VIDEO_CODECS = {"h264", "hevc"}
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
+_CALENDAR_LOCK = threading.Lock()
+
+def safe_write_calendar(calendar_data):
+    with _CALENDAR_LOCK:
+        write_calendar(calendar_data)
 
 def require_upload_opt_in():
     if os.environ.get("META_ENABLE_UPLOAD") == "1":
@@ -603,126 +609,124 @@ def run_ig_story_if_enabled(day_entry):
 
 
 def execute_plan(plan, pause_between_assets=10, max_live_days=1):
-    today = datetime.now().date()
-    processed_live_days = 0
+    if not plan:
+        return True, "empty_plan"
 
+    today = datetime.now().date()
+    days_to_process = []
+
+    # 1. Recolectar dias validos para ráfaga respetando limites de fecha
     for day_entry in plan:
         publish_date = day_entry["fecha"]
         publish_day = datetime.strptime(publish_date, "%Y-%m-%d").date()
+        
         if day_entry["summary"].get("status") == "completed":
             logging.info("Se conserva %s como completado desde el calendario existente.", publish_date)
             continue
         if day_entry["summary"].get("status") == "paused_on_failure":
-            logging.error(
-                "La jornada sigue pausada por un fallo previo en %s. Revisa meta_calendar.json antes de continuar.",
-                publish_date,
-            )
+            logging.error("La jornada sigue pausada por fallo previo en %s. Revisa meta_calendar.json", publish_date)
             return False, "paused_on_failure"
-        # Eliminamos el bloqueo de futuro para permitir programacion masiva (Wraparound 29 dias)
+            
         if (publish_day - today).days > 29:
-            logging.info(
-                "Se detiene en %s porque supera el limite maximo de programacion de Meta (29 dias).",
-                publish_date,
-            )
-            return True, "max_future_reached"
-        if max_live_days is not None and processed_live_days >= max_live_days:
-            logging.info(
-                "Se completo el cupo de %s dia(s) en esta corrida. Se detiene para respetar 1 publicacion por dia real.",
-                max_live_days,
-            )
-            return True, "daily_limit_reached"
+            logging.info("Se detiene en %s porque supera el limite de programacion de Meta (29 dias).", publish_date)
+            break
+            
+        days_to_process.append(day_entry)
+        
+        if max_live_days is not None and len(days_to_process) >= max_live_days:
+            logging.info("Se han encolado %s dia(s) para evacuar en esta rafaga.", len(days_to_process))
+            break
 
+    if not days_to_process:
+        return True, "completed"
+
+    # Worker para ejecutar en paralelo
+    def _burst_worker(day_entry):
+        publish_date = day_entry["fecha"]
+        
         tasks = []
         if day_entry["reel"]:
             tasks.append(("reel", day_entry["reel"]))
         if day_entry["post"]:
             tasks.append(("post", day_entry["post"]))
         tasks.sort(key=lambda item: item[1]["size_bytes"], reverse=True)
-        day_entry["summary"]["execution_order"] = [lane for lane, _ in tasks]
-        if not day_entry["summary"].get("status"):
-            day_entry["summary"]["status"] = "pending"
+        
+        with _CALENDAR_LOCK:
+            day_entry["summary"]["execution_order"] = [lane for lane, _ in tasks]
+            if not day_entry["summary"].get("status") or day_entry["summary"].get("status") == "pending":
+                day_entry["summary"]["status"] = "pending"
 
-        logging.info("======== Jornada 1 | %s ========", publish_date)
-        logging.info("Orden del dia: %s", ", ".join(day_entry["summary"]["execution_order"]) or "sin assets")
+        logging.info("======== Jornada 1 | Ráfaga Masiva %s ========", publish_date)
+        logging.info("Orden interno: %s", ", ".join([lane for lane, _ in tasks]) or "sin assets")
 
         for lane_name, video_info in tasks:
             if day_entry[lane_name].get("status") in PUBLISHED_STATUSES:
-                logging.info(
-                    "[%s] %s ya estaba marcado como %s. Se conserva y se continua.",
-                    lane_name.upper(),
-                    video_info["filename"],
-                    day_entry[lane_name]["status"],
-                )
                 continue
 
-            logging.info(
-                "[%s] %s | %.2f MB | %.2fs",
-                lane_name.upper(),
-                video_info["filename"],
-                video_info["size_bytes"] / 1e6,
-                video_info["duration_seconds"],
-            )
-            mark_lane_in_progress(day_entry, lane_name, video_info)
-            write_calendar(plan)
+            logging.info("[%s] %s | %.2f MB | Asignado para %s", lane_name.upper(), video_info["filename"], video_info["size_bytes"] / 1e6, publish_date)
+            
+            with _CALENDAR_LOCK:
+                mark_lane_in_progress(day_entry, lane_name, video_info)
+                write_calendar(plan)
+            
             target_time_str = day_entry.get(f"{lane_name}_time")
             ok, summary = run_platform_pair(lane_name, video_info, publish_date, target_time_str)
-            lane_status = (
-                "published_with_ig_skip"
-                if ok and _summary_has_second_jornada_skip(summary)
-                else "published"
-                if ok
-                else "failed"
-            )
-            mark_lane_finished(day_entry, lane_name, lane_status, summary)
-            write_calendar(plan)
+            lane_status = "published_with_ig_skip" if ok and _summary_has_second_jornada_skip(summary) else "published" if ok else "failed"
+            
+            with _CALENDAR_LOCK:
+                mark_lane_finished(day_entry, lane_name, lane_status, summary)
+                write_calendar(plan)
 
-            # --- MONITOR SENTINEL: REPORTE DE ALTA VISIBILIDAD ---
             if ok:
                 target_info = "Publicado AHORA"
-                # Intentamos extraer el timestamp de programación si existe
                 for res in summary.values():
                     sch = res.get("scheduled") or res.get("status", {}).get("message")
                     if isinstance(sch, dict) and sch.get("scheduled_local"):
                         target_info = f"Programado: {sch['scheduled_local']}"
                         break
                     elif isinstance(sch, str) and " -> " in sch:
-                        # Formato legacy de algunos status messages
                         target_info = f"Programado: {sch.split(' -> ')[1]}"
                         break
-                
                 print(f"\n[MONITOR] \033[92mÚLTIMA SUBIDA EXITOSA\033[0m: {video_info['filename']} -> {target_info}\n")
             
             if not ok:
-                day_entry["summary"]["status"] = "paused_on_failure"
-                day_entry["summary"]["last_updated_at"] = now_iso()
-                write_calendar(plan)
-                logging.error(
-                    "Se pausa la jornada 1 en %s para no quemar cola. Revisa meta_uploader.log y meta_calendar.json.",
-                    video_info["filename"],
-                )
+                with _CALENDAR_LOCK:
+                    day_entry["summary"]["status"] = "paused_on_failure"
+                    day_entry["summary"]["last_updated_at"] = now_iso()
+                    write_calendar(plan)
+                logging.error("Fallo crítico en hilo %s. Jornada abortada para %s.", publish_date, video_info["filename"])
                 return False, "paused_on_failure"
+                
             time.sleep(pause_between_assets)
 
             if lane_name == "reel":
                 story_state = run_ig_story_if_enabled(day_entry)
-                write_calendar(plan)
+                safe_write_calendar(plan)
                 if story_state["status"] == "failed":
-                    logging.warning(
-                        "IG Story no paso con %s. Se registra como fallo suave y la jornada continua.",
-                        Path(story_state["path"]).name,
-                    )
+                    logging.warning("IG Story fallo suave en la rafaga para %s.", Path(story_state["path"]).name)
 
-        day_entry["summary"]["status"] = "completed"
-        day_entry["summary"]["last_updated_at"] = now_iso()
-        clear_active_summary_fields(day_entry)
-        write_calendar(plan)
-        processed_live_days += 1
-        if max_live_days is not None and processed_live_days >= max_live_days:
-            logging.info(
-                "Se completo %s y se frena la corrida para respetar la regla de una publicacion por dia real.",
-                publish_date,
-            )
-            return True, "daily_limit_reached"
+        with _CALENDAR_LOCK:
+            day_entry["summary"]["status"] = "completed"
+            day_entry["summary"]["last_updated_at"] = now_iso()
+            clear_active_summary_fields(day_entry)
+            write_calendar(plan)
+            
+        return True, "completed"
+
+    # Lanza los hilos en ráfaga (máx 3 simultáneos para no saturar memoria FFmpeg)
+    has_failure = False
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        future_map = {executor.submit(_burst_worker, entry): entry["fecha"] for entry in days_to_process}
+        for future in concurrent.futures.as_completed(future_map):
+            ok, reason = future.result()
+            if not ok:
+                has_failure = True
+                
+    if has_failure:
+        return False, "paused_on_failure"
+
+    if max_live_days is not None and len(days_to_process) >= max_live_days:
+        return True, "daily_limit_reached"
 
     return True, "completed"
 
