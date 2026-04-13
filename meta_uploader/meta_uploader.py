@@ -535,22 +535,29 @@ def find_existing_facebook_video_by_caption_marker(marker, *, page_size=25, max_
     if not marker or not FB_PAGE_ID or not META_FB_PAGE_TOKEN:
         return None
 
-    for item in _iter_graph_collection(
-        f"{FB_PAGE_ID}/videos",
-        access_token=META_FB_PAGE_TOKEN,
-        fields="id,description,created_time,published,scheduled_publish_time",
-        page_size=page_size,
-        max_pages=max_pages,
-    ):
-        description = str(item.get("description") or "")
-        if marker in description:
-            return {
-                "id": str(item.get("id") or ""),
-                "description": description,
-                "created_time": item.get("created_time"),
-                "published": bool(item.get("published")),
-                "scheduled_publish_time": item.get("scheduled_publish_time"),
-            }
+    # Escaneamos ambas colecciones: Publicados y Programados (is_published=false)
+    endpoints = [
+        f"{FB_PAGE_ID}/videos?is_published=true",
+        f"{FB_PAGE_ID}/videos?is_published=false"
+    ]
+    
+    for endpoint in endpoints:
+        for item in _iter_graph_collection(
+            endpoint,
+            access_token=META_FB_PAGE_TOKEN,
+            fields="id,description,created_time,published,scheduled_publish_time",
+            page_size=page_size,
+            max_pages=max_pages,
+        ):
+            description = str(item.get("description") or "")
+            if marker in description:
+                return {
+                    "id": str(item.get("id") or ""),
+                    "description": description,
+                    "created_time": item.get("created_time"),
+                    "published": bool(item.get("published")),
+                    "scheduled_publish_time": item.get("scheduled_publish_time"),
+                }
     return None
 
 
