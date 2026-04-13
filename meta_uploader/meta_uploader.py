@@ -578,7 +578,48 @@ def find_existing_instagram_media_by_caption_marker(marker, *, page_size=25, max
     return None
 
 
-def get_latest_scheduled_facebook_date():
+def get_facebook_library_batch(max_pages=80):
+    """
+    Descarga masivamente los encabezados de hasta max_pages (ej: 80 para 2000 videos)
+    y devuelve un conjunto (set) de marcadores (filenames) detectados en las descripciones.
+    """
+    if not FB_PAGE_ID or not META_FB_PAGE_TOKEN:
+        return set()
+    
+    markers = set()
+    logging.info("Descargando catalogo remoto de Facebook (Caché de hasta %s videos)...", max_pages * 25)
+    
+    for item in _iter_graph_collection(
+        f"{FB_PAGE_ID}/videos",
+        access_token=META_FB_PAGE_TOKEN,
+        fields="id,description",
+        page_size=25,
+        max_pages=max_pages
+    ):
+        description = str(item.get("description") or "")
+        # Extraemos potenciales marcadores por palabras clave o simplemente guardamos la descripción para búsqueda local
+        markers.add(description)
+    
+    return markers
+
+def get_instagram_library_batch(max_pages=80):
+    if not IG_USER_ID or not IG_ACCESS_TOKEN:
+        return set()
+    
+    markers = set()
+    logging.info("Descargando catalogo remoto de Instagram (Caché de hasta %s videos)...", max_pages * 25)
+    
+    for item in _iter_graph_collection(
+        f"{IG_USER_ID}/media",
+        access_token=IG_ACCESS_TOKEN,
+        fields="id,caption",
+        page_size=25,
+        max_pages=max_pages
+    ):
+        caption = str(item.get("caption") or "")
+        markers.add(caption)
+    
+    return markers
     """
     Consulta la API de Graph para obtener el timestamp ('scheduled_publish_time')
     del post programado más lejano en el tiempo de la página actual.

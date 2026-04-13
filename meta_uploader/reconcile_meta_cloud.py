@@ -28,28 +28,44 @@ def reconcile_folder(folder_path, label):
     files = list(folder_path.glob("*.mp4"))
     logging.info("--- Reconciliando Carpeta Externa (%s archivos) ---", len(files))
     
+    # NUEVO: DESCARGA DE CACHE (UNA SOLA VEZ)
+    from meta_uploader import get_facebook_library_batch, get_instagram_library_batch
+    fb_cache = get_facebook_library_batch(max_pages=80)
+    ig_cache = get_instagram_library_batch(max_pages=80)
+    
+    # NUEVO: CACHE DE CARPETA LOCAL DE EXITO (Opcional pero recomendado para redundancia)
+    local_success_files = {f.stem for f in EXTERNAL_DST.glob("*.mp4")}
+    
     moved_count = 0
     for file_path in files:
         marker = file_path.stem
-        logging.info("Revisando en Facebook: %s", marker)
         
-        # Consultar si existe en Facebook
-        existing = find_existing_facebook_video_by_caption_marker(marker)
-        if not existing:
-            existing = find_existing_instagram_media_by_caption_marker(marker)
+        # 1. Verificar en Cache Local de Exito
+        is_in_local_success = marker in local_success_files
         
-        if existing:
-            logging.info("  [MATCH] Ya existe en Facebook: %s (id: %s). Moviendo...", marker, existing.get("id"))
+        # 2. Verificar en Cache de Facebook (Búsqueda en memoria, super rápido)
+        is_in_fb = any(marker in desc for desc in fb_cache)
+        
+        # 3. Verificar en Cache de Instagram
+        is_in_ig = any(marker in desc for desc in ig_cache) if not is_in_fb else False
+
+        if is_in_local_success or is_in_fb or is_in_ig:
+            reason = "Local Folder" if is_in_local_success else "Facebook" if is_in_fb else "Instagram"
+            logging.info("  [MATCH] Ya existe (Detectado en %s): %s. Moviendo...", reason, marker)
             dest_path = EXTERNAL_DST / file_path.name
             try:
-                shutil.move(str(file_path), str(dest_path))
+                # Si el archivo existe en el destino, simplemente lo borramos de la fuente (evitar colisión de move)
+                if dest_path.exists():
+                     file_path.unlink()
+                else:
+                    shutil.move(str(file_path), str(dest_path))
                 moved_count += 1
             except Exception as e:
-                logging.error("  [ERROR] No se pudo mover %s: %s", marker, e)
+                logging.error("  [ERROR] No se pudo procesar %s: %s", marker, e)
         else:
-            logging.info("  [NEW] No se encontro remoto.")
+            logging.info("  [NEW] %s no se encontro en Meta (2000 ultimos) ni en carpeta de exito.", marker)
 
-    logging.info("Finalizado: %s archivos movidos a la carpeta de descarte.", moved_count)
+    logging.info("Finalizado: %s archivos conciliados y movidos.", moved_count)
 
 def main():
     reconcile_folder(EXTERNAL_SRC, "externa_adm")
