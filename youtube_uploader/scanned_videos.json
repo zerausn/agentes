@@ -1,37 +1,29 @@
 [
     {
-        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\videos subidos exitosamente\\20260411_215838.mp4",
-        "size_mb": 413.36,
-        "filename": "20260411_215838.mp4",
-        "uploaded": true,
-        "creation_date": "2026-04-13 14:29:44",
-        "type": "short",
-        "duration": 24.304778,
-        "dimensions": "3840x2160",
-        "faststart_applied": true,
-        "youtube_id": "gh47MUnyS7A",
-        "publishAt": "2026-05-15T19:00:00Z"
-    },
-    {
-        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20260410_182106.mp4",
-        "size_mb": 402.64,
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\videos subidos exitosamente\\20260410_182106.mp4",
+        "size_mb": 402.38,
         "filename": "20260410_182106.mp4",
-        "uploaded": false,
+        "uploaded": true,
         "creation_date": "2026-04-13 14:24:51",
         "type": "short",
         "duration": 23.497267,
         "dimensions": "3840x2160",
-        "faststart_applied": true
+        "faststart_applied": true,
+        "youtube_id": "iGSUopV0_HM",
+        "publishAt": "2026-05-15T19:00:00Z"
     },
     {
-        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20260411_214619.mp4",
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\videos subidos exitosamente\\20260411_214619.mp4",
         "size_mb": 307.04,
         "filename": "20260411_214619.mp4",
-        "uploaded": false,
+        "uploaded": true,
         "creation_date": "2026-04-13 14:28:16",
         "type": "short",
         "duration": 18.142322,
-        "dimensions": "3840x2160"
+        "dimensions": "3840x2160",
+        "faststart_applied": true,
+        "youtube_id": "-AgoWYnyeVs",
+        "publishAt": "2026-06-03T19:00:00Z"
     },
     {
         "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20260227_220426.mp4",
@@ -41,7 +33,8 @@
         "creation_date": "2026-04-13 14:22:59",
         "type": "short",
         "duration": 17.005867,
-        "dimensions": "3840x2160"
+        "dimensions": "3840x2160",
+        "faststart_applied": true
     },
     {
         "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20260410_181614.mp4",
