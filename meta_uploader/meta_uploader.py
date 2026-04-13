@@ -587,8 +587,9 @@ def get_facebook_library_batch(max_pages=80):
         return set()
     
     markers = set()
-    logging.info("Descargando catalogo remoto de Facebook (Caché de hasta %s videos)...", max_pages * 25)
     
+    # 1. Barrido de Videos PUBLICADOS
+    logging.info("Descargando catálogo remoto de Facebook (Publicados - Caché de hasta %s videos)...", max_pages * 25)
     for item in _iter_graph_collection(
         f"{FB_PAGE_ID}/videos",
         access_token=META_FB_PAGE_TOKEN,
@@ -597,7 +598,19 @@ def get_facebook_library_batch(max_pages=80):
         max_pages=max_pages
     ):
         description = str(item.get("description") or "")
-        # Extraemos potenciales marcadores por palabras clave o simplemente guardamos la descripción para búsqueda local
+        markers.add(description)
+    
+    # 2. Barrido de Videos PROGRAMADOS (Futuros)
+    # Importante: scheduled_posts usa el campo 'message' como descripción principal
+    logging.info("Descargando catálogo remoto de Facebook (Programados - Caché de hasta %s videos)...", max_pages * 25)
+    for item in _iter_graph_collection(
+        f"{FB_PAGE_ID}/scheduled_posts",
+        access_token=META_FB_PAGE_TOKEN,
+        fields="id,message,description",
+        page_size=25,
+        max_pages=max_pages
+    ):
+        description = str(item.get("description") or item.get("message") or "")
         markers.add(description)
     
     return markers
