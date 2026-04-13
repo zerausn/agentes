@@ -530,7 +530,7 @@ def _iter_graph_collection(path_or_url, *, access_token, fields, page_size=100, 
         params = None
 
 
-def find_existing_facebook_video_by_caption_marker(marker, *, page_size=25, max_pages=2):
+def find_existing_facebook_video_by_caption_marker(marker, *, page_size=25, max_pages=80):
     marker = (marker or "").strip()
     if not marker or not FB_PAGE_ID or not META_FB_PAGE_TOKEN:
         return None
@@ -554,7 +554,7 @@ def find_existing_facebook_video_by_caption_marker(marker, *, page_size=25, max_
     return None
 
 
-def find_existing_instagram_media_by_caption_marker(marker, *, page_size=25, max_pages=2):
+def find_existing_instagram_media_by_caption_marker(marker, *, page_size=25, max_pages=80):
     marker = (marker or "").strip()
     if not marker or not IG_USER_ID or not IG_ACCESS_TOKEN:
         return None
