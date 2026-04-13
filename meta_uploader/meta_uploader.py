@@ -1497,9 +1497,9 @@ def upload_fb_reel(video_path, caption, scheduled_publish_time=None, _allow_fres
             logging.error("Facebook no devolvio video_id en start de Reel: %s", start_result)
             return None
 
-        upload_session_id = start_result.get("upload_session_id")
+        upload_session_id = start_result.get("upload_session_id") or start_result.get("video_id")
         if not upload_session_id:
-            logging.error("Facebook no devolvio upload_session_id en start de Reel: %s", start_result)
+            logging.error("Facebook no devolvio upload_session_id ni video_id en start de Reel: %s", start_result)
             return None
         current_offset = 0
 

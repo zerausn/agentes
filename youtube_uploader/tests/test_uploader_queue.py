@@ -5,12 +5,30 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import uploader as uploader_module
 from uploader import build_pending_upload_queues
 from uploader import normalize_upload_lane
 from uploader import pop_next_pending_video
 
 
 class UploaderQueueTests(unittest.TestCase):
+    REFERENCE_NOW = datetime(2026, 4, 8, 12, 0, tzinfo=timezone.utc)
+
+    @classmethod
+    def setUpClass(cls):
+        cls._original_config = uploader_module.config
+        uploader_module.config = {
+            "scheduling": {
+                "colombia_time_offset": -5,
+                "publish_hour": 17,
+                "publish_minute": 45,
+            }
+        }
+
+    @classmethod
+    def tearDownClass(cls):
+        uploader_module.config = cls._original_config
+
     def test_build_pending_upload_queues_sorts_each_lane_by_weight(self):
         videos = [
             {"filename": "video_a.mp4", "type": "video", "size_mb": 120, "uploaded": False},
@@ -46,7 +64,12 @@ class UploaderQueueTests(unittest.TestCase):
             "2026-04-10": {"videos": 0, "shorts": 0},
         }
 
-        selected, lane, next_date = pop_next_pending_video(queues, videos, yt_schedule)
+        selected, lane, next_date = pop_next_pending_video(
+            queues,
+            videos,
+            yt_schedule,
+            now_utc=self.REFERENCE_NOW,
+        )
 
         self.assertEqual(selected["filename"], "video_heavy.mp4")
         self.assertEqual(lane, "video")
@@ -70,7 +93,12 @@ class UploaderQueueTests(unittest.TestCase):
         queues = build_pending_upload_queues(videos)
         yt_schedule = {}
 
-        selected, lane, next_date = pop_next_pending_video(queues, videos, yt_schedule)
+        selected, lane, next_date = pop_next_pending_video(
+            queues,
+            videos,
+            yt_schedule,
+            now_utc=self.REFERENCE_NOW,
+        )
 
         self.assertEqual(selected["filename"], "short_heavy.mp4")
         self.assertEqual(lane, "short")

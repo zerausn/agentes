@@ -119,24 +119,34 @@ def main():
     args = parser.parse_args()
 
     restart_attempt = 0
+    initial_run = True
     while True:
         calendar_state = inspect_calendar()
+        
+        # Si el calendario esta vacio, necesitamos lanzarlo por primera vez para poblarlo
         if calendar_state["all_completed"]:
-            logging.info("El calendario ya figura como completado. No hace falta relanzar nada.")
-            return 0
-        if calendar_state["paused_days"]:
-            logging.error(
-                "Se detecto pausa por fallo en el calendario. Se detiene el supervisor para no reintentar a ciegas. Estado: %s",
-                calendar_state["first_incomplete"],
-            )
-            return 2
-        if calendar_state["blocked_by_future_day"]:
-            logging.info(
-                "El siguiente dia pendiente (%s) aun no corresponde frente a hoy %s. Se detiene el supervisor para respetar 1 publicacion por dia real.",
-                calendar_state["first_incomplete"],
-                calendar_state["today_iso"],
-            )
-            return 0
+            if initial_run:
+                logging.info("Arrancando por primera vez (calendario vacio).")
+            else:
+                logging.info("Todo completado por ahora. Esperando 10s para ver si hay nuevos videos...")
+                time.sleep(10)
+            
+            # Forzamos lanzamiento del runner para poblar
+            args.rebuild_plan = True 
+        
+        elif calendar_state["paused_days"]:
+            logging.error("Pausa por fallo en %s. Reintentando en 60s...", calendar_state["first_incomplete"])
+            time.sleep(60)
+            continue
+            
+        elif calendar_state["blocked_by_future_day"]:
+            logging.info("Horas Golden del dia %s ya programadas. Esperando 10s para proximo slot...", calendar_state["first_incomplete"]["fecha"])
+            time.sleep(10)
+            args.rebuild_plan = True # Intentamos empujar un slot mas al futuro
+            initial_run = False
+            continue
+        
+        initial_run = False
 
         command = build_runner_command(args)
         logging.info(
@@ -149,21 +159,17 @@ def main():
         calendar_state = inspect_calendar()
 
         if calendar_state["all_completed"]:
-            logging.info("La jornada quedo completada despues del intento %s.", restart_attempt + 1)
-            return 0
+            logging.info("Ciclo terminado exitosamente. Reiniciando en 10s...")
+            time.sleep(10)
+            continue
         if calendar_state["paused_days"]:
-            logging.error(
-                "El runner termino dejando la jornada pausada por fallo. Se corta el supervisor. Estado: %s",
-                calendar_state["first_incomplete"],
-            )
-            return 2
+            logging.error("Runner termino en fallo. Reintentando en 60s...")
+            time.sleep(60)
+            continue
         if calendar_state["blocked_by_future_day"]:
-            logging.info(
-                "El runner dejo el siguiente dia pendiente (%s) para mas adelante. Hoy es %s, asi que el supervisor se detiene sin relanzar.",
-                calendar_state["first_incomplete"],
-                calendar_state["today_iso"],
-            )
-            return 0
+            logging.info("Limite de programacion alcanzado. Reintentando en 10s...")
+            time.sleep(10)
+            continue
 
         restart_attempt += 1
         if restart_attempt > args.max_restarts:

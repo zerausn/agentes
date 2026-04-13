@@ -66,12 +66,12 @@ def require_upload_opt_in():
 
 
 def load_queue(name):
-    queue_path = BASE_DIR / f"pendientes_{name}.json"
+    queue_path = Path(r"C:\Users\ZN-\Documents\Antigravity\agentes\meta_uploader") / f"pendientes_{name}.json"
     try:
         with open(queue_path, "r", encoding="utf-8") as handle:
             return json.load(handle)
     except FileNotFoundError:
-        logging.warning("No se encontro %s.", queue_path.name)
+        logging.warning("No se encontro la cola en: %s", queue_path.absolute())
         return []
 
 
@@ -332,19 +332,55 @@ def build_caption(video_info, lane, publish_date):
     return f"{stem} #PW"
 
 
-def build_plan(reels, posts, *, reel_start_index, post_start_index, days, start_date, enable_ig_stories):
+def build_plan(reels, posts, *, reel_start_index, post_start_index, days, start_date, enable_ig_stories, existing_plan=None):
     base_date = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else datetime.now().date()
     max_available = max(len(reels) - reel_start_index, len(posts) - post_start_index, 0)
-    if days is None:
-        max_days = max_available
-    else:
-        max_days = min(days, max_available)
+    
+    # Mapa de ocupacion para no duplicar slots en cascada
+    busy_slots = set()
+    if existing_plan:
+        for entry in existing_plan:
+            f = entry.get("fecha")
+            rt = entry.get("reel_time")
+            pt = entry.get("post_time")
+            if rt: busy_slots.add((f, rt.split("T")[-1]))
+            if pt: busy_slots.add((f, pt.split("T")[-1]))
+
+    max_horizon = days if days is not None else 28
+    
+    GOLDEN_SLOTS = ["07:00:00", "18:30:00"]
+    def generate_cascading_slots():
+        sweep = 1
+        start_day = 0
+        end_day = max_horizon - 1
+        slot_idx = 0
+        while start_day <= end_day:
+            for day_val in range(start_day, end_day + 1):
+                p_date = (base_date + timedelta(days=day_val)).isoformat()
+                s_time = GOLDEN_SLOTS[slot_idx]
+                if (p_date, s_time) in busy_slots:
+                    continue
+                yield day_val, s_time
+            slot_idx = (slot_idx + 1) % len(GOLDEN_SLOTS)
+            sweep += 1
+            if sweep % 2 == 0:
+                start_day += 1
+            else:
+                end_day -= 1
+
+    slot_gen = generate_cascading_slots()
     plan = []
 
-    for day_offset in range(max_days):
+    for i in range(max_available):
+        try:
+            day_offset, slot_time = next(slot_gen)
+        except StopIteration:
+            break
+            
         publish_date = (base_date + timedelta(days=day_offset)).isoformat()
-        reel_path = reels[reel_start_index + day_offset] if reel_start_index + day_offset < len(reels) else None
-        post_path = posts[post_start_index + day_offset] if post_start_index + day_offset < len(posts) else None
+        
+        reel_path = reels[reel_start_index + i] if reel_start_index + i < len(reels) else None
+        post_path = posts[post_start_index + i] if post_start_index + i < len(posts) else None
 
         reel_info = probe_video(reel_path) if reel_path else None
         post_info = probe_video(post_path) if post_path else None
@@ -352,6 +388,8 @@ def build_plan(reels, posts, *, reel_start_index, post_start_index, days, start_
 
         day_entry = {
             "fecha": publish_date,
+            "reel_time": f"{publish_date}T{slot_time}",
+            "post_time": f"{publish_date}T{slot_time}",
             "reel": {
                 "path": reel_info["path"],
                 "filename": reel_info["filename"],
@@ -625,10 +663,9 @@ def execute_plan(plan, pause_between_assets=10, max_live_days=1):
             continue
         if day_entry["summary"].get("status") == "paused_on_failure":
             logging.error("La jornada sigue pausada por fallo previo en %s. Revisa meta_calendar.json", publish_date)
-            return False, "paused_on_failure"
-            
-        if (publish_day - today).days > 29:
-            logging.info("Se detiene en %s porque supera el limite de programacion de Meta (29 dias).", publish_date)
+        # Eliminamos el bloqueo de futuro para permitir programacion masiva (Wraparound 28 dias)
+        if (publish_day - today).days > 28:
+            logging.info("Se detiene en %s porque supera el limite de programacion de Meta (28 dias).", publish_date)
             break
             
         days_to_process.append(day_entry)
@@ -743,8 +780,8 @@ def main():
     parser.add_argument(
         "--max-live-days",
         type=int,
-        default=29,
-        help="Maximo de dias reales a ejecutar por corrida (Programacion Masiva Segura - Limite 29 dias).",
+        default=28,
+        help="Maximo de dias reales a ejecutar por corrida (Programacion Masiva Segura - Limite 28 dias).",
     )
     parser.add_argument(
         "--disable-ig-stories",
@@ -769,6 +806,9 @@ def main():
 
         reels = load_queue("reels")
         posts = load_queue("posts")
+        
+        existing_plan = load_existing_calendar() if not args.rebuild_plan else None
+        
         plan = build_plan(
             reels,
             posts,
@@ -777,11 +817,10 @@ def main():
             days=args.days,
             start_date=args.start_date,
             enable_ig_stories=not args.disable_ig_stories,
+            existing_plan=existing_plan
         )
-        if not args.rebuild_plan:
-            existing_plan = load_existing_calendar()
-            if existing_plan:
-                plan = merge_existing_calendar(plan, existing_plan)
+        if not args.rebuild_plan and existing_plan:
+            plan = merge_existing_calendar(plan, existing_plan)
 
         write_calendar(plan)
         logging.info("Calendario operativo guardado en %s con %s dias.", CALENDAR_FILE.name, len(plan))

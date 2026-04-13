@@ -125,7 +125,7 @@ class UploadWatchdog:
                 self._alerted = True
 
 
-def get_next_publish_date(videos, video_type="video", yt_scheduled_dates=None):
+def get_next_publish_date(videos, video_type="video", yt_scheduled_dates=None, now_utc=None):
     if yt_scheduled_dates is None:
         yt_scheduled_dates = {}
 
@@ -134,7 +134,8 @@ def get_next_publish_date(videos, video_type="video", yt_scheduled_dates=None):
     target_minute = config.get("scheduling", {}).get("publish_minute", 45)
     colombia_tz = timezone(timedelta(hours=tz_offset))
 
-    now_utc = datetime.now(timezone.utc)
+    if now_utc is None:
+        now_utc = datetime.now(timezone.utc)
     now_col = now_utc.astimezone(colombia_tz)
     base_date = now_col + timedelta(days=1)
 
@@ -183,7 +184,7 @@ def build_pending_upload_queues(videos):
     return queues
 
 
-def pop_next_pending_video(queues, videos, yt_scheduled_dates):
+def pop_next_pending_video(queues, videos, yt_scheduled_dates, now_utc=None):
     candidates = []
 
     for lane, queue in queues.items():
@@ -193,7 +194,7 @@ def pop_next_pending_video(queues, videos, yt_scheduled_dates):
             continue
 
         head = queue[0]
-        next_date = get_next_publish_date(videos, lane, yt_scheduled_dates)
+        next_date = get_next_publish_date(videos, lane, yt_scheduled_dates, now_utc=now_utc)
         size_mb = float(head.get("size_mb") or 0)
         lane_priority = 0 if lane == "video" else 1
         candidates.append((next_date, -size_mb, lane_priority, lane))

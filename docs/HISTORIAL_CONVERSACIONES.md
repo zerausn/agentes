@@ -674,3 +674,36 @@ con ruido tipo "sal y pimienta" y manchas de fotocopia. Extraer texto y exportar
   - ya no deja crecer la consola por textos largos del monitor
 - Alcance mantenido:
   - no se toco `meta_uploader` ni `youtube_uploader`
+
+## Sesion 37 - Revision de `youtube_uploader` y `meta_uploader` + tercera plataforma candidata (Codex, 2026-04-13)
+
+- Registro agregado al historial compartido de Antigravity/Codex/Claude Code.
+- El usuario pidio:
+  - revisar el repo `agentes`
+  - verificar `youtube_uploader` y `meta_uploader`
+  - recomendar una tercera plataforma monetizable para replicar el flujo
+- Verificacion de `youtube_uploader`:
+  - se leyo el contexto local (`AGENTS.md`, `AI.md`, `TODO.md`, `docs/DECISIONS.md`, `docs/PROGRESS.md`)
+  - `python -m unittest discover -s tests -v` inicialmente fallo en `2` pruebas de cola/calendario
+  - la causa fue fragilidad de pruebas por dependencia del reloj real del sistema y de la hora local cargada desde `config.json`
+  - se corrigio `uploader.py` para aceptar `now_utc` inyectable en `get_next_publish_date(...)` y `pop_next_pending_video(...)`
+  - se corrigio `tests/test_uploader_queue.py` para fijar tiempo/config de prueba
+  - resultado final: `16/16` pruebas `OK`
+  - `py_compile` de los scripts principales de `youtube_uploader` tambien quedo `OK`
+- Verificacion de `meta_uploader`:
+  - `py_compile` de los scripts principales quedo `OK`
+  - `run_jornada1_normal.py --help` y `schedule_jornada1_supervisor.py --help` respondieron correctamente
+  - `test_draft_logic.py` corrio como sonda local sin publicar
+  - se confirmo que la mayoria de `test_*.py` en Meta son sondas/manuales con opt-in real (`META_ENABLE_UPLOAD=1`), no suite automatica segura para CI
+- Riesgos abiertos detectados en `meta_uploader`:
+  - `run_jornada1_normal.py` quedo con ruta absoluta hardcodeada a `C:\Users\ZN-\Documents\Antigravity\agentes\meta_uploader`, lo que rompe portabilidad y contradice la regla documentada de resolver rutas desde el subproyecto
+  - `run_jornada1_supervisor.py` ahora reintenta de forma agresiva cuando el calendario queda bloqueado por dia futuro o por pausa, alejandose de la decision documentada de respetar `1 publicacion por dia real`
+  - `crosspost_history.json` sigue versionado aunque funciona como estado operativo mutable
+- Observaciones de repo:
+  - `youtube_uploader/scanned_videos.json` sigue versionado a proposito y es parte del indice operativo del subproyecto
+  - las credenciales OAuth de YouTube y `.env` de Meta no aparecen versionadas en Git en esta revision
+- Recomendacion de tercera plataforma:
+  - recomendacion principal: `TikTok`
+  - motivo: hoy ofrece mejor upside de alcance/monetizacion para video corto y existe API oficial de publicacion (`Content Posting API`) compatible con un flujo parecido al carril de clips/verticales
+  - condicion importante: la monetizacion fuerte depende del `Creator Rewards Program`, que exige cuenta personal elegible, contenido original de mas de `1 minuto` y disponibilidad por pais/region soportada por TikTok
+  - fallback mas simple por API pero con menor upside: `Dailymotion`
