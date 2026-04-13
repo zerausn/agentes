@@ -1,1 +1,219 @@
-[]
+[
+    {
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\videos subidos exitosamente\\20260410_182142.mp4",
+        "size_mb": 2074.27,
+        "filename": "20260410_182142.mp4",
+        "uploaded": true,
+        "creation_date": "2026-04-13 14:25:06",
+        "type": "video",
+        "duration": 120.763478,
+        "dimensions": "3840x2160",
+        "faststart_applied": true,
+        "youtube_id": "woYRiNOSMrU",
+        "publishAt": "2026-04-14T19:00:00Z"
+    },
+    {
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20260410_183220.mp4",
+        "size_mb": 2065.69,
+        "filename": "20260410_183220.mp4",
+        "uploaded": false,
+        "creation_date": "2026-04-13 14:27:00",
+        "type": "video",
+        "duration": 120.563189,
+        "dimensions": "3840x2160",
+        "faststart_applied": true
+    },
+    {
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20260411_215003.mp4",
+        "size_mb": 1339.38,
+        "filename": "20260411_215003.mp4",
+        "uploaded": false,
+        "creation_date": "2026-04-13 14:28:55",
+        "type": "video",
+        "duration": 78.164211,
+        "dimensions": "3840x2160"
+    },
+    {
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20260410_182346.mp4",
+        "size_mb": 1039.3,
+        "filename": "20260410_182346.mp4",
+        "uploaded": false,
+        "creation_date": "2026-04-13 14:26:22",
+        "type": "video",
+        "duration": 60.526067,
+        "dimensions": "3840x2160"
+    },
+    {
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\videos subidos exitosamente\\20260411_220756.mp4",
+        "size_mb": 683.46,
+        "filename": "20260411_220756.mp4",
+        "uploaded": true,
+        "creation_date": "2026-04-13 14:30:05",
+        "type": "short",
+        "duration": 40.032078,
+        "dimensions": "3840x2160",
+        "faststart_applied": true,
+        "youtube_id": "Jy5hrdAndSM",
+        "publishAt": "2026-04-15T19:00:00Z"
+    },
+    {
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20260410_181912.mp4",
+        "size_mb": 552.04,
+        "filename": "20260410_181912.mp4",
+        "uploaded": false,
+        "creation_date": "2026-04-13 14:24:30",
+        "type": "short",
+        "duration": 32.242411,
+        "dimensions": "3840x2160"
+    },
+    {
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20260409_192049.mp4",
+        "size_mb": 452.57,
+        "filename": "20260409_192049.mp4",
+        "uploaded": false,
+        "creation_date": "2026-04-13 14:24:05",
+        "type": "short",
+        "duration": 26.341444,
+        "dimensions": "3840x2160"
+    },
+    {
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20260411_215838.mp4",
+        "size_mb": 413.35,
+        "filename": "20260411_215838.mp4",
+        "uploaded": false,
+        "creation_date": "2026-04-13 14:29:44",
+        "type": "short",
+        "duration": 24.304778,
+        "dimensions": "3840x2160"
+    },
+    {
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20260410_182106.mp4",
+        "size_mb": 402.64,
+        "filename": "20260410_182106.mp4",
+        "uploaded": false,
+        "creation_date": "2026-04-13 14:24:51",
+        "type": "short",
+        "duration": 23.497267,
+        "dimensions": "3840x2160"
+    },
+    {
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20260411_214619.mp4",
+        "size_mb": 307.04,
+        "filename": "20260411_214619.mp4",
+        "uploaded": false,
+        "creation_date": "2026-04-13 14:28:16",
+        "type": "short",
+        "duration": 18.142322,
+        "dimensions": "3840x2160"
+    },
+    {
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20260227_220426.mp4",
+        "size_mb": 290.48,
+        "filename": "20260227_220426.mp4",
+        "uploaded": false,
+        "creation_date": "2026-04-13 14:22:59",
+        "type": "short",
+        "duration": 17.005867,
+        "dimensions": "3840x2160"
+    },
+    {
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20260410_181614.mp4",
+        "size_mb": 239.31,
+        "filename": "20260410_181614.mp4",
+        "uploaded": false,
+        "creation_date": "2026-04-13 14:24:21",
+        "type": "short",
+        "duration": 14.197156,
+        "dimensions": "3840x2160"
+    },
+    {
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\Fotos2\\20260304_190917.mp4",
+        "size_mb": 224.38,
+        "filename": "20260304_190917.mp4",
+        "uploaded": false,
+        "creation_date": "2026-04-13 15:20:12",
+        "type": "short",
+        "duration": 13.385944,
+        "dimensions": "3840x2160"
+    },
+    {
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20260201_203425.mp4",
+        "size_mb": 128.99,
+        "filename": "20260201_203425.mp4",
+        "uploaded": false,
+        "creation_date": "2026-04-13 14:22:54",
+        "type": "short",
+        "duration": 7.524611,
+        "dimensions": "3840x2160"
+    },
+    {
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20260302_185535.mp4",
+        "size_mb": 112.86,
+        "filename": "20260302_185535.mp4",
+        "uploaded": false,
+        "creation_date": "2026-04-13 14:23:09",
+        "type": "short",
+        "duration": 14.914033,
+        "dimensions": "3840x2160"
+    },
+    {
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20250907_175411.mp4",
+        "size_mb": 97.75,
+        "filename": "20250907_175411.mp4",
+        "uploaded": false,
+        "creation_date": "2026-04-13 14:22:39",
+        "type": "short",
+        "duration": 5.748944,
+        "dimensions": "3840x2160"
+    },
+    {
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20251115_183534.mp4",
+        "size_mb": 84.84,
+        "filename": "20251115_183534.mp4",
+        "uploaded": false,
+        "creation_date": "2026-04-13 14:22:51",
+        "type": "short",
+        "duration": 4.997011,
+        "dimensions": "3840x2160"
+    },
+    {
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20260304_190943.mp4",
+        "size_mb": 81.53,
+        "filename": "20260304_190943.mp4",
+        "uploaded": false,
+        "creation_date": "2026-04-13 14:23:14",
+        "type": "short",
+        "duration": 4.831522,
+        "dimensions": "3840x2160"
+    },
+    {
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20250919_183420.mp4",
+        "size_mb": 78.83,
+        "filename": "20250919_183420.mp4",
+        "uploaded": false,
+        "creation_date": "2026-04-13 14:22:42",
+        "type": "short",
+        "duration": 4.681244,
+        "dimensions": "3840x2160"
+    },
+    {
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20260411_214801.mp4",
+        "size_mb": 60.01,
+        "filename": "20260411_214801.mp4",
+        "uploaded": false,
+        "creation_date": "2026-04-13 14:28:52",
+        "type": "short",
+        "duration": 3.563156,
+        "dimensions": "3840x2160"
+    },
+    {
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20251010_201138.mp4",
+        "size_mb": 57.96,
+        "filename": "20251010_201138.mp4",
+        "uploaded": false,
+        "creation_date": "2026-04-13 14:22:45",
+        "type": "short",
+        "duration": 23.041256,
+        "dimensions": "1280x720"
+    }
+]

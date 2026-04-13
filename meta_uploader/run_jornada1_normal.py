@@ -608,14 +608,9 @@ def run_platform_pair(lane_name, video_info, publish_date, target_time_str=None)
         )
 
     if work:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(work)) as executor:
-            future_map = {
-                executor.submit(_invoke_with_status, label, fn, *args): label
-                for label, (fn, *args) in work.items()
-            }
-            for future in concurrent.futures.as_completed(future_map):
-                label = future_map[future]
-                platform_results[label] = future.result()
+        # EJECUCIÓN ESTRICTAMENTE SECUENCIAL (Para maximizar velocidad por hilo)
+        for label, (fn, *args) in work.items():
+            platform_results[label] = _invoke_with_status(label, fn, *args)
 
     ok, summary = _summarize_platform_results(platform_results)
     if not ok:
@@ -750,20 +745,11 @@ def execute_plan(plan, pause_between_assets=10, max_live_days=1):
             
         return True, "completed"
 
-    # Lanza los hilos en ráfaga (máx 3 simultáneos para no saturar memoria FFmpeg)
-    has_failure = False
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-        future_map = {executor.submit(_burst_worker, entry): entry["fecha"] for entry in days_to_process}
-        for future in concurrent.futures.as_completed(future_map):
-            ok, reason = future.result()
-            if not ok:
-                has_failure = True
-                
-    if has_failure:
-        return False, "paused_on_failure"
-
-    if max_live_days is not None and len(days_to_process) >= max_live_days:
-        return True, "daily_limit_reached"
+    # ELIMINADO PARALELISMO: Procesando un solo dia a la vez secuencialmente (Modo Un Hilo)
+    for day_entry in days_to_process:
+        ok, reason = _burst_worker(day_entry)
+        if not ok:
+            return False, reason
 
     return True, "completed"
 

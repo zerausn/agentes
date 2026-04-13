@@ -1,20 +1,21 @@
 # Politica de Privacidad - Uploader Bot
 
-Ultima actualizacion: 2026-04-07
+Ultima actualizacion: 2026-04-13
 
 ## Resumen
 
 Uploader Bot es una herramienta operativa usada para preparar y publicar
-contenido en cuentas de Facebook e Instagram administradas por su operador.
-La aplicacion utiliza las APIs oficiales de Meta para autenticar al operador,
-consultar permisos y publicar contenido autorizado.
+contenido en cuentas sociales administradas por su operador, incluyendo
+integraciones de TikTok y otras plataformas compatibles. La aplicacion utiliza
+APIs oficiales para autenticar al operador, consultar permisos y publicar
+contenido autorizado.
 
 ## Datos que procesa la aplicacion
 
 La aplicacion puede procesar:
 
-- tokens de acceso de Meta provistos por el propio operador
-- identificadores tecnicos de pagina, cuenta de Instagram y aplicacion
+- tokens de acceso provistos por el propio operador
+- identificadores tecnicos de cuenta, perfil, aplicacion y recursos autorizados
 - metadatos de publicaciones, como titulos, captions, rutas de archivos,
   estado de colas y registros tecnicos de ejecucion
 - contenido multimedia que el operador decide subir manualmente
@@ -23,7 +24,7 @@ La aplicacion puede procesar:
 
 Estos datos se usan exclusivamente para:
 
-- autenticar solicitudes contra las APIs oficiales de Meta
+- autenticar solicitudes contra APIs oficiales de plataformas sociales
 - programar, subir y publicar contenido autorizado por el operador
 - diagnosticar errores tecnicos de publicacion y permisos
 - mantener trazabilidad operativa basica del flujo de carga
@@ -35,7 +36,8 @@ fuera de los proveedores necesarios para operar el servicio.
 
 Los datos pueden ser compartidos unicamente con:
 
-- Meta Platforms, Inc., cuando la aplicacion llama a sus APIs
+- TikTok Pte. Ltd. u otros proveedores de plataforma, cuando la aplicacion
+  llama a sus APIs
 - GitHub, cuando el operador decide versionar documentacion o configuracion no
   sensible en el repositorio publico del proyecto
 
@@ -63,4 +65,3 @@ aplicacion o pedir su eliminacion, puede usar el procedimiento descrito en:
 Correo de contacto operativo:
 
 - `escriturasperformaticascali@gmail.com`
-
