@@ -535,7 +535,9 @@ def find_existing_facebook_video_by_caption_marker(marker, *, page_size=25, max_
     if not marker or not FB_PAGE_ID or not META_FB_PAGE_TOKEN:
         return None
 
-    # Escaneamos ambas colecciones: Publicados y Programados (is_published=false)
+    # Escaneamos videos publicados/no publicados y, aparte, los scheduled_posts.
+    # En la practica Meta no siempre expone los programados completos en
+    # `/{page}/videos?is_published=false`, por eso necesitamos ambas rutas.
     endpoints = [
         f"{FB_PAGE_ID}/videos?is_published=true",
         f"{FB_PAGE_ID}/videos?is_published=false"
@@ -558,6 +560,37 @@ def find_existing_facebook_video_by_caption_marker(marker, *, page_size=25, max_
                     "published": bool(item.get("published")),
                     "scheduled_publish_time": item.get("scheduled_publish_time"),
                 }
+
+    for item in _iter_graph_collection(
+        f"{FB_PAGE_ID}/scheduled_posts",
+        access_token=META_FB_PAGE_TOKEN,
+        fields="id,message,scheduled_publish_time,attachments{type,target{id}}",
+        page_size=page_size,
+        max_pages=max_pages,
+    ):
+        message = str(item.get("message") or "")
+        if marker not in message:
+            continue
+
+        target_id = None
+        attachments = (item.get("attachments") or {}).get("data") or []
+        for attachment in attachments:
+            target = attachment.get("target") or {}
+            if target.get("id"):
+                target_id = str(target.get("id"))
+                break
+
+        return {
+            "id": target_id or str(item.get("id") or ""),
+            "scheduled_post_id": str(item.get("id") or ""),
+            "target_id": target_id,
+            "description": message,
+            "message": message,
+            "created_time": None,
+            "published": False,
+            "scheduled_publish_time": item.get("scheduled_publish_time"),
+            "source": "scheduled_posts",
+        }
     return None
 
 
@@ -619,7 +652,21 @@ def get_facebook_library_batch(max_pages=80):
     ):
         description = str(item.get("description") or "")
         markers.add(description)
-    
+
+    # 3. Barrido de POSTS PROGRAMADOS.
+    # Muchos videos programados aparecen aqui con el stem en `message`, aunque
+    # no salgan en `/{page}/videos?is_published=false`.
+    logging.info("Descargando catalogo remoto de Facebook (Scheduled Posts - Cache de hasta %s posts)...", max_pages * 25)
+    for item in _iter_graph_collection(
+        f"{FB_PAGE_ID}/scheduled_posts",
+        access_token=META_FB_PAGE_TOKEN,
+        fields="id,message,scheduled_publish_time",
+        page_size=25,
+        max_pages=max_pages
+    ):
+        message = str(item.get("message") or "")
+        markers.add(message)
+
     return markers
 
 def get_instagram_library_batch(max_pages=80):

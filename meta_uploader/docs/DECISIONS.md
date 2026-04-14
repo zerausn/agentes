@@ -225,3 +225,23 @@
   `meta_uploader.py` como cliente de bajo nivel.
 - **Razon:** esta separacion evita confusion entre la capa de orquestacion y la
   capa de transporte, y deja un solo comando mental para el operador.
+
+## D27: Tomar `scheduled_posts` como fuente obligatoria de verdad para duplicados futuros
+- **Decision:** extender la deteccion remota y el cache de Facebook para leer
+  tambien `/{page}/scheduled_posts`, y limpiar las colas locales contra esa
+  vista antes de reconstruir `meta_calendar.json`.
+- **Razon:** en la corrida real del `2026-04-13`, stems como
+  `20260409_183524`, `20260409_184059` y `20260409_192728` ya existian en Meta
+  como programados, pero no aparecian en `/{page}/videos?is_published=false`.
+  Mientras el runner miraba solo ese edge, los videos "resucitaban" desde
+  `pendientes_posts.json` y se reintentaban.
+
+## D28: No degradar a fallo total un post cuyo full-length ya quedo programado
+- **Decision:** si `facebook_post_full_scheduled` queda confirmado y
+  `instagram_feed` esta resuelto o derivado a segunda jornada, un fallo del
+  `facebook_post_reel_now` se trata como best-effort fallido y no como razon
+  para reintentar el asset completo.
+- **Razon:** el objetivo operativo del carril post es asegurar el video
+  completo programado. Marcar todo el lane como `failed` cuando solo cae el
+  reel inmediato auxiliar deja el calendario y las colas en un estado que
+  favorece nuevos duplicados.

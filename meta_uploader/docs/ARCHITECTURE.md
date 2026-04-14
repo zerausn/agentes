@@ -68,6 +68,11 @@ con una capa de automatizacion separada del repo contenedor.
   buscando el stem original del archivo en caption/descripcion. Si ya existe
   un match remoto, registra `already_exists_remote` y evita una nueva
   publicacion aunque el calendario local haya quedado desfasado por una caida.
+- **Programados visibles de verdad**: la deteccion remota de Facebook ya no se
+  limita a `/{page}/videos`; tambien consulta `/{page}/scheduled_posts`, porque
+  parte de los videos futuros vive solo ahi con el stem en `message`. Ese mismo
+  barrido alimenta la limpieza previa de `pendientes_posts.json` y
+  `pendientes_reels.json` antes de reconstruir `meta_calendar.json`.
 - **Supervision local**: `run_jornada1_supervisor.py` vigila la salida del
   runner normal. Si el proceso termina sin completar el calendario y sin dejar
   una pausa explicita por fallo, el supervisor espera unos segundos y reanuda
@@ -77,6 +82,11 @@ con una capa de automatizacion separada del repo contenedor.
   al completar un solo dia real o cuando el siguiente `fecha` del calendario
   todavia es futuro. `run_jornada1_supervisor.py` tambien se detiene en ese
   punto y no relanza el runner hasta que corresponda el siguiente dia.
+- **Reel inmediato como best-effort en carril post**: para el carril
+  `Facebook Post + IG Feed`, el objetivo primario es que el video completo
+  quede programado. Si ese programado ya existe o se confirma remoto, un fallo
+  del reel inmediato auxiliar no debe devolver el asset a estado pendiente ni
+  disparar reintentos duplicados del video completo.
 - **Entrypoint humano recomendado**: cuando el operador diga "sube videos a
   Meta", debe arrancarse `run_jornada1_supervisor.py` para la jornada de
   publicacion programada.

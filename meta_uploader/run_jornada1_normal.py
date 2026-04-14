@@ -16,6 +16,8 @@ from meta_uploader import (
     diagnose_meta_connectivity,
     find_existing_facebook_video_by_caption_marker,
     find_existing_instagram_media_by_caption_marker,
+    get_facebook_library_batch,
+    get_instagram_library_batch,
     get_last_operation_status,
     upload_fb_reel,
     upload_fb_video_standard,
@@ -66,13 +68,67 @@ def require_upload_opt_in():
 
 
 def load_queue(name):
-    queue_path = Path(r"C:\Users\ZN-\Documents\Antigravity\agentes\meta_uploader") / f"pendientes_{name}.json"
+    queue_path = BASE_DIR / f"pendientes_{name}.json"
     try:
         with open(queue_path, "r", encoding="utf-8") as handle:
             return json.load(handle)
     except FileNotFoundError:
         logging.warning("No se encontro la cola en: %s", queue_path.absolute())
         return []
+
+
+def save_queue(name, queue_items):
+    queue_path = BASE_DIR / f"pendientes_{name}.json"
+    with open(queue_path, "w", encoding="utf-8") as handle:
+        json.dump(queue_items, handle, indent=2, ensure_ascii=False)
+
+
+def _marker_exists_in_remote_library(marker, remote_library):
+    return any(marker in entry for entry in remote_library)
+
+
+def _prune_queue_items_against_remote(queue_name, queue_items, remote_library):
+    kept = []
+    removed_markers = []
+
+    for raw_path in queue_items:
+        marker = extract_asset_marker(raw_path)
+        if _marker_exists_in_remote_library(marker, remote_library):
+            removed_markers.append(marker)
+            continue
+        kept.append(raw_path)
+
+    if removed_markers:
+        logging.warning(
+            "Se limpiaron %s item(s) de pendientes_%s.json porque ya existen en Meta: %s",
+            len(removed_markers),
+            queue_name,
+            ", ".join(removed_markers[:10]),
+        )
+        save_queue(queue_name, kept)
+
+    return kept, removed_markers
+
+
+def sync_local_queues_with_remote(posts, reels, *, max_pages=80):
+    logging.info("Sincronizando colas locales contra la nube antes de planificar...")
+    fb_cache = get_facebook_library_batch(max_pages=max_pages)
+    ig_cache = get_instagram_library_batch(max_pages=max_pages)
+    remote_library = tuple(text for text in (fb_cache | ig_cache) if text)
+
+    cleaned_posts, removed_posts = _prune_queue_items_against_remote("posts", posts, remote_library)
+    cleaned_reels, removed_reels = _prune_queue_items_against_remote("reels", reels, remote_library)
+
+    if removed_posts or removed_reels:
+        logging.info(
+            "Limpieza remota previa completada. Posts removidos: %s | Reels removidos: %s",
+            len(removed_posts),
+            len(removed_reels),
+        )
+    else:
+        logging.info("No se detectaron duplicados remotos en las colas locales.")
+
+    return cleaned_posts, cleaned_reels
 
 
 import time
@@ -217,6 +273,14 @@ def parse_source_datetime(video_path):
         return None
 
 
+def extract_asset_marker(video_path):
+    stem = Path(video_path).stem
+    match = DATE_STEM_RE.search(stem)
+    if match:
+        return f"{match.group('date')}_{match.group('time')}"
+    return stem
+
+
 def probe_video(video_path):
     cmd = [
         "ffprobe",
@@ -328,8 +392,8 @@ def evaluate_ig_video_preflight(video_info, lane_name):
 
 
 def build_caption(video_info, lane, publish_date):
-    stem = Path(video_info["path"]).stem
-    return f"{stem} #PW"
+    marker = extract_asset_marker(video_info["path"])
+    return f"{marker} #PW"
 
 
 def build_plan(reels, posts, *, reel_start_index, post_start_index, days, start_date, enable_ig_stories, existing_plan=None):
@@ -449,7 +513,32 @@ def _summarize_platform_results(platform_results):
     def _is_soft_skip(item):
         return item["status"].get("kind") == "skipped_requires_second_jornada"
 
-    ok = all(item["result"] or _is_soft_skip(item) for item in platform_results.values())
+    def _is_resolved(item):
+        if not item:
+            return False
+        return bool(item.get("result")) or _is_soft_skip(item)
+
+    ok = all(_is_resolved(item) for item in platform_results.values())
+
+    fb_post_full = platform_results.get("facebook_post_full_scheduled")
+    ig_post = platform_results.get("instagram_feed")
+    fb_post_reel_now = platform_results.get("facebook_post_reel_now")
+
+    if (
+        not ok
+        and fb_post_full
+        and _is_resolved(fb_post_full)
+        and ig_post
+        and _is_resolved(ig_post)
+        and fb_post_reel_now
+        and not _is_resolved(fb_post_reel_now)
+    ):
+        ok = True
+        logging.warning(
+            "El reel inmediato de apoyo fallo, pero el video completo ya quedo programado. "
+            "Se conserva el asset como resuelto para evitar reintentos duplicados."
+        )
+
     return ok, {
         key: {
             "result": value["result"],
@@ -475,21 +564,34 @@ def _build_skipped_result(label, kind, message):
 
 def _build_existing_remote_result(label, remote_item):
     result_id = str(remote_item.get("id") or "")
-    remote_time = remote_item.get("created_time") or remote_item.get("timestamp") or "sin fecha"
+    scheduled_raw = remote_item.get("scheduled_publish_time")
+    remote_time = (
+        remote_item.get("created_time")
+        or remote_item.get("timestamp")
+        or scheduled_raw
+        or "sin fecha"
+    )
     permalink = remote_item.get("permalink_url") or remote_item.get("permalink")
     message = f"ya existia remoto con id {result_id} ({remote_time})"
     if permalink:
         message = f"{message} | {permalink}"
+    status_payload = {
+        "kind": "already_exists_remote",
+        "phase": "remote_guard",
+        "message": message,
+        "transient": False,
+        "watchdog_alerted": False,
+    }
+    if scheduled_raw:
+        try:
+            status_payload["scheduled_unix"] = int(scheduled_raw)
+            status_payload["scheduled_local"] = datetime.fromtimestamp(int(scheduled_raw)).isoformat()
+        except (TypeError, ValueError, OSError):
+            status_payload["scheduled_local"] = str(scheduled_raw)
     return {
         "label": label,
         "result": result_id,
-        "status": {
-            "kind": "already_exists_remote",
-            "phase": "remote_guard",
-            "message": message,
-            "transient": False,
-            "watchdog_alerted": False,
-        },
+        "status": status_payload,
     }
 
 
@@ -544,7 +646,7 @@ def run_platform_pair(lane_name, video_info, publish_date, target_time_str=None)
     platform_results = {}
     ig_label = "instagram_reel" if lane_name == "reel" else "instagram_feed"
     ig_preflight = evaluate_ig_video_preflight(video_info, lane_name)
-    caption_marker = Path(video_info["path"]).stem
+    caption_marker = extract_asset_marker(video_info["path"])
     fb_label = "facebook_reel" if lane_name == "reel" else "facebook_post"
 
     existing_facebook = find_existing_facebook_video_by_caption_marker(caption_marker)
@@ -629,6 +731,28 @@ def run_platform_pair(lane_name, video_info, publish_date, target_time_str=None)
     return ok, summary
 
 
+def determine_lane_status(lane_name, ok, summary):
+    if not ok:
+        return "failed"
+
+    if lane_name == "post":
+        primary_post = summary.get("facebook_post_full_scheduled") or summary.get("facebook_post") or {}
+        status_payload = primary_post.get("status") or {}
+        scheduled_remote = (
+            bool(primary_post.get("result"))
+            and (
+                "facebook_post_full_scheduled" in summary
+                or status_payload.get("scheduled_local")
+                or status_payload.get("scheduled_unix")
+                or status_payload.get("kind") == "scheduled_remote"
+            )
+        )
+        if scheduled_remote:
+            return "scheduled_with_ig_skip" if _summary_has_second_jornada_skip(summary) else "scheduled"
+
+    return "published_with_ig_skip" if _summary_has_second_jornada_skip(summary) else "published"
+
+
 def run_ig_story_if_enabled(day_entry):
     story = day_entry["instagram_story"]
     if not story["enabled"] or not story["path"]:
@@ -708,7 +832,7 @@ def execute_plan(plan, pause_between_assets=10, max_live_days=1):
             
             target_time_str = day_entry.get(f"{lane_name}_time")
             ok, summary = run_platform_pair(lane_name, video_info, publish_date, target_time_str)
-            lane_status = "published_with_ig_skip" if ok and _summary_has_second_jornada_skip(summary) else "published" if ok else "failed"
+            lane_status = determine_lane_status(lane_name, ok, summary)
             
             with _CALENDAR_LOCK:
                 mark_lane_finished(day_entry, lane_name, lane_status, summary)
@@ -717,9 +841,13 @@ def execute_plan(plan, pause_between_assets=10, max_live_days=1):
             if ok:
                 target_info = "Publicado AHORA"
                 for res in summary.values():
-                    sch = res.get("scheduled") or res.get("status", {}).get("message")
+                    status_payload = res.get("status") or {}
+                    sch = res.get("scheduled") or status_payload.get("scheduled_local") or status_payload.get("message")
                     if isinstance(sch, dict) and sch.get("scheduled_local"):
                         target_info = f"Programado: {sch['scheduled_local']}"
+                        break
+                    elif isinstance(sch, str) and "T" in sch and ":" in sch:
+                        target_info = f"Programado: {sch}"
                         break
                     elif isinstance(sch, str) and " -> " in sch:
                         target_info = f"Programado: {sch.split(' -> ')[1]}"
@@ -750,17 +878,11 @@ def execute_plan(plan, pause_between_assets=10, max_live_days=1):
             
         return True, "completed"
 
-    # RESTAURADO PARALELISMO: Motor de Cascada (Ráfaga de 3 días)
-    has_failure = False
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-        future_map = {executor.submit(_burst_worker, entry): entry["fecha"] for entry in days_to_process}
-        for future in concurrent.futures.as_completed(future_map):
-            ok, reason = future.result()
-            if not ok:
-                has_failure = True
-                
-    if has_failure:
-        return False, "paused_on_failure"
+    # MODO ESTRICTAMENTE SECUENCIAL: Un día a la vez para evitar Error 368 de Meta
+    for day_entry in days_to_process:
+        ok, reason = _burst_worker(day_entry)
+        if not ok:
+            return False, "paused_on_failure"
 
     return True, "completed"
 
@@ -801,9 +923,10 @@ def main():
         if not require_upload_opt_in():
             return 1
 
-        reels = load_queue("reels")
         posts = load_queue("posts")
-        
+        reels = load_queue("reels")
+        posts, reels = sync_local_queues_with_remote(posts, reels)
+
         existing_plan = load_existing_calendar() if not args.rebuild_plan else None
         
         plan = build_plan(
