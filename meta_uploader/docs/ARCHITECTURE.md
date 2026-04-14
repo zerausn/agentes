@@ -21,17 +21,8 @@ con una capa de automatizacion separada del repo contenedor.
   `run_jornada1_normal.py`, `run_jornada1_supervisor.py`.
   El runner `test_batch_upload.py` ya puede reintentar un asset transitorio y
   pausar el batch para no consumir la cola a ciegas.
-  El runner `run_jornada1_normal.py` es el carril operativo normal para la
-  jornada 1 de videos crudos: construye un calendario por dias, empareja las
-  colas `reels/posts`, ejecuta las duplas FB+IG por asset y persiste el estado
-  local en `meta_calendar.json`. Ahora tambien marca `in_progress`, escribe el
-  calendario de forma atomica y puede reanudar desde el ultimo `meta_calendar`
-  valido en lugar de resetear dias ya completados. `run_jornada1_supervisor.py`
-  envuelve ese runner y lo relanza cuando termina de forma inesperada antes de
-  completar la jornada. En paralelo, `meta_uploader.py` guarda checkpoints
-  locales del upload resumible de Facebook (`upload_session_id` +
-  `current_offset`) para intentar retomar el mismo transfer y no reiniciar
-  siempre desde el byte cero.
+- `reconcile_meta_cloud.py`: Motor de reconciliación rápida (Reconciliación 3.0). Realiza una limpieza triple nuclear basada en una caché masiva de 2000 videos remotos. Sincroniza el sistema purgando las colas `pendientes_*.json` y marcando el calendario como `completed`.
+- `run_jornada1_normal.py`: El runner operativo normal para la jornada 1 de videos crudos. Ahora opera en **Modo Secuencial de Días** para mitigar bloqueos por spam (Error 368), procesando un día real a la vez y manteniendo paralelismo interno solo para las plataformas (Facebook + Instagram).
 
 ## Carriles funcionales
 
@@ -113,10 +104,9 @@ con una capa de automatizacion separada del repo contenedor.
 - Los runners no deben avanzar automaticamente al siguiente asset cuando el
   ultimo fallo parezca transitorio o de red.
 - La jornada 1 debe priorizar primero el asset mas pesado disponible dentro de
-  cada fecha y pausar si falla la dupla principal de una publicacion.
-- Si el runner termina sin cerrar el calendario, la siguiente ejecucion debe
-  poder reanudar desde el mismo plan local y no duplicar dias ya completados.
+  cada fecha y procesar un dia real a la vez en modo secuencial para mitigar
+  bloqueos por spam.
 - Un mismo archivo no debe republicarse si Meta ya devuelve evidencia remota
   de que el stem original existe en Facebook o Instagram.
-- Aunque el calendario tenga varios dias planificados, la operacion viva debe
-  respetar la regla de una publicacion por dia real.
+- La Limpieza Triple Nuclear asegura la coherencia absoluta entre el disco, las colas JSON y el calendario.
+- Todo cambio estructural debe reflejarse en ARCHITECTURE.md, DECISIONS.md, PROGRESS.md y HISTORIAL_CONVERSACIONES.md.

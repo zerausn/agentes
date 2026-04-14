@@ -48,9 +48,9 @@
 - [x] Correccion del falso `failed` en el carril post cuando el video completo ya quedo programado y solo falla el reel inmediato auxiliar.
 - [x] Regla operativa de `1 publicacion por dia real` aplicada en vivo: el runner y el supervisor ya no avanzan a fechas futuras del calendario dentro de la misma corrida.
 - [x] Confirmacion en vivo de duplicado real para `20260310_183619.mp4` en Facebook con ids `1882074735828642` y `2143750206382044`; el flujo nuevo evita volverlo a publicar.
-- [ ] Revalidar en vivo `Facebook Post` despues del fix de `upload_session_id`; el retry puntual fue interrumpido por el usuario.
-- [ ] Investigar por que `Instagram Story` e `Instagram Reel` del clip vertical derivado fallan con `ProcessingFailedError` en `rupload`.
-- [ ] Validar en vivo el flujo dual completo con assets reel-safe y confirmar Facebook sin reset remoto.
-- [ ] Resolver la inestabilidad de red y socket del carril `Facebook Post` antes de considerar confiable una corrida normal sostenida.
-- [ ] Hacer el corte operativo desde el runner legacy `test_batch_upload.py` al runner normal `run_jornada1_normal.py` sin interrumpir una transferencia cruda ya en curso.
-- [ ] Separar mejor el carril IG-only de videos largos si se necesita.
+- [x] Motor de Reconciliación 3.0: Caché masiva de 2000 videos (80 páginas) para detectar duplicados en backlogs grandes.
+- [x] Detección 360: Soporte total para videos programados (`is_published=false`) y posts programados (`scheduled_posts`).
+- [x] Limpieza Triple Nuclear: Sincronización atómica que purga el video de la carpeta física, de las colas JSON y del calendario en una sola pasada.
+- [x] Gestión de Spam: Transición a modo secuencial de días para mitigar el Error 368 de Meta y proteger la cuenta.
+- [x] Optimización de Red: Implementación de chunks de 16MB para maximizar velocidad en archivos de video pesados.
+- [ ] Revalidar en vivo `Facebook Post` después del enfriamiento de la cuenta de Meta.

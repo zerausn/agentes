@@ -244,4 +244,10 @@
 - **Razon:** el objetivo operativo del carril post es asegurar el video
   completo programado. Marcar todo el lane como `failed` cuando solo cae el
   reel inmediato auxiliar deja el calendario y las colas en un estado que
-  favorece nuevos duplicados.
+## D29: Implementar Motor de Reconciliación 3.0 con Limpieza Triple Nuclear
+- **Decision:** hacer que el proceso de reconciliación no solo mueva el archivo físico, sino que también elimine automáticamente el rastro del video en `pendientes_posts.json` / `pendientes_reels.json` y lo marque como `completed` en `meta_calendar.json`.
+- **Razon:** se detectó un ciclo infinito de "resurrección" de archivos. Aunque el archivo moría en el disco, seguía vivo en las colas JSON, lo que provocaba que el clasificador lo volviera a meter en el calendario. La limpieza atómica de las 3 capas elimina el problema de raíz.
+
+## D30: Regresión al Modo Secuencial de Días para mitigar Error 368 (Spam)
+- **Decision:** desactivar el paralelismo de 3 días simultáneos (`ThreadPoolExecutor` en `execute_plan`) y volver a procesar un día a la vez de forma estrictamente secuencial. Se mantiene el paralelismo interno de plataformas (FB + IG).
+- **Razon:** la ráfaga paralela disparó los filtros anti-spam de Meta (Error 368: "Limitamos la frecuencia..."). Se prioriza la seguridad de la cuenta y la estabilidad del flujo sobre la velocidad bruta de la ráfaga, permitiendo que la IP tenga un comportamiento más predecible para Meta.
