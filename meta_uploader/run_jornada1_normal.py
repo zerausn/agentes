@@ -25,6 +25,7 @@ from meta_uploader import (
     upload_ig_reel_resumable,
     upload_ig_story_video_resumable,
     ensure_ig_compatibility,
+    MetaRateLimitError,
 )
 
 
@@ -418,11 +419,15 @@ def build_plan(reels, posts, *, reel_start_index, post_start_index, days, start_
         start_day = 0
         end_day = max_horizon - 1
         slot_idx = 0
+        now_dt = datetime.now()
         while start_day <= end_day:
             for day_val in range(start_day, end_day + 1):
                 p_date = (base_date + timedelta(days=day_val)).isoformat()
                 s_time = GOLDEN_SLOTS[slot_idx]
                 if (p_date, s_time) in busy_slots:
+                    continue
+                slot_time_obj = datetime.strptime(f"{p_date} {s_time}", "%Y-%m-%d %H:%M:%S")
+                if slot_time_obj < now_dt + timedelta(minutes=20):
                     continue
                 yield day_val, s_time
             slot_idx = (slot_idx + 1) % len(GOLDEN_SLOTS)
@@ -640,6 +645,21 @@ def run_platform_pair(lane_name, video_info, publish_date, target_time_str=None)
         hour, minute = (7, 0) if lane_name == "reel" else (18, 30)
         scheduled_dt = datetime.strptime(publish_date, "%Y-%m-%d").replace(hour=hour, minute=minute)
     
+    now = datetime.now()
+    min_future = now + timedelta(minutes=20)
+    if scheduled_dt < min_future:
+        logging.warning(
+            "El slot programado %s ya paso (ahora %s). Recalculando al proximo slot futuro.",
+            scheduled_dt.isoformat(),
+            now.isoformat(),
+        )
+        scheduled_dt = scheduled_dt.replace(
+            year=now.year, month=now.month, day=now.day
+        )
+        if scheduled_dt < min_future:
+            scheduled_dt += timedelta(days=1)
+        logging.info("Nuevo slot de programacion: %s", scheduled_dt.isoformat())
+    
     scheduled_timestamp = int(scheduled_dt.timestamp())
 
     caption = build_caption(video_info, lane_name, publish_date)
@@ -831,7 +851,15 @@ def execute_plan(plan, pause_between_assets=10, max_live_days=1):
                 write_calendar(plan)
             
             target_time_str = day_entry.get(f"{lane_name}_time")
-            ok, summary = run_platform_pair(lane_name, video_info, publish_date, target_time_str)
+            try:
+                ok, summary = run_platform_pair(lane_name, video_info, publish_date, target_time_str)
+            except MetaRateLimitError as e:
+                logging.error("Pausa de Seguridad de 24h invocada en _burst_worker por %s", e)
+                with _CALENDAR_LOCK:
+                    day_entry["summary"]["status"] = "paused_on_spam"
+                    day_entry["summary"]["last_updated_at"] = now_iso()
+                    write_calendar(plan)
+                return False, "paused_on_spam"
             lane_status = determine_lane_status(lane_name, ok, summary)
             
             with _CALENDAR_LOCK:
@@ -882,6 +910,8 @@ def execute_plan(plan, pause_between_assets=10, max_live_days=1):
     for day_entry in days_to_process:
         ok, reason = _burst_worker(day_entry)
         if not ok:
+            if reason == "paused_on_spam":
+                raise SystemExit(36)
             return False, "paused_on_failure"
 
     return True, "completed"

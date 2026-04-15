@@ -46,3 +46,11 @@ Estado actual del proyecto al **07 de Abril de 2026**.
   en el sistema para completar `type`, `duration` y `dimensions`.
 - **Second pass:** el scoring mejora mucho si el video fuente tiene `.srt`,
   `.vtt` o transcript `.json` al lado del master.
+
+### 2026-04-14: Corrección de videos atascados (YouTube)
+- [x] Diagnóstico mediante script implementado para detectar videos con uploadStatus: uploaded en lugar de processed.
+- [x] Ejecución de script de 
+udge (metadata touch por API) para forzar revisión y procesamiento de 30 videos estancados en los que ya no existía copia local.
+- [x] Adición de polling post-upload (wait_for_processing) durante 10 minutos para confirmar si Youtube realmente procesó el archivo.
+- [x] Adición de flag 
+otifySubscribers=False (evitar spam en uploads masivos).

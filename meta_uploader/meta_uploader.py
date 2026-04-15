@@ -48,6 +48,11 @@ _LAST_OPERATION_STATUS = {
     "transient": False,
     "watchdog_alerted": False,
 }
+
+class MetaRateLimitError(Exception):
+    """Excepción lanzada cuando Meta devuelve un error 368 de spam/límite de rango."""
+    pass
+
 _HTTP_THREAD_LOCAL = threading.local()
 
 
@@ -769,6 +774,11 @@ def _request_json(method, url, *, params=None, data=None, headers=None):
         payload.setdefault("_http_status", response.status_code)
 
         if response.status_code >= 400:
+            error_code = payload.get("error", {}).get("code")
+            if error_code == 368:
+                logging.error("Bloqueo de Spam detectado (Code 368) en %s %s", method, url)
+                raise MetaRateLimitError("Bloqueo por spam o frecuencia (Code 368). Pausa mandatoria.")
+
             if _should_retry_http_status(response.status_code) and attempt < HTTP_RETRY_ATTEMPTS:
                 delay = _retry_delay_seconds(attempt)
                 logging.warning(
@@ -904,6 +914,11 @@ def _post_binary(url, headers, file_path, progress_prefix):
                 )
                 time.sleep(delay)
                 continue
+
+            error_code = payload.get("error", {}).get("code")
+            if error_code == 368:
+                logging.error("Bloqueo de Spam detectado (Code 368) en subida binaria a %s", url)
+                raise MetaRateLimitError("Bloqueo por spam o frecuencia (Code 368). Pausa mandatoria.")
 
             logging.error(
                 "Fallo subida binaria HTTP %s hacia %s: %s",
@@ -1611,20 +1626,14 @@ def upload_fb_reel(video_path, caption, scheduled_publish_time=None, _allow_fres
             return None
         current_offset = 0
 
-    if not _transfer_fb_upload(
-        page_endpoint,
-        str(upload_session_id),
-        str(file_path),
-        video_id=str(video_id),
-        current_offset=current_offset,
-    ):
+    if not _upload_facebook_video_binary(str(video_id), str(file_path)):
         if checkpoint and _allow_fresh_retry and not get_last_operation_status().get("transient"):
             logging.warning(
                 "No se pudo reanudar el checkpoint de Facebook Reel para %s. Se reinicia una sesion nueva.",
                 file_path.name,
             )
             _delete_fb_upload_checkpoint(page_endpoint, str(file_path))
-            return upload_fb_reel(video_path, caption, _allow_fresh_retry=False)
+            return upload_fb_reel(video_path, caption, scheduled_publish_time=scheduled_publish_time, _allow_fresh_retry=False, is_draft=is_draft)
         return None
 
     result = _finish_fb_upload(
@@ -1690,21 +1699,28 @@ def upload_fb_video_standard(video_path, description, scheduled_publish_time=Non
             return None
         current_offset = 0
 
-    if not _transfer_fb_upload(
-        page_endpoint,
-        str(upload_session_id),
-        str(file_path),
-        video_id=str(video_id),
-        current_offset=current_offset,
-    ):
-        if checkpoint and _allow_fresh_retry and not get_last_operation_status().get("transient"):
-            logging.warning(
-                "No se pudo reanudar el checkpoint de Facebook Post para %s. Se reinicia una sesion nueva.",
-                file_path.name,
-            )
-            _delete_fb_upload_checkpoint(page_endpoint, str(file_path))
-            return upload_fb_video_standard(video_path, description, scheduled_publish_time=scheduled_publish_time, _allow_fresh_retry=False, is_draft=is_draft)
-        return None
+    upload_already_complete = checkpoint and current_offset >= file_size
+    if upload_already_complete:
+        logging.info(
+            "El upload de Facebook Post para %s ya estaba completo (%s/%s). Saltando directo a FINISH.",
+            file_path.name, current_offset, file_size,
+        )
+    else:
+        if not _transfer_fb_upload(
+            page_endpoint,
+            str(upload_session_id),
+            str(file_path),
+            video_id=str(video_id),
+            current_offset=current_offset,
+        ):
+            if checkpoint and _allow_fresh_retry and not get_last_operation_status().get("transient"):
+                logging.warning(
+                    "No se pudo reanudar el checkpoint de Facebook Post para %s. Se reinicia una sesion nueva.",
+                    file_path.name,
+                )
+                _delete_fb_upload_checkpoint(page_endpoint, str(file_path))
+                return upload_fb_video_standard(video_path, description, scheduled_publish_time=scheduled_publish_time, _allow_fresh_retry=False, is_draft=is_draft)
+            return None
 
     result = _finish_fb_upload(
         "videos",

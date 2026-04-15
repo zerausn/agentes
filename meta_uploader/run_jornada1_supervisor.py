@@ -51,6 +51,7 @@ def inspect_calendar():
     completed_days = sum(1 for day in plan if (day.get("summary") or {}).get("status") == "completed")
     running_days = sum(1 for day in plan if (day.get("summary") or {}).get("status") == "running")
     paused_days = sum(1 for day in plan if (day.get("summary") or {}).get("status") == "paused_on_failure")
+    spam_paused_days = sum(1 for day in plan if (day.get("summary") or {}).get("status") == "paused_on_spam")
     pending_days = len(plan) - completed_days
 
     first_incomplete = next(
@@ -72,13 +73,9 @@ def inspect_calendar():
         "pending_days": pending_days,
         "running_days": running_days,
         "paused_days": paused_days,
+        "spam_paused_days": spam_paused_days,
         "all_completed": completed_days == len(plan),
         "first_incomplete": first_incomplete,
-        "blocked_by_future_day": bool(
-            first_incomplete
-            and first_incomplete.get("status") == "pending"
-            and (first_incomplete.get("fecha") or "") > today_iso
-        ),
         "today_iso": today_iso,
     }
 
@@ -134,26 +131,33 @@ def main():
             # Forzamos lanzamiento del runner para poblar
             args.rebuild_plan = True 
         
+        elif calendar_state["spam_paused_days"]:
+            logging.critical("CRITICO: Estado 'paused_on_spam' detectado. Entrando en enfriamiento preventivo de 24 horas (86400s)...")
+            time.sleep(86400)
+            
+            try:
+                plan = load_calendar()
+                for day in plan:
+                    if (day.get("summary") or {}).get("status") == "paused_on_spam":
+                        day["summary"]["status"] = "pending"
+                with open(CALENDAR_FILE, "w", encoding="utf-8") as handle:
+                    json.dump(plan, handle, indent=2, ensure_ascii=False)
+                logging.info("Enfriamiento de 24h finalizado. Estado restaurado para reanudar.")
+            except Exception as e:
+                logging.error("No se pudo limpiar el calendario tras el enfriamiento: %s", e)
+            continue
+            
         # Si el calendario tiene errores pero queremos reconstruir o es el inicio, ignoramos el bloqueo
         elif calendar_state["paused_days"] and not (args.rebuild_plan or initial_run):
             logging.error("Pausa por fallo en %s. Reintentando en 60s...", calendar_state["first_incomplete"])
             time.sleep(60)
             continue
             
-        elif calendar_state["blocked_by_future_day"]:
-            logging.info("Horas Golden del dia %s ya programadas. Esperando 10s para proximo slot...", calendar_state["first_incomplete"]["fecha"])
-            time.sleep(10)
-            args.rebuild_plan = True # Intentamos empujar un slot mas al futuro
-            initial_run = False
-            continue
-        
         initial_run = False
 
         command = build_runner_command(args)
         logging.info(
-            "Lanzando runner normal (intento %s/%s). Pendiente actual: %s",
-            restart_attempt + 1,
-            args.max_restarts + 1,
+            "Lanzando runner normal (cola actual de pendientes: %s)",
             calendar_state["first_incomplete"],
         )
         child = subprocess.run(command, cwd=BASE_DIR)
@@ -162,27 +166,36 @@ def main():
         if calendar_state["all_completed"]:
             logging.info("Ciclo terminado exitosamente. Reiniciando en 10s...")
             time.sleep(10)
+            restart_attempt = 0
             continue
+
         if calendar_state["paused_days"]:
             logging.error("Runner termino en fallo. Reintentando en 60s...")
             time.sleep(60)
+            restart_attempt += 1  # Solo penalizamos si falla
             continue
-        if calendar_state["blocked_by_future_day"]:
-            logging.info("Limite de programacion alcanzado. Reintentando en 10s...")
-            time.sleep(10)
+
+        if child.returncode == 0:
+            # Runner hizo progreso en background y salio limpio, reiniciar los intentos extra
+            restart_attempt = 0
+            time.sleep(1)
             continue
 
         restart_attempt += 1
         if restart_attempt > args.max_restarts:
             logging.error(
-                "Se alcanzo el limite de reinicios (%s). El calendario sigue incompleto: %s",
+                "Se alcanzo el limite maximo de fallos consecutivos (%s). Saliendo.",
                 args.max_restarts,
-                calendar_state["first_incomplete"],
             )
             return 1
 
+        if child.returncode == 36:
+            logging.critical("CRITICO: Runner salio con codigo 36 (Spam Code 368). Pausa de seguridad de 24h activada.")
+            time.sleep(86400)
+            continue
+
         logging.warning(
-            "El runner termino con codigo %s antes de completar la jornada. Se reintentara en %ss. Pendiente actual: %s",
+            "El runner termino con codigo %s antes de completar la jornada. Se reintentara en %ss. Pendiente: %s",
             child.returncode,
             args.restart_delay_seconds,
             calendar_state["first_incomplete"],

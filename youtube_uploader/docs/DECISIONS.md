@@ -108,3 +108,7 @@ proyecto.
 ## 2026-04-06: Prefijo de titulos `PW`
 - **Decision:** cambiar el prefijo de "Performatic Writings" a `PW`.
 - **Motivo:** ganar brevedad y consistencia visual.
+
+### 2026-04-14: Manejo de Videos Atascados (YouTube)
+**Contexto:** Youtube API a veces se atasca y deja los videos en estado `uploaded` pero nunca llega a `processed`. Al no poseer ya los videos originales (borrados de local), no nos es posible borrar en la plataforma y re-subirlos.
+**Decisión:** Ejecutar un metadata touch (Añadir un espacio invisible a la descripción por la API) usando un nuevo script (`nudge_stuck_videos.py`). Esto fuerza a los servidores de Google a invalidar cachés y re-encolar el video en la granja de render. Adicionalmente, se programó `wait_for_processing` en el uploader, quien ahora esperará la verificación final post-subida hasta por 10 minutos para validar que termine antes de catalogarlo como existoso.

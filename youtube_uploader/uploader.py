@@ -234,6 +234,76 @@ def extract_http_error_reason(error):
         return str(error)
 
 
+PROCESSING_POLL_INTERVAL_SECONDS = 30
+PROCESSING_MAX_POLLS = 20  # 20 * 30s = 10 minutos máximo de espera
+
+
+def wait_for_processing(youtube, video_id):
+    """
+    Verifica que YouTube haya completado el procesamiento del video.
+
+    Devuelve:
+    - True: procesamiento exitoso (uploadStatus='processed')
+    - False: procesamiento fallido (failureReason reportado)
+    - None: timeout sin confirmación (el video puede seguir procesando)
+    """
+    for poll in range(1, PROCESSING_MAX_POLLS + 1):
+        time.sleep(PROCESSING_POLL_INTERVAL_SECONDS)
+        try:
+            result = youtube.videos().list(
+                part="status,processingDetails",
+                id=video_id,
+            ).execute()
+
+            items = result.get("items", [])
+            if not items:
+                logging.warning(
+                    "Polling %s/%s: video %s no encontrado en la API.",
+                    poll, PROCESSING_MAX_POLLS, video_id,
+                )
+                continue
+
+            video = items[0]
+            status = video.get("status", {})
+            processing = video.get("processingDetails", {})
+            upload_status = status.get("uploadStatus", "unknown")
+            proc_status = processing.get("processingStatus", "unknown")
+            failure_reason = status.get("failureReason", "")
+
+            logging.info(
+                "Polling %s/%s: video %s | uploadStatus=%s | processingStatus=%s",
+                poll, PROCESSING_MAX_POLLS, video_id, upload_status, proc_status,
+            )
+
+            if upload_status == "processed":
+                return True
+
+            if upload_status in {"failed", "rejected", "deleted"}:
+                logging.error(
+                    "Video %s falló procesamiento: uploadStatus=%s, failureReason=%s",
+                    video_id, upload_status, failure_reason,
+                )
+                return False
+
+            if proc_status == "failed":
+                fail_reason = processing.get("processingFailureReason", "unknown")
+                logging.error(
+                    "Video %s: procesamiento YouTube falló: %s", video_id, fail_reason,
+                )
+                return False
+
+        except HttpError as exc:
+            logging.warning("Error consultando estado de procesamiento: %s", exc)
+        except Exception as exc:
+            logging.warning("Error inesperado en polling de procesamiento: %s", exc)
+
+    logging.warning(
+        "Timeout de verificación de procesamiento para %s tras %s polls.",
+        video_id, PROCESSING_MAX_POLLS,
+    )
+    return None
+
+
 def upload_video(youtube, file_path, upload_metadata, publish_at_dt):
     publish_at_str = publish_at_dt.isoformat().replace("+00:00", "Z")
     audience = config.get("audience_settings", {"selfDeclaredMadeForKids": False})
@@ -256,7 +326,12 @@ def upload_video(youtube, file_path, upload_metadata, publish_at_dt):
     }
 
     media = MediaFileUpload(str(file_path), chunksize=1024 * 1024 * 10, resumable=True)
-    insert_request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
+    insert_request = youtube.videos().insert(
+        part="snippet,status",
+        body=body,
+        media_body=media,
+        notifySubscribers=False,
+    )
 
     logging.info("Iniciando subida: %s (%s)", title, file_path)
     logging.info("Programado para: %s (MadeForKids: %s)", publish_at_str, body["status"]["selfDeclaredMadeForKids"])
@@ -321,8 +396,33 @@ def upload_video(youtube, file_path, upload_metadata, publish_at_dt):
         logging.error("La API no devolvio un id de video para %s.", file_path)
         return None
 
-    logging.info("Subida completada. Video ID: %s", response["id"])
-    return response["id"]
+    video_id = response["id"]
+    logging.info("Subida completada. Video ID: %s. Iniciando verificador de procesamiento en segundo plano...", video_id)
+
+    # Lanzar la verificación en un hilo de fondo para no bloquear la siguiente subida
+    import threading
+    
+    def bg_verify():
+        processing_ok = wait_for_processing(youtube, video_id)
+        if processing_ok is False:
+            logging.error(
+                "YouTube reporto fallo en el procesamiento del video %s. "
+                "Revisar el YouTube Studio. Puede requerir re-subida manual.",
+                video_id,
+            )
+        elif processing_ok is None:
+            logging.warning(
+                "No se pudo confirmar el procesamiento del video %s a tiempo. "
+                "Verificar estado manualmente en YouTube Studio.",
+                video_id,
+            )
+        else:
+            logging.info("Procesamiento de YouTube confirmado OK para %s.", video_id)
+
+    t = threading.Thread(target=bg_verify, name=f"Verify-{video_id}", daemon=True)
+    t.start()
+
+    return video_id
 
 
 def update_quota_status(client_name):

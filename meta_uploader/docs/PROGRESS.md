@@ -54,3 +54,7 @@
 - [x] Gestión de Spam: Transición a modo secuencial de días para mitigar el Error 368 de Meta y proteger la cuenta.
 - [x] Optimización de Red: Implementación de chunks de 16MB para maximizar velocidad en archivos de video pesados.
 - [ ] Revalidar en vivo `Facebook Post` después del enfriamiento de la cuenta de Meta.
+
+### 2026-04-14: Reparación Motor Supervisor (Cascada Infinita)
+- [x] Eliminado el bloqueo de fechas futuras (\locked_by_future_day\) en \un_jornada1_supervisor.py\ que impedía que el script encolara masivamente en la programación remota de Meta (Límite 28 días) y se pasmara en esperas de 10 segundos.
+- [x] Mejorada la lógica del contador de reinicios (\estart_attempt\) para no penalizar ni auto-cortar el script si las subidas individuales se completan con éxito y código 0.
