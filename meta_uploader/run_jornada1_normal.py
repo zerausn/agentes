@@ -111,10 +111,15 @@ def _prune_queue_items_against_remote(queue_name, queue_items, remote_library):
     return kept, removed_markers
 
 
-def sync_local_queues_with_remote(posts, reels, *, max_pages=80):
+def sync_local_queues_with_remote(posts, reels, *, max_pages=150):
     logging.info("Sincronizando colas locales contra la nube antes de planificar...")
     fb_cache = get_facebook_library_batch(max_pages=max_pages)
     ig_cache = get_instagram_library_batch(max_pages=max_pages)
+    
+    if fb_cache is None or ig_cache is None:
+        logging.error("CRITICO: Fallo la descarga del catalogo remoto de Meta. Abortando por seguridad de deduplicacion.")
+        raise SystemExit("Error de sincronizacion preventivo para evitar duplicados.")
+
     remote_library = tuple(text for text in (fb_cache | ig_cache) if text)
 
     cleaned_posts, removed_posts = _prune_queue_items_against_remote("posts", posts, remote_library)
@@ -392,9 +397,10 @@ def evaluate_ig_video_preflight(video_info, lane_name):
     }
 
 
-def build_caption(video_info, lane, publish_date):
+def build_caption(video_info, lane, publish_date, type_tag=None):
     marker = extract_asset_marker(video_info["path"])
-    return f"{marker} #PW"
+    tag_str = f" #{type_tag}" if type_tag else ""
+    return f"{marker}{tag_str} #PW"
 
 
 def build_plan(reels, posts, *, reel_start_index, post_start_index, days, start_date, enable_ig_stories, existing_plan=None):
@@ -504,6 +510,9 @@ def build_plan(reels, posts, *, reel_start_index, post_start_index, days, start_
 def _invoke_with_status(label, func, *args):
     try:
         result = func(*args)
+    except MetaRateLimitError:
+        # Re-lanzar para que el supervisor de hilos lo detecte
+        raise
     except Exception as exc:
         logging.exception("Fallo inesperado en %s: %s", label, exc)
         result = None
@@ -660,59 +669,68 @@ def run_platform_pair(lane_name, video_info, publish_date, target_time_str=None)
             scheduled_dt += timedelta(days=1)
         logging.info("Nuevo slot de programacion: %s", scheduled_dt.isoformat())
     
-    scheduled_timestamp = int(scheduled_dt.timestamp())
-
-    caption = build_caption(video_info, lane_name, publish_date)
+    caption_base = build_caption(video_info, lane_name, publish_date)
+    caption_marker = extract_asset_marker(video_info["path"])
+    
     platform_results = {}
     ig_label = "instagram_reel" if lane_name == "reel" else "instagram_feed"
     ig_preflight = evaluate_ig_video_preflight(video_info, lane_name)
-    caption_marker = extract_asset_marker(video_info["path"])
     fb_label = "facebook_reel" if lane_name == "reel" else "facebook_post"
 
-    existing_facebook = find_existing_facebook_video_by_caption_marker(caption_marker)
-    if existing_facebook:
-        logging.warning(
-            "Se detecto %s ya publicado en Facebook para %s con id %s. Se evita duplicado.",
-            fb_label,
-            video_info["filename"],
-            existing_facebook["id"],
-        )
-        platform_results[fb_label] = _build_existing_remote_result(fb_label, existing_facebook)
-
-    existing_instagram = None
-    if ig_preflight["compatible"]:
-        existing_instagram = find_existing_instagram_media_by_caption_marker(caption_marker)
-        if existing_instagram:
-            logging.warning(
-                "Se detecto %s ya publicado en Instagram para %s con id %s. Se evita duplicado.",
-                ig_label,
-                video_info["filename"],
-                existing_instagram["id"],
-            )
-            platform_results[ig_label] = _build_existing_remote_result(ig_label, existing_instagram)
+    # --- GUARDIA REMOTA ESPECIFICA POR TIPO ---
+    # En la estrategia dual, buscamos por marker + tag para no confundir teaser con full
+    def _check_remote(marker, tag):
+        search_marker = f"{marker} #{tag}"
+        fb_ex = find_existing_facebook_video_by_caption_marker(search_marker)
+        ig_ex = find_existing_instagram_media_by_caption_marker(search_marker) if ig_preflight["compatible"] else None
+        return fb_ex, ig_ex
 
     work = {}
     
     # --- LOGICA FACEBOOK DUAL ---
-    if fb_label not in platform_results:
-        # 1. Reel Inmediato (max 60s) para impacto viral
+    # 1. Reel Teaser (60s)
+    fb_teaser_tag = "teaser"
+    existing_fb_teaser, existing_ig_teaser = _check_remote(caption_marker, fb_teaser_tag)
+    
+    if existing_fb_teaser:
+        logging.warning("[%s] Ya existe Teaser en Facebook. Saltando.", fb_label.upper())
+    else:
         logging.info("[%s] Generando Reel inmediato (60s) para Facebook...", fb_label.upper())
         fb_reel_path = ensure_ig_compatibility(video_info["path"], max_duration=60)
-        work[f"{fb_label}_reel_now"] = (upload_fb_reel, fb_reel_path, caption)
+        work[f"{fb_label}_reel_now"] = (upload_fb_reel, fb_reel_path, build_caption(video_info, lane_name, publish_date, fb_teaser_tag))
         
-        # 2. Video Completo Programado (Gold Slot)
-        logging.info("[%s] Programando Video completo para %s @ %sh...", fb_label.upper(), publish_date, hour)
-        work[f"{fb_label}_full_scheduled"] = (upload_fb_video_standard, video_info["path"], caption, scheduled_timestamp)
+        # Instagram Reel Teaser
+        if ig_label == "instagram_reel" and not existing_ig_teaser:
+            logging.info("[%s] Aprovechando slice de 60s para Reel Teaser en Instagram...", ig_label.upper())
+            work[f"{ig_label}_teaser_now"] = (
+                lambda path, text: upload_ig_reel_resumable(path, text, share_to_feed=True),
+                fb_reel_path,
+                build_caption(video_info, lane_name, publish_date, fb_teaser_tag),
+            )
+        elif existing_ig_teaser:
+            logging.warning("[%s] Ya existe Teaser en Instagram. Saltando.", ig_label.upper())
 
-    # --- LOGICA INSTAGRAM ---
-    if ig_preflight["compatible"] and ig_label not in platform_results:
-        # Aplicamos Deep Clean para asegurar estabilidad en Instagram
-        ig_path = ensure_ig_compatibility(video_info["path"], force_recode=True)
-        work[ig_label] = (
-            lambda path, text: upload_ig_reel_resumable(path, text, share_to_feed=False),
-            ig_path,
-            caption,
-        )
+    # 2. Video/Reel Completo (Full)
+    full_tag = "full"
+    existing_fb_full, existing_ig_full = _check_remote(caption_marker, full_tag)
+
+    if existing_fb_full:
+        logging.warning("[%s] Ya existe version completa en Facebook (%s). Saltando.", fb_label.upper(), fb_label)
+    else:
+        logging.info("[%s] Programando Video completo para %s @ %sh...", fb_label.upper(), publish_date, hour)
+        work[f"{fb_label}_full_scheduled"] = (upload_fb_video_standard, video_info["path"], build_caption(video_info, lane_name, publish_date, full_tag), int(scheduled_dt.timestamp()))
+
+    if ig_preflight["compatible"]:
+        if existing_ig_full:
+            logging.warning("[%s] Ya existe version completa en Instagram (%s). Saltando.", ig_label.upper(), ig_label)
+        else:
+            logging.info("[%s] Procesando Reel COMPLETO para Instagram...", ig_label.upper())
+            ig_path = ensure_ig_compatibility(video_info["path"], force_recode=True)
+            work[f"{ig_label}_full"] = (
+                lambda path, text: upload_ig_reel_resumable(path, text, share_to_feed=False),
+                ig_path,
+                build_caption(video_info, lane_name, publish_date, full_tag),
+            )
 
     if not ig_preflight["compatible"]:
         reason_text = "; ".join(ig_preflight["reasons"])
@@ -735,9 +753,13 @@ def run_platform_pair(lane_name, video_info, publish_date, target_time_str=None)
                 executor.submit(_invoke_with_status, label, fn, *args): label
                 for label, (fn, *args) in work.items()
             }
-            for future in concurrent.futures.as_completed(future_map):
-                label = future_map[future]
-                platform_results[label] = future.result()
+            try:
+                for future in concurrent.futures.as_completed(future_map):
+                    label = future_map[future]
+                    platform_results[label] = future.result()
+            except MetaRateLimitError:
+                # Cancelar otros si es posible y relanzar al worker
+                raise
 
     ok, summary = _summarize_platform_results(platform_results)
     if not ok:
@@ -933,9 +955,9 @@ def main():
         help="Maximo de dias reales a ejecutar por corrida (Programacion Masiva Segura - Limite 28 dias).",
     )
     parser.add_argument(
-        "--disable-ig-stories",
+        "--enable-ig-stories",
         action="store_true",
-        help="Desactiva el intento best-effort de IG Story sobre el reel vertical del dia.",
+        help="Activa el intento best-effort de IG Story (opcional, ahora priorizamos el Reel Teaser).",
     )
     parser.add_argument(
         "--plan-only",
@@ -966,7 +988,7 @@ def main():
             post_start_index=args.post_start_index,
             days=args.days,
             start_date=args.start_date,
-            enable_ig_stories=not args.disable_ig_stories,
+            enable_ig_stories=args.enable_ig_stories, # Ahora controlado por flag explícito
             existing_plan=existing_plan
         )
         if not args.rebuild_plan and existing_plan:
@@ -993,6 +1015,9 @@ def main():
                 logging.info("Jornada 1 completada segun el calendario operativo.")
             return 0
         return 2
+    except MetaRateLimitError as e:
+        logging.critical("DETECCION DE SPAM/RATE LIMIT: %s. Terminando con codigo 36.", e)
+        return 36
     except KeyboardInterrupt:
         logging.warning("Jornada 1 interrumpida manualmente.")
         return 130

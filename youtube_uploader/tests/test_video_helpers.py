@@ -7,9 +7,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from video_helpers import build_upload_metadata
 from video_helpers import build_video_title
 from video_helpers import classify_video_kind
+from video_helpers import extract_video_stem
 from video_helpers import get_video_roots
 from video_helpers import infer_library_root_from_path
+from video_helpers import is_ephemeral_video_artifact
 from video_helpers import is_managed_title
+from video_helpers import normalize_video_stem
 from video_helpers import parse_ffprobe_stream_data
 
 
@@ -64,6 +67,13 @@ class VideoHelpersTests(unittest.TestCase):
         }
         self.assertEqual(build_video_title(video), "PW | 2026-03-10 | (20260310_181426)")
 
+    def test_build_video_title_strips_faststart_temp_suffix(self):
+        video = {
+            "filename": "20260414_170022.faststart.tmp.mp4",
+            "creation_date": "2026-04-14 21:44:21",
+        }
+        self.assertEqual(build_video_title(video), "PW | 2026-04-14 | (20260414_170022)")
+
     def test_build_upload_metadata_prefers_second_pass_overrides(self):
         config = {
             "default_metadata": {
@@ -102,6 +112,19 @@ class VideoHelpersTests(unittest.TestCase):
         self.assertTrue(is_managed_title("Performatic Writings | 2026-03-10"))
         self.assertTrue(is_managed_title("20260310_181426.mp4"))
         self.assertFalse(is_managed_title("Titulo manual del usuario"))
+
+    def test_normalize_video_stem_removes_faststart_marker(self):
+        self.assertEqual(normalize_video_stem("20260414_170022.faststart.tmp"), "20260414_170022")
+        self.assertEqual(normalize_video_stem("20260414_170022"), "20260414_170022")
+
+    def test_extract_video_stem_prefers_managed_title_marker(self):
+        self.assertEqual(extract_video_stem("PW | 2026-04-14 | (20260414_170022.faststart.tmp)"), "20260414_170022")
+        self.assertEqual(extract_video_stem(r"C:\videos\20260414_170022.faststart.tmp.mp4"), "20260414_170022")
+
+    def test_is_ephemeral_video_artifact_detects_faststart_temp_files(self):
+        self.assertTrue(is_ephemeral_video_artifact("20260414_170022.faststart.tmp.mp4"))
+        self.assertTrue(is_ephemeral_video_artifact(r"C:\videos\20260414_170022.faststart.tmp.mp4"))
+        self.assertFalse(is_ephemeral_video_artifact("20260414_170022.mp4"))
 
 
 if __name__ == "__main__":

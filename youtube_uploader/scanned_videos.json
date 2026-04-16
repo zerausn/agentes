@@ -1,42 +1,41 @@
 [
     {
-        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20260414_170022.mp4",
-        "size_mb": 24876.45,
-        "filename": "20260414_170022.mp4",
-        "uploaded": false,
-        "creation_date": "2026-04-14 19:52:26",
-        "type": "video",
-        "duration": 1446.486878,
-        "dimensions": "3840x2160"
-    },
-    {
-        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20260414_172431.mp4",
-        "size_mb": 22095.53,
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\videos subidos exitosamente\\20260414_172431.mp4",
+        "size_mb": 22096.79,
         "filename": "20260414_172431.mp4",
-        "uploaded": false,
+        "uploaded": true,
         "creation_date": "2026-04-14 20:46:18",
         "type": "video",
         "duration": 1285.012178,
-        "dimensions": "3840x2160"
+        "dimensions": "3840x2160",
+        "faststart_applied": true,
+        "youtube_id": "_SnqOcd7tuE",
+        "publishAt": "2026-04-18T19:00:00Z"
     },
     {
-        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20260414_164917.mp4",
-        "size_mb": 6495.15,
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\videos subidos exitosamente\\20260414_164917.mp4",
+        "size_mb": 6495.52,
         "filename": "20260414_164917.mp4",
-        "uploaded": false,
+        "uploaded": true,
         "creation_date": "2026-04-14 19:48:21",
         "type": "video",
         "duration": 377.9737,
-        "dimensions": "3840x2160"
+        "dimensions": "3840x2160",
+        "faststart_applied": true,
+        "youtube_id": "DL5WEgD0aw8",
+        "publishAt": "2026-04-19T19:00:00Z"
     },
     {
-        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\20260414_174558.mp4",
+        "path": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\videos subidos exitosamente\\20260414_174558.mp4",
         "size_mb": 4495.19,
         "filename": "20260414_174558.mp4",
-        "uploaded": false,
+        "uploaded": true,
         "creation_date": "2026-04-14 20:59:38",
         "type": "video",
         "duration": 261.474367,
-        "dimensions": "3840x2160"
+        "dimensions": "3840x2160",
+        "faststart_applied": true,
+        "youtube_id": "lRbU_g3ljZs",
+        "publishAt": "2026-04-20T19:00:00Z"
     }
 ]

@@ -16,6 +16,7 @@ from googleapiclient.http import MediaFileUpload
 
 from video_helpers import build_upload_metadata
 from video_helpers import enrich_video_record
+from video_helpers import is_ephemeral_video_artifact
 from video_helpers import load_config
 from video_helpers import save_json_file
 from video_helpers import apply_faststart
@@ -176,6 +177,8 @@ def build_pending_upload_queues(videos):
     for video in videos:
         if video.get("uploaded", False):
             continue
+        if is_ephemeral_video_artifact(video.get("filename") or video.get("path")):
+            continue
         lane = normalize_upload_lane(video)
         queues[lane].append(video)
 
@@ -207,19 +210,20 @@ def pop_next_pending_video(queues, videos, yt_scheduled_dates, now_utc=None):
     return video, selected_lane, next_date
 
 
-def get_authenticated_service(client_secret_file, creds_cache_file):
+def get_authenticated_service(client_secret_file, creds_cache_file, scopes=None):
     client_secret_file = Path(client_secret_file)
     creds_cache_file = Path(creds_cache_file)
+    scopes = scopes or SCOPES
 
     creds = None
     if creds_cache_file.exists():
-        creds = Credentials.from_authorized_user_file(str(creds_cache_file), SCOPES)
+        creds = Credentials.from_authorized_user_file(str(creds_cache_file), scopes)
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_file), SCOPES)
+            flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_file), scopes)
             creds = flow.run_local_server(port=0)
         creds_cache_file.write_text(creds.to_json(), encoding="utf-8")
 
@@ -304,7 +308,48 @@ def wait_for_processing(youtube, video_id):
     return None
 
 
-def upload_video(youtube, file_path, upload_metadata, publish_at_dt):
+def start_processing_verifier(video_id, client_secret_file, creds_cache_file):
+    client_secret_file = Path(client_secret_file)
+    creds_cache_file = Path(creds_cache_file)
+
+    def bg_verify():
+        verifier = None
+        try:
+            verifier = get_authenticated_service(client_secret_file, creds_cache_file)
+            processing_ok = wait_for_processing(verifier, video_id)
+        except Exception as exc:
+            logging.warning("No se pudo iniciar el verificador aislado para %s: %s", video_id, exc)
+            return
+        finally:
+            if verifier is not None:
+                http_client = getattr(verifier, "_http", None)
+                if hasattr(http_client, "close"):
+                    try:
+                        http_client.close()
+                    except Exception:
+                        pass
+
+        if processing_ok is False:
+            logging.error(
+                "YouTube reporto fallo en el procesamiento del video %s. "
+                "Revisar el YouTube Studio. Puede requerir re-subida manual.",
+                video_id,
+            )
+        elif processing_ok is None:
+            logging.warning(
+                "No se pudo confirmar el procesamiento del video %s a tiempo. "
+                "Verificar estado manualmente en YouTube Studio.",
+                video_id,
+            )
+        else:
+            logging.info("Procesamiento de YouTube confirmado OK para %s.", video_id)
+
+    thread = threading.Thread(target=bg_verify, name=f"Verify-{video_id}", daemon=True)
+    thread.start()
+    return thread
+
+
+def upload_video(youtube, file_path, upload_metadata, publish_at_dt, client_secret_file, creds_cache_file):
     publish_at_str = publish_at_dt.isoformat().replace("+00:00", "Z")
     audience = config.get("audience_settings", {"selfDeclaredMadeForKids": False})
     title = upload_metadata["title"]
@@ -398,29 +443,7 @@ def upload_video(youtube, file_path, upload_metadata, publish_at_dt):
 
     video_id = response["id"]
     logging.info("Subida completada. Video ID: %s. Iniciando verificador de procesamiento en segundo plano...", video_id)
-
-    # Lanzar la verificación en un hilo de fondo para no bloquear la siguiente subida
-    import threading
-    
-    def bg_verify():
-        processing_ok = wait_for_processing(youtube, video_id)
-        if processing_ok is False:
-            logging.error(
-                "YouTube reporto fallo en el procesamiento del video %s. "
-                "Revisar el YouTube Studio. Puede requerir re-subida manual.",
-                video_id,
-            )
-        elif processing_ok is None:
-            logging.warning(
-                "No se pudo confirmar el procesamiento del video %s a tiempo. "
-                "Verificar estado manualmente en YouTube Studio.",
-                video_id,
-            )
-        else:
-            logging.info("Procesamiento de YouTube confirmado OK para %s.", video_id)
-
-    t = threading.Thread(target=bg_verify, name=f"Verify-{video_id}", daemon=True)
-    t.start()
+    start_processing_verifier(video_id, client_secret_file, creds_cache_file)
 
     return video_id
 
@@ -576,10 +599,9 @@ def main():
         logging.warning("Todas las llaves estan agotadas por hoy segun quota_status.json.")
         return
 
-    youtube = get_authenticated_service(
-        CREDENTIALS_DIR / client_files[current_idx],
-        CREDENTIALS_DIR / f"token_{current_idx}.json",
-    )
+    current_client_secret = CREDENTIALS_DIR / client_files[current_idx]
+    current_token_file = CREDENTIALS_DIR / f"token_{current_idx}.json"
+    youtube = get_authenticated_service(current_client_secret, current_token_file)
 
     logging.info("Auditando calendario de YouTube antes de comenzar...")
     yt_schedule = fetch_yt_schedule(youtube)
@@ -616,7 +638,14 @@ def main():
         upload_metadata = build_upload_metadata(video, config)
 
         while True:
-            result = upload_video(youtube, file_path, upload_metadata, next_date)
+            result = upload_video(
+                youtube,
+                file_path,
+                upload_metadata,
+                next_date,
+                current_client_secret,
+                current_token_file,
+            )
 
             if result == "QUOTA_EXCEEDED":
                 logging.info("Cuota agotada en llave %s. Rotando...", current_idx)
@@ -627,10 +656,9 @@ def main():
                     logging.error("Se agotaron todas las llaves disponibles por hoy.")
                     return
 
-                youtube = get_authenticated_service(
-                    CREDENTIALS_DIR / client_files[current_idx],
-                    CREDENTIALS_DIR / f"token_{current_idx}.json",
-                )
+                current_client_secret = CREDENTIALS_DIR / client_files[current_idx]
+                current_token_file = CREDENTIALS_DIR / f"token_{current_idx}.json"
+                youtube = get_authenticated_service(current_client_secret, current_token_file)
                 continue
 
             if result == "LIMIT_EXCEEDED":

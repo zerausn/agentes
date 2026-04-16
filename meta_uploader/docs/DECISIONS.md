@@ -244,6 +244,7 @@
 - **Razon:** el objetivo operativo del carril post es asegurar el video
   completo programado. Marcar todo el lane como `failed` cuando solo cae el
   reel inmediato auxiliar deja el calendario y las colas en un estado que
+
 ## D29: Implementar Motor de Reconciliación 3.0 con Limpieza Triple Nuclear
 - **Decision:** hacer que el proceso de reconciliación no solo mueva el archivo físico, sino que también elimine automáticamente el rastro del video en `pendientes_posts.json` / `pendientes_reels.json` y lo marque como `completed` en `meta_calendar.json`.
 - **Razon:** se detectó un ciclo infinito de "resurrección" de archivos. Aunque el archivo moría en el disco, seguía vivo en las colas JSON, lo que provocaba que el clasificador lo volviera a meter en el calendario. La limpieza atómica de las 3 capas elimina el problema de raíz.
@@ -251,3 +252,19 @@
 ## D30: Regresión al Modo Secuencial de Días para mitigar Error 368 (Spam)
 - **Decision:** desactivar el paralelismo de 3 días simultáneos (`ThreadPoolExecutor` en `execute_plan`) y volver a procesar un día a la vez de forma estrictamente secuencial. Se mantiene el paralelismo interno de plataformas (FB + IG).
 - **Razon:** la ráfaga paralela disparó los filtros anti-spam de Meta (Error 368: "Limitamos la frecuencia..."). Se prioriza la seguridad de la cuenta y la estabilidad del flujo sobre la velocidad bruta de la ráfaga, permitiendo que la IP tenga un comportamiento más predecible para Meta.
+
+## D31: Estrategia Dual de Reels en Instagram (Teaser + Full)
+- **Decision:** Publicar dos Reels por cada video en Instagram: un "Teaser" de 60 segundos (reutilizando el slice de Facebook) y el video completo.
+- **Razon:** El usuario prioriza el alcance masivo sobre la comunidad cerrada. Los Reels tienen mayor potencial de descubrimiento (Explora) que las Stories. Al publicar ambos, se duplican las oportunidades de impacto viral aprovechando un asset que ya se estaba computando.
+
+## D32: Instagram Stories como Opt-in
+- **Decision:** Desactivar la publicacion automatica de Stories por defecto y convertirla en una opcion explicita (`--enable-ig-stories`).
+- **Razon:** Con la introduccion de los Reels Duales, el carril de Stories se vuelve menos critico para el alcance inicial. Moverlo a opt-in reduce la carga de la API y el ruido visual en la cuenta de Instagram, enfocando los esfuerzos en el contenido de mayor traccion.
+
+## D33: Reducción Adaptativa de Límites en la API de Meta
+- **Decision:** Implementar un mecanismo en `_iter_graph_collection` que detecta el error "Please reduce the amount of data" (HTTP 500, Code 1) y reduce automáticamente el `limit` a la mitad para reintentar la página actual.
+- **Razon:** Cuentas con videos que tienen metadatos (descripciones) muy pesados pueden hacer que Meta falle incluso con `limit=25`. La reducción adaptativa permite que el sistema sea resiliente y complete el catálogo incluso en los tramos más pesados de datos.
+
+## D34: Blindaje Deduplicativo y Etiquetado Teaser/Full
+- **Decision:** Asignar etiquetas `#teaser` y `#full` a cada publicación y realizar búsquedas remotas específicas por tipo de asset antes de subir. Además, abortar la ejecución si la sincronización del catálogo de Meta falla.
+- **Razon:** Evitar que el sistema actúe "a ciegas" cuando la API de Meta falla en darnos el catálogo remoto. La falta de este blindaje causaba que el sistema subiera duplicados al no encontrar el registro previo por errores transitorios.

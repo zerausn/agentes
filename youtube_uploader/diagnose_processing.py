@@ -1,5 +1,5 @@
 """
-Diagnóstico de videos con procesamiento pendiente/fallido en YouTube.
+Diagnostico de videos con procesamiento pendiente/fallido en YouTube.
 Consulta la API de YouTube Data v3 para listar videos que no han completado
 su procesamiento interno (uploadStatus != 'processed').
 """
@@ -11,6 +11,8 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+
+from video_helpers import extract_video_stem
 
 BASE_DIR = Path(__file__).resolve().parent
 CREDENTIALS_DIR = BASE_DIR / "credentials"
@@ -48,7 +50,7 @@ def get_authenticated_service():
 def diagnose_all_videos(youtube):
     channels_response = youtube.channels().list(mine=True, part="contentDetails").execute()
     uploads_playlist_id = channels_response["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
-    
+
     all_video_ids = []
     next_page_token = None
     while True:
@@ -58,34 +60,36 @@ def diagnose_all_videos(youtube):
             maxResults=50,
             pageToken=next_page_token,
         ).execute()
-        
+
         for item in playlist_response.get("items", []):
-            all_video_ids.append({
-                "id": item["snippet"]["resourceId"]["videoId"],
-                "title": item["snippet"]["title"],
-            })
-        
+            all_video_ids.append(
+                {
+                    "id": item["snippet"]["resourceId"]["videoId"],
+                    "title": item["snippet"]["title"],
+                }
+            )
+
         next_page_token = playlist_response.get("nextPageToken")
         if not next_page_token:
             break
-    
+
     logging.info("Total de videos en el canal: %s", len(all_video_ids))
-    
-    # Consultar de 50 en 50 el estado de procesamiento
+
     problematic = []
     processed_count = 0
-    
-    for i in range(0, len(all_video_ids), 50):
-        batch = all_video_ids[i:i+50]
-        ids_str = ",".join(v["id"] for v in batch)
-        
+    all_summaries = []
+
+    for index in range(0, len(all_video_ids), 50):
+        batch = all_video_ids[index:index + 50]
+        ids_str = ",".join(video["id"] for video in batch)
+
         videos_response = youtube.videos().list(
             part="status,processingDetails,contentDetails",
             id=ids_str,
         ).execute()
-        
-        title_map = {v["id"]: v["title"] for v in batch}
-        
+
+        title_map = {video["id"]: video["title"] for video in batch}
+
         for video in videos_response.get("items", []):
             vid = video["id"]
             status = video.get("status", {})
@@ -93,27 +97,38 @@ def diagnose_all_videos(youtube):
             upload_status = status.get("uploadStatus", "unknown")
             privacy = status.get("privacyStatus", "unknown")
             publish_at = status.get("publishAt", "")
-            
-            proc_status = processing.get("processingStatus", "unknown")
-            proc_progress = processing.get("processingProgress", {})
-            failure_reason = status.get("failureReason", "")
-            rejection_reason = status.get("rejectionReason", "")
-            
+            title = title_map.get(vid, "?")
+
+            summary = {
+                "id": vid,
+                "title": title,
+                "stem": extract_video_stem(title),
+                "uploadStatus": upload_status,
+                "privacyStatus": privacy,
+                "publishAt": publish_at,
+                "processingStatus": processing.get("processingStatus", "unknown"),
+                "processingProgress": processing.get("processingProgress", {}),
+                "failureReason": status.get("failureReason", ""),
+                "rejectionReason": status.get("rejectionReason", ""),
+            }
+            all_summaries.append(summary)
+
             if upload_status != "processed":
-                problematic.append({
-                    "id": vid,
-                    "title": title_map.get(vid, "?"),
-                    "uploadStatus": upload_status,
-                    "privacyStatus": privacy,
-                    "publishAt": publish_at,
-                    "processingStatus": proc_status,
-                    "processingProgress": proc_progress,
-                    "failureReason": failure_reason,
-                    "rejectionReason": rejection_reason,
-                })
+                problematic.append(summary)
             else:
                 processed_count += 1
-    
+
+    processed_by_stem = {}
+    for item in all_summaries:
+        if item["uploadStatus"] != "processed" or not item["stem"]:
+            continue
+        processed_by_stem.setdefault(item["stem"], []).append(item["id"])
+
+    for item in problematic:
+        sibling_ids = [video_id for video_id in processed_by_stem.get(item["stem"], []) if video_id != item["id"]]
+        item["processedSiblingIds"] = sibling_ids
+        item["hasProcessedSibling"] = bool(sibling_ids)
+
     return all_video_ids, problematic, processed_count
 
 
@@ -121,47 +136,55 @@ def main():
     youtube = get_authenticated_service()
     if not youtube:
         return
-    
+
     logging.info("Consultando estado de procesamiento de todos los videos...")
     all_videos, problematic, processed = diagnose_all_videos(youtube)
-    
+
+    rescued = sum(1 for item in problematic if item.get("hasProcessedSibling"))
+    unresolved = len(problematic) - rescued
+
     print("\n" + "=" * 80)
-    print(f"DIAGNÓSTICO DE PROCESAMIENTO DE YOUTUBE")
-    print(f"=" * 80)
+    print("DIAGNOSTICO DE PROCESAMIENTO DE YOUTUBE")
+    print("=" * 80)
     print(f"Total de videos en el canal: {len(all_videos)}")
     print(f"Procesados correctamente:    {processed}")
     print(f"Con problemas:               {len(problematic)}")
-    print(f"=" * 80)
-    
+    print(f"Con copia procesada:         {rescued}")
+    print(f"Sin copia procesada:         {unresolved}")
+    print("=" * 80)
+
     if problematic:
-        # Agrupar por estado
         by_status = {}
-        for v in problematic:
-            key = v["uploadStatus"]
-            if key not in by_status:
-                by_status[key] = []
-            by_status[key].append(v)
-        
+        for video in problematic:
+            by_status.setdefault(video["uploadStatus"], []).append(video)
+
         for status_name, videos in by_status.items():
             print(f"\n--- Estado: {status_name} ({len(videos)} videos) ---")
-            for v in videos:
-                reason = v.get("failureReason") or v.get("rejectionReason") or ""
-                reason_str = f" | Razón: {reason}" if reason else ""
-                print(f"  [{v['id']}] {v['title'][:60]}{reason_str}")
-        
-        # Guardar reporte
+            for video in videos:
+                reason = video.get("failureReason") or video.get("rejectionReason") or ""
+                reason_str = f" | Razon: {reason}" if reason else ""
+                rescue_str = " | copia OK existente" if video.get("hasProcessedSibling") else " | sin copia OK"
+                print(f"  [{video['id']}] {video['title'][:60]}{reason_str}{rescue_str}")
+
         report_path = BASE_DIR / "processing_diagnostic.json"
-        with open(report_path, "w", encoding="utf-8") as f:
-            json.dump({
-                "total_videos": len(all_videos),
-                "processed_ok": processed,
-                "problematic_count": len(problematic),
-                "by_status": {k: len(v) for k, v in by_status.items()},
-                "problematic_videos": problematic,
-            }, f, indent=2, ensure_ascii=False)
+        with report_path.open("w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "total_videos": len(all_videos),
+                    "processed_ok": processed,
+                    "problematic_count": len(problematic),
+                    "problematic_with_processed_copy": rescued,
+                    "problematic_without_processed_copy": unresolved,
+                    "by_status": {key: len(value) for key, value in by_status.items()},
+                    "problematic_videos": problematic,
+                },
+                handle,
+                indent=2,
+                ensure_ascii=False,
+            )
         print(f"\nReporte guardado en: {report_path}")
     else:
-        print("\n✅ Todos los videos están procesados correctamente.")
+        print("\nTodos los videos estan procesados correctamente.")
 
 
 if __name__ == "__main__":

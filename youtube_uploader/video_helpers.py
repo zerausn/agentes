@@ -10,6 +10,8 @@ EXCLUDED_DIR_NAME = "videos_excluidos_ya_en_youtube"
 DEFAULT_TITLE_PREFIX = "PW"
 LEGACY_TITLE_MARKER = "Performatic Writings"
 TIMESTAMP_STEM_RE = re.compile(r"\b\d{8}_\d{6}\b")
+MANAGED_STEM_RE = re.compile(r"\(([^)]+)\)")
+FASTSTART_TEMP_MARKER = ".faststart.tmp"
 
 
 def load_json_file(path, default):
@@ -87,6 +89,40 @@ def infer_library_root_from_path(file_path):
     if parent.name.lower() in {SUCCESS_DIR_NAME.lower(), EXCLUDED_DIR_NAME.lower()}:
         return parent.parent
     return parent
+
+
+def normalize_video_stem(raw_value):
+    stem = str(raw_value or "").strip()
+    if not stem:
+        return ""
+
+    lowered = stem.lower()
+    if lowered.endswith(FASTSTART_TEMP_MARKER):
+        stem = stem[: -len(FASTSTART_TEMP_MARKER)]
+    return stem.strip()
+
+
+def extract_video_stem(raw_value):
+    normalized = str(raw_value or "").strip()
+    if not normalized:
+        return ""
+
+    managed_matches = MANAGED_STEM_RE.findall(normalized)
+    if managed_matches:
+        return normalize_video_stem(managed_matches[-1])
+
+    stem = normalize_video_stem(Path(normalized).stem)
+    match = TIMESTAMP_STEM_RE.search(stem) or TIMESTAMP_STEM_RE.search(normalized)
+    if match:
+        return normalize_video_stem(match.group(0))
+    return stem
+
+
+def is_ephemeral_video_artifact(raw_value):
+    normalized = str(raw_value or "").strip().lower()
+    if not normalized:
+        return False
+    return FASTSTART_TEMP_MARKER in Path(normalized).name
 
 
 def infer_library_roots_from_records(videos):
@@ -253,12 +289,13 @@ def build_video_title(video, prefix=DEFAULT_TITLE_PREFIX):
     if not filename and raw_path:
         filename = Path(raw_path).name
     filename = filename or "sin_nombre"
+    canonical_stem = extract_video_stem(filename) or normalize_video_stem(Path(filename).stem) or "sin_nombre"
 
     creation_date = video.get("creation_date")
     if not creation_date and raw_path and Path(raw_path).exists():
         creation_date = infer_creation_date(raw_path)
     date_str = str(creation_date or "N/A").split(" ")[0]
-    return f"{prefix} | {date_str} | ({Path(filename).stem})"
+    return f"{prefix} | {date_str} | ({canonical_stem})"
 
 
 def coerce_tag_list(raw_tags):
@@ -302,7 +339,6 @@ def is_managed_title(title):
 def apply_faststart(file_path, runner=None):
     from pathlib import Path
     import subprocess
-    import tempfile
     import shutil
     import logging
 

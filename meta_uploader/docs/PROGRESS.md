@@ -53,8 +53,14 @@
 - [x] Limpieza Triple Nuclear: Sincronización atómica que purga el video de la carpeta física, de las colas JSON y del calendario en una sola pasada.
 - [x] Gestión de Spam: Transición a modo secuencial de días para mitigar el Error 368 de Meta y proteger la cuenta.
 - [x] Optimización de Red: Implementación de chunks de 16MB para maximizar velocidad en archivos de video pesados.
+- [x] Limpieza masiva de 34 videos zombis en YouTube (atascados en procesamiento).
+- [x] Implementación de **Estrategia Dual de Reels** en Instagram (60s Teaser + Full) para maximizar alcance.
+- [x] Cambio de Instagram Stories a modo **Opt-in** (`--enable-ig-stories`) para priorizar la tracción del feed.
+- [x] **Resiliencia API**: Solución al error HTTP 500 mediante **reducción adaptativa de límites** (ahora base 5).
+- [x] **Control de Duplicados**: Implementación de etiquetas `#teaser` y `#full` para diferenciar versiones y frenado de seguridad si el catálogo de Meta es ilegible.
+- [x] **Estado**: Sistema blindado contra duplicados; listo para evacuación masiva estable.
 - [ ] Revalidar en vivo `Facebook Post` después del enfriamiento de la cuenta de Meta.
 
 ### 2026-04-14: Reparación Motor Supervisor (Cascada Infinita)
-- [x] Eliminado el bloqueo de fechas futuras (\locked_by_future_day\) en \un_jornada1_supervisor.py\ que impedía que el script encolara masivamente en la programación remota de Meta (Límite 28 días) y se pasmara en esperas de 10 segundos.
-- [x] Mejorada la lógica del contador de reinicios (\estart_attempt\) para no penalizar ni auto-cortar el script si las subidas individuales se completan con éxito y código 0.
+- [x] Eliminado el bloqueo de fechas futuras (\ locked_by_future_day\) en \un_jornada1_supervisor.py\ que impedía que el script encolara masivamente en la programación remota de Meta (Límite 28 días) y se pasmara en esperas de 10 segundos.
+- [x] Mejorada la lógica del contador de reinicios (\estart_attempt\) para no penalizar ni auto-cortar el script si las subidas individuales se completan con éxito y código 0.

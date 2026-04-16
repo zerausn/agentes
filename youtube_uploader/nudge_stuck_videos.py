@@ -62,10 +62,10 @@ def get_authenticated_service():
     return build("youtube", "v3", credentials=creds)
 
 
-def nudge_video(youtube, video_id):
+def nudge_video(youtube, video_id, heavy=False):
     """
-    Hace un metadata touch: lee la descripción actual y la reescribe
-    (añade/quita un espacio al final) para forzar un update event.
+    Hace un metadata touch: lee la descripción actual y la reescribe.
+    Si heavy=True, también cambia la categoría y altera ligeramente el título.
     """
     try:
         # Leer metadata actual
@@ -81,7 +81,10 @@ def nudge_video(youtube, video_id):
 
         video = items[0]
         snippet = video["snippet"]
+        status = video["status"]
+        current_title = snippet.get("title", "")
         current_desc = snippet.get("description", "")
+        current_cat = snippet.get("categoryId", "22")
 
         # Touch: añadir o quitar un espacio Unicode invisible al final
         if current_desc.endswith("\u200B"):
@@ -89,20 +92,45 @@ def nudge_video(youtube, video_id):
         else:
             new_desc = current_desc + "\u200B"
 
-        # Actualizar
-        youtube.videos().update(
-            part="snippet",
-            body={
-                "id": video_id,
-                "snippet": {
-                    "title": snippet["title"],
-                    "description": new_desc,
-                    "categoryId": snippet.get("categoryId", "22"),
-                },
-            },
-        ).execute()
+        new_title = current_title
+        new_cat = current_cat
 
-        logging.info("NUDGE OK: [%s] %s", video_id, snippet["title"][:60])
+        if heavy:
+            logging.info("Aplicando HEAVY NUDGE a %s", video_id)
+            # Alterar titulo ligeramente
+            if " " in current_title:
+                if current_title.endswith(" "):
+                    new_title = current_title.rstrip(" ")
+                else:
+                    new_title = current_title + " "
+            
+            # Cambiar categoria (si es 24 poner 22, si es otra poner 24)
+            new_cat = "22" if current_cat == "24" else "24"
+
+        # Actualizar snippet
+        update_body = {
+            "id": video_id,
+            "snippet": {
+                "title": new_title,
+                "description": new_desc,
+                "categoryId": new_cat,
+            },
+        }
+        if snippet.get("tags"):
+            update_body["snippet"]["tags"] = snippet["tags"]
+        if snippet.get("defaultLanguage"):
+            update_body["snippet"]["defaultLanguage"] = snippet["defaultLanguage"]
+
+        youtube.videos().update(part="snippet", body=update_body).execute()
+
+        # Si es heavy, intentar alternar privacidad de private a public y viceversa (si es posible)
+        if heavy:
+            current_privacy = status.get("privacyStatus", "private")
+            # No lo hacemos a public por riesgo de notificaciones, pero podemos cambiarlo a unlisted y luego private
+            # O simplemente dejar el cambio de categoria/titulo como trigger suficiente.
+            pass
+
+        logging.info("NUDGE OK: [%s] %s", video_id, new_title[:60])
         return True
 
     except HttpError as exc:
@@ -137,12 +165,22 @@ def check_processing_status(youtube, video_ids):
 def main():
     # Cargar lista de videos atascados
     diag_file = BASE_DIR / "processing_diagnostic.json"
+    rescue_file = BASE_DIR / "processing_rescue_report.json"
     if not diag_file.exists():
         logging.error("Ejecuta diagnose_processing.py primero.")
         return
 
     diag = json.loads(diag_file.read_text(encoding="utf-8"))
     stuck_videos = diag.get("problematic_videos", [])
+
+    unresolved_ids = []
+    if rescue_file.exists():
+        rescue_report = json.loads(rescue_file.read_text(encoding="utf-8"))
+        unresolved_data = [item.get("stuck", {}) for item in rescue_report.get("unresolved", []) if item.get("stuck", {}).get("id")]
+        if unresolved_data:
+            stuck_videos = unresolved_data
+            unresolved_ids = [v["id"] for v in unresolved_data]
+            logging.info("Usando solo videos sin copia procesada segun processing_rescue_report.json.")
 
     if not stuck_videos:
         logging.info("No hay videos atascados.")
@@ -159,7 +197,9 @@ def main():
     failed_ids = []
     for v in stuck_videos:
         vid = v["id"]
-        ok = nudge_video(youtube, vid)
+        # Si es un video sin copia procesada, aplicar Heavy Nudge
+        is_orphan = v.get("id") in unresolved_ids
+        ok = nudge_video(youtube, vid, heavy=is_orphan)
         if ok:
             success_count += 1
         else:

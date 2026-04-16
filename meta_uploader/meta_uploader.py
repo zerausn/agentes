@@ -514,6 +514,7 @@ def graph_video_url(path):
 
 
 def _iter_graph_collection(path_or_url, *, access_token, fields, page_size=100, max_pages=5):
+    from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
     next_url = path_or_url if str(path_or_url).startswith("http") else graph_url(path_or_url)
     params = {
         "access_token": access_token,
@@ -521,11 +522,39 @@ def _iter_graph_collection(path_or_url, *, access_token, fields, page_size=100, 
         "limit": str(page_size),
     }
     pages = 0
+    current_limit_val = page_size
 
     while next_url and pages < max_pages:
         result = _request_json("GET", next_url, params=params)
         if not result:
             return
+
+        error_payload = result.get("error") or {}
+        if error_payload:
+            message = str(error_payload.get("message") or "").lower()
+            code = error_payload.get("code")
+            # Error critico de volumen de datos (HTTP 500, Code 1)
+            if "reduce the amount of data" in message or code == 1:
+                if current_limit_val > 1:
+                    new_limit = max(1, current_limit_val // 2)
+                    logging.warning("Meta solicito reducir datos. Ajustando limit adaptativo: %s -> %s", current_limit_val, new_limit)
+                    current_limit_val = new_limit
+                    
+                    if params is not None:
+                        params["limit"] = str(new_limit)
+                    else:
+                        parsed = urlparse(next_url)
+                        query_params = parse_qsl(parsed.query)
+                        new_query = [(k, str(new_limit)) if k == "limit" else (k, v) for k, v in query_params]
+                        parsed = parsed._replace(query=urlencode(new_query))
+                        next_url = urlunparse(parsed)
+
+                    # No avanzamos de pagina, reintentamos la misma con menos limit
+                    continue
+            
+            # Otros errores detienen la iteracion con señal de fallo
+            logging.error("Fallo critico en iterador de coleccion Meta: %s", json.dumps(error_payload, ensure_ascii=False))
+            raise RuntimeError(f"Fallo en API Meta: {message}")
 
         for item in result.get("data") or []:
             yield item
@@ -535,7 +564,7 @@ def _iter_graph_collection(path_or_url, *, access_token, fields, page_size=100, 
         params = None
 
 
-def find_existing_facebook_video_by_caption_marker(marker, *, page_size=25, max_pages=80):
+def find_existing_facebook_video_by_caption_marker(marker, *, page_size=5, max_pages=5):
     marker = (marker or "").strip()
     if not marker or not FB_PAGE_ID or not META_FB_PAGE_TOKEN:
         return None
@@ -599,7 +628,7 @@ def find_existing_facebook_video_by_caption_marker(marker, *, page_size=25, max_
     return None
 
 
-def find_existing_instagram_media_by_caption_marker(marker, *, page_size=25, max_pages=80):
+def find_existing_instagram_media_by_caption_marker(marker, *, page_size=5, max_pages=5):
     marker = (marker or "").strip()
     if not marker or not IG_USER_ID or not IG_ACCESS_TOKEN:
         return None
@@ -623,7 +652,31 @@ def find_existing_instagram_media_by_caption_marker(marker, *, page_size=25, max
     return None
 
 
-def get_facebook_library_batch(max_pages=80):
+def _get_cached_catalog(platform, max_age_minutes=60):
+    cache_file = Path(__file__).resolve().parent / f".cache_{platform}_catalog.json"
+    if not cache_file.exists():
+        return None
+    import time
+    if time.time() - cache_file.stat().st_mtime > max_age_minutes * 60:
+        return None
+    try:
+        import json
+        with open(cache_file, "r", encoding="utf-8") as f:
+            return set(json.load(f))
+    except Exception:
+        return None
+
+def _save_cached_catalog(platform, data_set):
+    cache_file = Path(__file__).resolve().parent / f".cache_{platform}_catalog.json"
+    try:
+        import json
+        with open(cache_file, "w", encoding="utf-8") as f:
+            json.dump(list(data_set), f)
+    except Exception:
+        pass
+
+
+def get_facebook_library_batch(max_pages=150, use_cache=True):
     """
     Descarga masivamente los encabezados de hasta max_pages (ej: 80 para 2000 videos)
     y devuelve un conjunto (set) de marcadores (filenames) detectados en las descripciones.
@@ -631,66 +684,87 @@ def get_facebook_library_batch(max_pages=80):
     if not FB_PAGE_ID or not META_FB_PAGE_TOKEN:
         return set()
     
+    if use_cache:
+        cached = _get_cached_catalog("facebook")
+        if cached is not None:
+            logging.info("Usando caché local fresco para el catálogo de Facebook (saltando red).")
+            return cached
+
     markers = set()
     
-    # 1. Barrido de Videos PUBLICADOS
-    logging.info("Descargando catálogo remoto de Facebook (Publicados - Caché de hasta %s videos)...", max_pages * 25)
-    for item in _iter_graph_collection(
-        f"{FB_PAGE_ID}/videos",
-        access_token=META_FB_PAGE_TOKEN,
-        fields="id,description",
-        page_size=25,
-        max_pages=max_pages
-    ):
-        description = str(item.get("description") or "")
-        markers.add(description)
-    
-    # 2. Barrido de Videos PROGRAMADOS (Futuros)
-    # Filtramos la colección de videos por is_published=false para ver los programados
-    logging.info("Descargando catálogo remoto de Facebook (Programados - Caché de hasta %s videos)...", max_pages * 25)
-    for item in _iter_graph_collection(
-        f"{FB_PAGE_ID}/videos?is_published=false",
-        access_token=META_FB_PAGE_TOKEN,
-        fields="id,description",
-        page_size=25,
-        max_pages=max_pages
-    ):
-        description = str(item.get("description") or "")
-        markers.add(description)
+    try:
+        # 1. Barrido de Videos PUBLICADOS
+        logging.info("Descargando catálogo remoto de Facebook (Publicados - Caché de hasta %s videos)...", max_pages * 10)
+        for item in _iter_graph_collection(
+            f"{FB_PAGE_ID}/videos",
+            access_token=META_FB_PAGE_TOKEN,
+            fields="id,description",
+            page_size=5, # Bajamos a 5 por defecto para máxima estabilidad
+            max_pages=max_pages
+        ):
+            description = str(item.get("description") or "")
+            markers.add(description)
+        
+        # 2. Barrido de Videos PROGRAMADOS (Futuros)
+        logging.info("Descargando catálogo remoto de Facebook (Programados - Caché de hasta %s videos)...", max_pages * 10)
+        for item in _iter_graph_collection(
+            f"{FB_PAGE_ID}/videos?is_published=false",
+            access_token=META_FB_PAGE_TOKEN,
+            fields="id,description",
+            page_size=5,
+            max_pages=max_pages
+        ):
+            description = str(item.get("description") or "")
+            markers.add(description)
 
-    # 3. Barrido de POSTS PROGRAMADOS.
-    # Muchos videos programados aparecen aqui con el stem en `message`, aunque
-    # no salgan en `/{page}/videos?is_published=false`.
-    logging.info("Descargando catalogo remoto de Facebook (Scheduled Posts - Cache de hasta %s posts)...", max_pages * 25)
-    for item in _iter_graph_collection(
-        f"{FB_PAGE_ID}/scheduled_posts",
-        access_token=META_FB_PAGE_TOKEN,
-        fields="id,message,scheduled_publish_time",
-        page_size=25,
-        max_pages=max_pages
-    ):
-        message = str(item.get("message") or "")
-        markers.add(message)
+        # 3. Barrido de POSTS PROGRAMADOS.
+        logging.info("Descargando catalogo remoto de Facebook (Scheduled Posts - Cache de hasta %s posts)...", max_pages * 10)
+        for item in _iter_graph_collection(
+            f"{FB_PAGE_ID}/scheduled_posts",
+            access_token=META_FB_PAGE_TOKEN,
+            fields="id,message,scheduled_publish_time",
+            page_size=5,
+            max_pages=max_pages
+        ):
+            message = str(item.get("message") or "")
+            markers.add(message)
+    except RuntimeError as exc:
+        logging.error("No se pudo completar la sincronización de Facebook: %s. Abortando caché incompleto.", exc)
+        return None # Señal de fallo crítico para el runner
 
+    if markers is not None:
+        _save_cached_catalog("facebook", markers)
     return markers
 
-def get_instagram_library_batch(max_pages=80):
+def get_instagram_library_batch(max_pages=150, use_cache=True):
     if not IG_USER_ID or not IG_ACCESS_TOKEN:
         return set()
     
+    if use_cache:
+        cached = _get_cached_catalog("instagram")
+        if cached is not None:
+            logging.info("Usando caché local fresco para el catálogo de Instagram (saltando red).")
+            return cached
+
     markers = set()
-    logging.info("Descargando catalogo remoto de Instagram (Caché de hasta %s videos)...", max_pages * 25)
+    logging.info("Descargando catalogo remoto de Instagram (Caché de hasta %s videos)...", max_pages * 10)
     
-    for item in _iter_graph_collection(
-        f"{IG_USER_ID}/media",
-        access_token=IG_ACCESS_TOKEN,
-        fields="id,caption",
-        page_size=25,
-        max_pages=max_pages
-    ):
-        caption = str(item.get("caption") or "")
-        markers.add(caption)
-    
+    try:
+        for item in _iter_graph_collection(
+            f"{IG_USER_ID}/media",
+            access_token=IG_ACCESS_TOKEN,
+            fields="id,caption",
+            page_size=5,
+            max_pages=max_pages
+        ):
+            caption = str(item.get("caption") or "")
+            markers.add(caption)
+    except RuntimeError as exc:
+        logging.error("No se pudo completar la sincronización de Instagram: %s. Abortando caché incompleto.", exc)
+        return None
+
+    if markers is not None:
+        _save_cached_catalog("instagram", markers)
     return markers
     """
     Consulta la API de Graph para obtener el timestamp ('scheduled_publish_time')
@@ -781,6 +855,12 @@ def _request_json(method, url, *, params=None, data=None, headers=None):
 
             if _should_retry_http_status(response.status_code) and attempt < HTTP_RETRY_ATTEMPTS:
                 delay = _retry_delay_seconds(attempt)
+                
+                # NUEVO: Abortar reintento si Meta pide reducir volumen de datos para evitar loops 500
+                if "reduce the amount of data" in json.dumps(payload).lower():
+                    logging.info("Meta reporto un paquete muy pesado. Devolviendo control al motor adaptativo para recortes...")
+                    return payload
+
                 logging.warning(
                     "Meta devolvio HTTP %s en %s %s. Reintento %s/%s en %.1fs.",
                     response.status_code,
@@ -1874,10 +1954,10 @@ def republish_draft_to_scheduled(video_id, scheduled_unix_time):
         return False
 
 
-def get_facebook_page_feed(limit=10, after=None):
+def get_facebook_page_feed(limit=5, after=None):
     """
     Obtiene las publicaciones publicadas mas recientes de la pagina de Facebook.
-    Soporta paginacion mediante el cursor 'after'.
+    Soporta paginacion mediante el cursor 'after'. Limit=5 para resiliencia a errores 500.
     """
     if not FB_PAGE_ID or not META_FB_PAGE_TOKEN:
         logging.error("Faltan FB_PAGE_ID o META_FB_PAGE_TOKEN para leer el feed.")
@@ -1946,9 +2026,10 @@ def create_ig_media_container_from_url(media_url, media_type="IMAGE", caption=""
     return creation_id
 
 
-def get_instagram_user_feed(limit=25):
+def get_instagram_user_feed(limit=5):
     """
     Obtiene las ultimas publicaciones del feed de Instagram para procesos de reconciliacion.
+    Limit=5 para maxima resiliencia frente a metadatos pesados (HTTP 500).
     """
     if not IG_USER_ID or not IG_ACCESS_TOKEN:
         logging.error("Faltan IG_USER_ID o token de Instagram para leer el feed.")

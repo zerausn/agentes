@@ -112,7 +112,10 @@ def process_new_posts(dry_run=False):
     history = load_history()
     
     # 1. Obtener feed de Instagram para reconciliar
-    ig_feed = get_instagram_user_feed(limit=50) 
+    ig_feed = get_instagram_user_feed(limit=5) 
+    if ig_feed is None or "data" not in ig_feed:
+        logging.error("Fallo critico: No se pudo obtener el feed de Instagram. Abortando Vigia por seguridad.")
+        return 0
 
     new_count = 0
     after_cursor = None
@@ -120,9 +123,12 @@ def process_new_posts(dry_run=False):
     
     while backlog_scan_active:
         logging.info("Solicitando pagina de feed FB (after=%s)...", after_cursor)
-        fb_feed = get_facebook_page_feed(limit=25, after=after_cursor)
+        fb_feed = get_facebook_page_feed(limit=5, after=after_cursor)
 
-        if not fb_feed or "data" not in fb_feed or not fb_feed["data"]:
+        if fb_feed is None:
+            logging.error("Fallo critico: No se pudo obtener el feed de Facebook (API Error). Abortando ciclo.")
+            break
+        if "data" not in fb_feed or not fb_feed["data"]:
             logging.info("No hay mas posts en el feed de Facebook.")
             break
 
@@ -140,6 +146,13 @@ def process_new_posts(dry_run=False):
                 page_already_known += 1
                 continue
             
+            # Inteligencia etiquetas: Impedir que la variante teaser se sincronice como post completo
+            if "#teaser" in message.lower():
+                logging.info("Vigia: Post %s ignorado porque es una version #teaser (alcance rapido).", post_id)
+                history.add(post_id)
+                page_already_known += 1
+                continue
+
             # Inteligencia: ¿Ya lo pusiste tu a mano en Instagram?
             if is_already_on_instagram(message, ig_feed):
                 logging.info("Reconciliacion: El post %s ya parece estar en Instagram. Marcando como procesado.", post_id)

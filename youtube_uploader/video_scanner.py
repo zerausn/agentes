@@ -5,6 +5,7 @@ from pathlib import Path
 
 from video_helpers import ensure_basic_video_fields
 from video_helpers import get_video_roots
+from video_helpers import is_ephemeral_video_artifact
 from video_helpers import load_config
 from video_helpers import load_json_file
 from video_helpers import save_json_file
@@ -42,6 +43,8 @@ def scan_directory(directory):
                 continue
 
             filename_lower = filename.lower()
+            if is_ephemeral_video_artifact(filename_lower):
+                continue
             if filename_lower in EXCLUDE_FILES:
                 continue
             if any(pattern in filename_lower for pattern in EXCLUDE_PATTERNS):

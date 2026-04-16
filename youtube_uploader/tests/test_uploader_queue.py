@@ -35,6 +35,7 @@ class UploaderQueueTests(unittest.TestCase):
             {"filename": "short_a.mp4", "type": "short", "size_mb": 90, "uploaded": False},
             {"filename": "video_b.mp4", "type": "video", "size_mb": 180, "uploaded": False},
             {"filename": "short_b.mp4", "type": "short", "size_mb": 110, "uploaded": False},
+            {"filename": "video_tmp.faststart.tmp.mp4", "type": "video", "size_mb": 500, "uploaded": False},
             {"filename": "done.mp4", "type": "video", "size_mb": 999, "uploaded": True},
         ]
 

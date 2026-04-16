@@ -3,13 +3,50 @@
 Este documento explica el por que de las decisiones clave tomadas en el
 proyecto.
 
-## 2026-04-07: Reparar `uploader.py` sobre la base sana de `HEAD`
-- **Contexto:** el working tree quedo con `uploader.py` truncado y sin
-  compilar.
-- **Decision:** reconstruir el archivo completo y conservar la mejora util del
-  watchdog de progreso dentro de una version consistente.
-- **Motivo:** recuperar un entrypoint ejecutable sin perder el diagnostico de
-  bloqueos de subida.
+## 2026-04-15: Aislar el verificador post-upload del cliente de subida
+- **Contexto:** el uploader lanzaba `wait_for_processing()` en un hilo de fondo
+  reutilizando el mismo objeto `youtube` que seguia consumiendo
+  `insert_request.next_chunk()`. En produccion esto disparo errores como
+  `Resume Incomplete`, `WRONG_VERSION_NUMBER` y `BAD_LENGTH`, ademas de dejar
+  subidas ambiguas y duplicados.
+- **Decision:** crear el verificador post-upload con un cliente autenticado
+  independiente para cada hilo de verificacion.
+- **Motivo:** evitar que el polling de `videos.list` comparta la misma sesion
+  HTTP de una subida resumible y corrompa respuestas entre requests
+  concurrentes.
+
+## 2026-04-15: Ignorar artefactos `faststart` en scanner y cola
+- **Contexto:** un archivo temporal `*.faststart.tmp.*` llego a entrar al
+  indice y termino subido como si fuera un video real, generando una copia
+  procesada legitima pero con metadata contaminada.
+- **Decision:** tratar los artefactos `faststart` como archivos efimeros: no se
+  escanean, no entran a la cola de subida y su stem se normaliza si igual
+  aparecen en metadata historica.
+- **Motivo:** cortar de raiz la generacion de duplicados por archivos
+  temporales y evitar titulos defectuosos en el canal.
+
+## 2026-04-15: Rescate por stem canonico antes que borrado
+- **Contexto:** el diagnostico bruto reportaba 31 videos `uploaded`, pero 28 de
+  ellos ya tenian una copia hermana `processed` con el mismo stem de origen. El
+  problema real no era "31 videos perdidos", sino una mezcla de duplicados
+  atascados y copias buenas ya disponibles.
+- **Decision:** introducir `rescue_stuck_processing.py` para reconciliar por
+  stem canonico, reparar metadata/status de la copia buena cuando haga falta y
+  limitar el `nudge` a los casos sin copia procesada.
+- **Motivo:** rescatar el material existente sin borrar objetos de YouTube y
+  sin depender de archivos locales que ya no estan en disco.
+
+## 2026-04-14: Manejo de videos atascados (YouTube)
+- **Contexto:** YouTube API a veces se atasca y deja los videos en estado
+  `uploaded` pero nunca llega a `processed`. Al no poseer ya los videos
+  originales (borrados de local), no nos es posible borrar en la plataforma y
+  re-subirlos.
+- **Decision:** ejecutar un metadata touch agregando o quitando un espacio
+  invisible en la descripcion por API usando `nudge_stuck_videos.py`, y
+  agregar `wait_for_processing` al uploader para verificar el resultado post-
+  upload.
+- **Motivo:** intentar reactivar el render sin borrar objetos del canal y dejar
+  evidencia automatizada del estado real de procesamiento.
 
 ## 2026-04-08: No confundir `uploadLimitExceeded` con quota de credencial
 - **Contexto:** el canal puede rechazar nuevas subidas o borradores aunque la
@@ -32,12 +69,20 @@ proyecto.
 ## 2026-04-08: Elegir el siguiente carril por la fecha libre mas cercana
 - **Contexto:** con colas separadas, el uploader necesita decidir cual carril
   atacar primero en cada iteracion.
-- **Decision:** comparar la siguiente fecha libre de `video` y `short` usando el
-  calendario local + YouTube; subir primero el carril con el hueco mas cercano.
-  Si ambas fechas empatan, desempatar por el archivo mas pesado en cabeza de
-  cola.
+- **Decision:** comparar la siguiente fecha libre de `video` y `short` usando
+  el calendario local + YouTube; subir primero el carril con el hueco mas
+  cercano. Si ambas fechas empatan, desempatar por el archivo mas pesado en
+  cabeza de cola.
 - **Motivo:** llenar antes el hueco operativo mas urgente sin perder la
   prioridad por peso dentro de cada carril.
+
+## 2026-04-07: Reparar `uploader.py` sobre la base sana de `HEAD`
+- **Contexto:** el working tree quedo con `uploader.py` truncado y sin
+  compilar.
+- **Decision:** reconstruir el archivo completo y conservar la mejora util del
+  watchdog de progreso dentro de una version consistente.
+- **Motivo:** recuperar un entrypoint ejecutable sin perder el diagnostico de
+  bloqueos de subida.
 
 ## 2026-04-07: Raices de video configurables
 - **Contexto:** varios scripts seguian amarrados a una ruta absoluta local.
@@ -53,7 +98,7 @@ proyecto.
   `classify_local_videos.py` complete campos ricos y que `uploader.py` rellene
   faltantes antes de subir.
 - **Motivo:** evitar titulos degradados, clasificaciones incompletas y
-  dependencias frages del orden manual de ejecucion.
+  dependencias fragiles del orden manual de ejecucion.
 
 ## 2026-04-07: Heuristica de borradores alineada con el prefijo `PW`
 - **Contexto:** `schedule_drafts.py` seguia reconociendo solo el formato viejo
@@ -108,7 +153,3 @@ proyecto.
 ## 2026-04-06: Prefijo de titulos `PW`
 - **Decision:** cambiar el prefijo de "Performatic Writings" a `PW`.
 - **Motivo:** ganar brevedad y consistencia visual.
-
-### 2026-04-14: Manejo de Videos Atascados (YouTube)
-**Contexto:** Youtube API a veces se atasca y deja los videos en estado `uploaded` pero nunca llega a `processed`. Al no poseer ya los videos originales (borrados de local), no nos es posible borrar en la plataforma y re-subirlos.
-**Decisión:** Ejecutar un metadata touch (Añadir un espacio invisible a la descripción por la API) usando un nuevo script (`nudge_stuck_videos.py`). Esto fuerza a los servidores de Google a invalidar cachés y re-encolar el video en la granja de render. Adicionalmente, se programó `wait_for_processing` en el uploader, quien ahora esperará la verificación final post-subida hasta por 10 minutos para validar que termine antes de catalogarlo como existoso.

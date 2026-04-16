@@ -17,7 +17,8 @@ canal "Performatic Writings".
    local.
 3. **Uploader (`uploader.py`)**
    Motor de subida fraccionada con reintentos, rotacion de credenciales,
-   watchdog de progreso y mecanismo de parada mediante `STOP`.
+   watchdog de progreso, verificador post-upload aislado y mecanismo de parada
+   mediante `STOP`.
 4. **Scheduler (`schedule_drafts.py`)**
    Programa borradores del canal y distingue entre borradores gestionados por el
    sistema y privados intencionales del usuario.
@@ -27,6 +28,10 @@ canal "Performatic Writings".
 6. **Utilidades compartidas (`video_helpers.py`)**
    Centraliza carga de config, resolucion de raices, metadatos locales y
    heuristicas de titulos.
+7. **Rescate de procesamiento (`rescue_stuck_processing.py`)**
+   Cruza videos `uploaded` contra copias hermanas `processed` por stem
+   canonico, repara metadata de la copia buena y delimita los casos realmente
+   huerfanos.
 
 ## Resolucion de rutas
 - La biblioteca de videos se toma de `scanner.video_roots` en `config.json`.
@@ -47,7 +52,10 @@ canal "Performatic Writings".
   uploader se detiene antes del siguiente video.
 - **Indice local:** `scanned_videos.json` guarda el estado persistente para
   evitar duplicados y conservar metadatos.
-- **Límite del canal:** cuando YouTube ya no acepta mas borradores/subidas, el
+- **Artefactos efimeros:** `video_scanner.py` y `uploader.py` ignoran
+  `*.faststart.tmp.*` para que los temporales de `ffmpeg` no se conviertan en
+  registros subibles.
+- **Limite del canal:** cuando YouTube ya no acepta mas borradores/subidas, el
   flujo esperado es liberar capacidad con `schedule_drafts.py` o con limpieza
   manual del canal y luego relanzar `uploader.py`.
 - **Colas por carril:** `uploader.py` mantiene una cola independiente para
@@ -58,6 +66,8 @@ canal "Performatic Writings".
 - **Carpetas operativas:** los videos subidos se mueven a
   `videos subidos exitosamente/` y los duplicados ya presentes en el canal se
   mueven a `videos_excluidos_ya_en_youtube/`.
+- **Verificacion post-upload:** cada hilo de verificacion crea su propio
+  cliente autenticado para no compartir la sesion HTTP de la subida resumible.
 
 ## Doble jornada
 - **Jornada 1:** `video_scanner.py`, `classify_local_videos.py` y `uploader.py`
@@ -73,3 +83,11 @@ canal "Performatic Writings".
 - Si existe transcript sidecar, suma bonus por hook textual temprano.
 - Genera `title_override`, `description_override` y `tags_override` para que la
   jornada 2 tenga empaque propio sin alterar el formato de la jornada 1.
+
+## Diagnostico y rescate
+- `diagnose_processing.py` distingue entre duplicados atascados con copia buena
+  existente y casos sin copia procesada.
+- `rescue_stuck_processing.py` usa un stem canonico para unir duplicados como
+  `archivo.mp4` y `archivo.faststart.tmp.mp4`.
+- `nudge_stuck_videos.py` puede priorizar los casos realmente huerfanos cuando
+  existe `processing_rescue_report.json`.
