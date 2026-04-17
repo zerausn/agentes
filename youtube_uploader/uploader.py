@@ -211,6 +211,7 @@ def pop_next_pending_video(queues, videos, yt_scheduled_dates, now_utc=None):
 
 
 def get_authenticated_service(client_secret_file, creds_cache_file, scopes=None):
+    from google.auth.exceptions import RefreshError
     client_secret_file = Path(client_secret_file)
     creds_cache_file = Path(creds_cache_file)
     scopes = scopes or SCOPES
@@ -221,7 +222,13 @@ def get_authenticated_service(client_secret_file, creds_cache_file, scopes=None)
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+            try:
+                creds.refresh(Request())
+            except RefreshError as e:
+                logging.warning("Token OAuth revocado o expirado (%s). Borrando %s para forzar re-login...", e, creds_cache_file.name)
+                creds_cache_file.unlink(missing_ok=True)
+                flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_file), scopes)
+                creds = flow.run_local_server(port=0)
         else:
             flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_file), scopes)
             creds = flow.run_local_server(port=0)
