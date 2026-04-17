@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import time
 import threading
@@ -32,13 +33,17 @@ from meta_uploader import (
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 CALENDAR_FILE = BASE_DIR / "meta_calendar.json"
+EXTERNAL_SUCCESS_DIR = Path(r"C:\Users\ZN-\Documents\ADM\Carpeta 1\ya_subidos_fb_ig")
+EXTERNAL_TEMP_SUCCESS_DIR = Path(r"C:\Users\ZN-\Documents\ADM\Carpeta 1\ya_subidos_ig_temp")
 DATE_STEM_RE = re.compile(r"(?P<date>\d{8})_(?P<time>\d{6})")
 __test__ = False
 PUBLISHED_STATUSES = {
     "published",
     "published_with_ig_skip",
+    "published_with_ig_delegated",
     "scheduled",
     "scheduled_with_ig_skip",
+    "scheduled_with_ig_delegated",
 }
 ACTIVE_STATUSES = {"in_progress", "running"}
 WAITING_STATUSES = {"waiting_for_next_day", "daily_limit_reached"}
@@ -525,7 +530,8 @@ def _invoke_with_status(label, func, *args):
 
 def _summarize_platform_results(platform_results):
     def _is_soft_skip(item):
-        return item["status"].get("kind") == "skipped_requires_second_jornada"
+        kind = item["status"].get("kind", "")
+        return kind in ("skipped_requires_second_jornada", "delegated_to_vigia")
 
     def _is_resolved(item):
         if not item:
@@ -534,24 +540,22 @@ def _summarize_platform_results(platform_results):
 
     ok = all(_is_resolved(item) for item in platform_results.values())
 
-    fb_post_full = platform_results.get("facebook_post_full_scheduled")
-    ig_post = platform_results.get("instagram_feed")
-    fb_post_reel_now = platform_results.get("facebook_post_reel_now")
-
-    if (
-        not ok
-        and fb_post_full
-        and _is_resolved(fb_post_full)
-        and ig_post
-        and _is_resolved(ig_post)
-        and fb_post_reel_now
-        and not _is_resolved(fb_post_reel_now)
-    ):
-        ok = True
-        logging.warning(
-            "El reel inmediato de apoyo fallo, pero el video completo ya quedo programado. "
-            "Se conserva el asset como resuelto para evitar reintentos duplicados."
-        )
+    # --- RESCATE: Si algun FB quedo resuelto, la dupla se considera OK ---
+    # IG esta delegado al vigia; no debe abortar la rafaga ni causar re-subidas.
+    if not ok:
+        fb_keys = [k for k in platform_results if k.startswith("facebook_")]
+        any_fb_resolved = any(_is_resolved(platform_results[k]) for k in fb_keys)
+        if any_fb_resolved:
+            ok = True
+            failed_labels = [
+                k for k, v in platform_results.items()
+                if not _is_resolved(v)
+            ]
+            logging.warning(
+                "Rescate de dupla: FB quedo resuelto. Items no resueltos %s se ignoran "
+                "(IG delegado al vigia). Se conserva asset como resuelto.",
+                failed_labels,
+            )
 
     return ok, {
         key: {
@@ -674,23 +678,20 @@ def run_platform_pair(lane_name, video_info, publish_date, target_time_str=None)
     
     platform_results = {}
     ig_label = "instagram_reel" if lane_name == "reel" else "instagram_feed"
-    ig_preflight = evaluate_ig_video_preflight(video_info, lane_name)
     fb_label = "facebook_reel" if lane_name == "reel" else "facebook_post"
 
-    # --- GUARDIA REMOTA ESPECIFICA POR TIPO ---
-    # En la estrategia dual, buscamos por marker + tag para no confundir teaser con full
+    # --- GUARDIA REMOTA SOLO FACEBOOK (IG delegado al vigia) ---
     def _check_remote(marker, tag):
         search_marker = f"{marker} #{tag}"
         fb_ex = find_existing_facebook_video_by_caption_marker(search_marker)
-        ig_ex = find_existing_instagram_media_by_caption_marker(search_marker) if ig_preflight["compatible"] else None
-        return fb_ex, ig_ex
+        return fb_ex, None
 
     work = {}
     
     # --- LOGICA FACEBOOK DUAL ---
     # 1. Reel Teaser (60s)
     fb_teaser_tag = "teaser"
-    existing_fb_teaser, existing_ig_teaser = _check_remote(caption_marker, fb_teaser_tag)
+    existing_fb_teaser, _ = _check_remote(caption_marker, fb_teaser_tag)
     
     if existing_fb_teaser:
         logging.warning("[%s] Ya existe Teaser en Facebook. Saltando.", fb_label.upper())
@@ -698,21 +699,10 @@ def run_platform_pair(lane_name, video_info, publish_date, target_time_str=None)
         logging.info("[%s] Generando Reel inmediato (60s) para Facebook...", fb_label.upper())
         fb_reel_path = ensure_ig_compatibility(video_info["path"], max_duration=60)
         work[f"{fb_label}_reel_now"] = (upload_fb_reel, fb_reel_path, build_caption(video_info, lane_name, publish_date, fb_teaser_tag))
-        
-        # Instagram Reel Teaser
-        if ig_label == "instagram_reel" and not existing_ig_teaser:
-            logging.info("[%s] Aprovechando slice de 60s para Reel Teaser en Instagram...", ig_label.upper())
-            work[f"{ig_label}_teaser_now"] = (
-                lambda path, text: upload_ig_reel_resumable(path, text, share_to_feed=True),
-                fb_reel_path,
-                build_caption(video_info, lane_name, publish_date, fb_teaser_tag),
-            )
-        elif existing_ig_teaser:
-            logging.warning("[%s] Ya existe Teaser en Instagram. Saltando.", ig_label.upper())
 
     # 2. Video/Reel Completo (Full)
     full_tag = "full"
-    existing_fb_full, existing_ig_full = _check_remote(caption_marker, full_tag)
+    existing_fb_full, _ = _check_remote(caption_marker, full_tag)
 
     if existing_fb_full:
         logging.warning("[%s] Ya existe version completa en Facebook (%s). Saltando.", fb_label.upper(), fb_label)
@@ -720,32 +710,16 @@ def run_platform_pair(lane_name, video_info, publish_date, target_time_str=None)
         logging.info("[%s] Programando Video completo para %s @ %sh...", fb_label.upper(), publish_date, hour)
         work[f"{fb_label}_full_scheduled"] = (upload_fb_video_standard, video_info["path"], build_caption(video_info, lane_name, publish_date, full_tag), int(scheduled_dt.timestamp()))
 
-    if ig_preflight["compatible"]:
-        if existing_ig_full:
-            logging.warning("[%s] Ya existe version completa en Instagram (%s). Saltando.", ig_label.upper(), ig_label)
-        else:
-            logging.info("[%s] Procesando Reel COMPLETO para Instagram...", ig_label.upper())
-            ig_path = ensure_ig_compatibility(video_info["path"], force_recode=True)
-            work[f"{ig_label}_full"] = (
-                lambda path, text: upload_ig_reel_resumable(path, text, share_to_feed=False),
-                ig_path,
-                build_caption(video_info, lane_name, publish_date, full_tag),
-            )
-
-    if not ig_preflight["compatible"]:
-        reason_text = "; ".join(ig_preflight["reasons"])
-        logging.warning(
-            "Se omite %s para %s en jornada 1: el crudo no cumple specs oficiales de Instagram (%s). "
-            "Se deriva a segunda jornada.",
-            ig_label,
-            video_info["filename"],
-            reason_text,
-        )
-        platform_results[ig_label] = _build_skipped_result(
-            ig_label,
-            "skipped_requires_second_jornada",
-            reason_text,
-        )
+    # --- INSTAGRAM DELEGADO AL VIGIA (fb_to_ig_vigia.py) ---
+    logging.info(
+        "[%s] Instagram delegado al vigia (fb_to_ig_vigia.py). No se sube desde el runner.",
+        ig_label.upper(),
+    )
+    platform_results[ig_label] = _build_skipped_result(
+        ig_label,
+        "delegated_to_vigia",
+        "Instagram deshabilitado en runner; delegado a fb_to_ig_vigia.py",
+    )
 
     if work:
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(work)) as executor:
@@ -773,9 +747,19 @@ def run_platform_pair(lane_name, video_info, publish_date, target_time_str=None)
     return ok, summary
 
 
+def _summary_has_ig_delegated(summary):
+    return any(
+        value.get("status", {}).get("kind") == "delegated_to_vigia"
+        for value in summary.values()
+    )
+
+
 def determine_lane_status(lane_name, ok, summary):
     if not ok:
         return "failed"
+
+    ig_delegated = _summary_has_ig_delegated(summary)
+    ig_skipped = _summary_has_second_jornada_skip(summary)
 
     if lane_name == "post":
         primary_post = summary.get("facebook_post_full_scheduled") or summary.get("facebook_post") or {}
@@ -790,9 +774,13 @@ def determine_lane_status(lane_name, ok, summary):
             )
         )
         if scheduled_remote:
-            return "scheduled_with_ig_skip" if _summary_has_second_jornada_skip(summary) else "scheduled"
+            if ig_delegated:
+                return "scheduled_with_ig_delegated"
+            return "scheduled_with_ig_skip" if ig_skipped else "scheduled"
 
-    return "published_with_ig_skip" if _summary_has_second_jornada_skip(summary) else "published"
+    if ig_delegated:
+        return "published_with_ig_delegated"
+    return "published_with_ig_skip" if ig_skipped else "published"
 
 
 def run_ig_story_if_enabled(day_entry):
@@ -810,6 +798,94 @@ def run_ig_story_if_enabled(day_entry):
         }
     )
     return story
+
+
+def _move_completed_assets_to_success(day_entry, plan):
+    """Mueve los videos fuente de un dia completado a la carpeta de exito
+    y purga las colas de pendientes, similar al flujo de YouTube uploader."""
+    EXTERNAL_SUCCESS_DIR.mkdir(parents=True, exist_ok=True)
+
+    moved_files = []
+    for lane_name in ("reel", "post"):
+        lane = day_entry.get(lane_name)
+        if not lane or not lane.get("path"):
+            continue
+        src = Path(lane["path"])
+        if not src.exists():
+            continue
+        dst = EXTERNAL_SUCCESS_DIR / src.name
+        try:
+            if dst.exists():
+                logging.info("[MOVE] %s ya existe en destino. Eliminando fuente.", src.name)
+                src.unlink()
+            else:
+                shutil.move(str(src), str(dst))
+            moved_files.append(src.name)
+            logging.info("[MOVE] %s -> %s", src.name, EXTERNAL_SUCCESS_DIR.name)
+        except Exception as exc:
+            logging.error("[MOVE] No se pudo mover %s: %s", src.name, exc)
+
+    # Limpiar archivos temporales generados por ensure_ig_compatibility
+    # Buscamos .ig_temp en la carpeta del archivo original Y en la de exito
+    for lane_name in ("reel", "post"):
+        lane = day_entry.get(lane_name)
+        if not lane or not lane.get("path"):
+            continue
+        
+        src_path = Path(lane["path"])
+        marker = extract_asset_marker(str(src_path))
+        
+        # Carpetas posibles donde puede haber basura temporal
+        possible_temp_dirs = [
+            src_path.parent / ".ig_temp",
+            EXTERNAL_SUCCESS_DIR / ".ig_temp",
+            BASE_DIR / ".ig_temp"
+        ]
+        
+        for temp_dir in possible_temp_dirs:
+            if temp_dir.exists():
+                for temp_file in temp_dir.glob(f"*{marker}*"):
+                    try:
+                        # Todos los temporales van a la carpeta de exito temp
+                        target_dir = EXTERNAL_TEMP_SUCCESS_DIR
+                        target_dir.mkdir(parents=True, exist_ok=True)
+                        
+                        temp_dst = target_dir / temp_file.name
+                        if temp_dst.exists():
+                            temp_file.unlink()
+                        else:
+                            shutil.move(str(temp_file), str(temp_dst))
+                        logging.info("[CLEANUP] %s movido a %s", temp_file.name, target_dir.name)
+                    except Exception as exc:
+                        logging.warning("[CLEANUP] No se pudo mover %s: %s", temp_file.name, exc)
+
+    # Purgar de colas de pendientes
+    if moved_files:
+        for queue_name in ("posts", "reels"):
+            queue_path = BASE_DIR / f"pendientes_{queue_name}.json"
+            if not queue_path.exists():
+                continue
+            try:
+                with open(queue_path, "r", encoding="utf-8") as f:
+                    queue_items = json.load(f)
+                original_len = len(queue_items)
+                queue_items = [
+                    item for item in queue_items
+                    if not any(Path(item).name == name for name in moved_files)
+                ]
+                if len(queue_items) < original_len:
+                    with open(queue_path, "w", encoding="utf-8") as f:
+                        json.dump(queue_items, f, indent=2, ensure_ascii=False)
+                    logging.info(
+                        "[QUEUE] Purgados %s items de %s",
+                        original_len - len(queue_items),
+                        queue_path.name,
+                    )
+            except Exception as exc:
+                logging.error("[QUEUE] Error limpiando %s: %s", queue_path.name, exc)
+
+    if moved_files:
+        logging.info("[POST-UPLOAD] %s archivo(s) movidos a carpeta de exito.", len(moved_files))
 
 
 def execute_plan(plan, pause_between_assets=10, max_live_days=1):
@@ -914,17 +990,21 @@ def execute_plan(plan, pause_between_assets=10, max_live_days=1):
                 
             time.sleep(pause_between_assets)
 
-            if lane_name == "reel":
-                story_state = run_ig_story_if_enabled(day_entry)
-                safe_write_calendar(plan)
-                if story_state["status"] == "failed":
-                    logging.warning("IG Story fallo suave en la rafaga para %s.", Path(story_state["path"]).name)
+            # IG Story deshabilitado: Instagram delegado al vigia
+            # if lane_name == "reel":
+            #     story_state = run_ig_story_if_enabled(day_entry)
+            #     safe_write_calendar(plan)
+            #     if story_state["status"] == "failed":
+            #         logging.warning("IG Story fallo suave en la rafaga para %s.", Path(story_state["path"]).name)
 
         with _CALENDAR_LOCK:
             day_entry["summary"]["status"] = "completed"
             day_entry["summary"]["last_updated_at"] = now_iso()
             clear_active_summary_fields(day_entry)
             write_calendar(plan)
+
+        # --- MOVER ARCHIVOS FUENTE A CARPETA DE EXITO (como YouTube) ---
+        _move_completed_assets_to_success(day_entry, plan)
             
         return True, "completed"
 

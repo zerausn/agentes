@@ -268,3 +268,10 @@
 ## D34: Blindaje Deduplicativo y Etiquetado Teaser/Full
 - **Decision:** Asignar etiquetas `#teaser` y `#full` a cada publicación y realizar búsquedas remotas específicas por tipo de asset antes de subir. Además, abortar la ejecución si la sincronización del catálogo de Meta falla.
 - **Razon:** Evitar que el sistema actúe "a ciegas" cuando la API de Meta falla en darnos el catálogo remoto. La falta de este blindaje causaba que el sistema subiera duplicados al no encontrar el registro previo por errores transitorios.
+
+## D35: Delegación de IG al Vigía y Resilio-Management
+- **Decisión:** 
+    1. Eliminar todas las subidas de Instagram del runner principal y delegar la publicación al vigía (`fb_to_ig_vigia.py`).
+    2. Cláusula de Rescate: El runner se marca éxito (`ok=True`) si al menos Facebook se resuelve, evitando abortos por fallos en IG.
+    3. Gestión Automática de Archivos: Al completar una jornada, se mueven videos originales a `ya_subidos_fb_ig/` y temporales (`slice_60s`, `ig_compat`) a `ya_subidos_ig_temp/`.
+- **Razón:** Eliminar el cuello de botella que causaba Instagram (Rate Limiting y fallos de API) sobre el flujo estable de Facebook. El auto-move garantiza que el área de trabajo se mantenga despejada y previene duplicados en escaneos futuros.

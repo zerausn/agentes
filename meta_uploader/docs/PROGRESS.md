@@ -63,4 +63,12 @@
 
 ### 2026-04-14: Reparación Motor Supervisor (Cascada Infinita)
 - [x] Eliminado el bloqueo de fechas futuras (\ locked_by_future_day\) en \un_jornada1_supervisor.py\ que impedía que el script encolara masivamente en la programación remota de Meta (Límite 28 días) y se pasmara en esperas de 10 segundos.
-- [x] Mejorada la lógica del contador de reinicios (\estart_attempt\) para no penalizar ni auto-cortar el script si las subidas individuales se completan con éxito y código 0.
+- [x] Mejorada la lógica del contador de reinicios (\\estart_attempt\\) para no penalizar ni auto-cortar el script si las subidas individuales se completan con éxito y código 0.
+
+### 2026-04-17: Delegación de Instagram al Vigía
+- [x] Eliminadas todas las subidas de Instagram (Reel, Feed, Story) del runner `run_jornada1_normal.py`.
+- [x] Instagram delegado a `fb_to_ig_vigia.py` con status `delegated_to_vigia`.
+- [x] Cláusula de rescate: si FB queda resuelto, la ráfaga no se aborta aunque IG falle o esté delegado.
+- [x] Nuevos statuses: `published_with_ig_delegated`, `scheduled_with_ig_delegated`.
+- [x] Eliminado el transcoding de IG (`ensure_ig_compatibility` + deep clean) del flujo principal, ahorrando ~2 min de CPU por video.
+- [x] Auto-move de videos completos a `ya_subidos_fb_ig/` y reubicación de temporales `slice_60s/ig_compat` a `ya_subidos_ig_temp/` (fuera del alcance del uploader).

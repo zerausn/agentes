@@ -527,7 +527,8 @@ def _iter_graph_collection(path_or_url, *, access_token, fields, page_size=100, 
     while next_url and pages < max_pages:
         result = _request_json("GET", next_url, params=params)
         if not result:
-            return
+            logging.error("Fallo critico de conectividad: _request_json agoto retries sin obtener datos.")
+            raise RuntimeError(f"Fallo de conectividad consultando API. Reintentos agotados.")
 
         error_payload = result.get("error") or {}
         if error_payload:

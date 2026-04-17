@@ -18,3 +18,12 @@
     - **Frenado de Seguridad**: El sistema ahora aborta la jornada si Meta no permite leer el catálogo remoto (deduplicación forzosa).
     - **Resiliencia API**: Reducción adaptativa de límites (limit base 5) para superar errores HTTP 500.
 - **Estado**: Sistema blindado contra duplicados y fallos de API; listo para operación masiva segura.
+
+## Sesión: 2026-04-17
+- **Objetivo**: Eliminar Instagram del runner y delegarlo al vigía para evitar que fallos de IG aborten la ráfaga de Facebook.
+- **Logros**:
+    - **Delegación IG→Vigía**: Todas las subidas de Instagram (Reel, Feed, Story) eliminadas de `run_jornada1_normal.py`.
+    - **Rescate de Ráfaga**: Si Facebook queda resuelto, la dupla se considera OK aunque IG falle o esté delegado. No más re-subidas de archivos de 1+ GB.
+    - **Auto-Move y Limpieza**: Los videos originales se mueven a `ya_subidos_fb_ig/` y los temporales a `ya_subidos_ig_temp/` tras confirmarse la subida (paridad con uploader de YouTube).
+    - **Ahorro de CPU**: Se elimina el deep clean (transcoding) de IG del flujo principal (~2 min/video).
+- **Estado**: Runner enfocado exclusivamente en Facebook; Instagram a cargo del Vigía. Área de trabajo despejada automáticamente.

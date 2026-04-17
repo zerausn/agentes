@@ -22,28 +22,16 @@ con una capa de automatizacion separada del repo contenedor.
   El runner `test_batch_upload.py` ya puede reintentar un asset transitorio y
   pausar el batch para no consumir la cola a ciegas.
 - `reconcile_meta_cloud.py`: Motor de reconciliación rápida (Reconciliación 3.0). Realiza una limpieza triple nuclear basada en una caché masiva de 2000 videos remotos. Sincroniza el sistema purgando las colas `pendientes_*.json` y marcando el calendario como `completed`.
-- `run_jornada1_normal.py`: El runner operativo normal para la jornada 1 de videos crudos. Ahora opera en **Modo Secuencial de Días** para mitigar bloqueos por spam (Error 368), procesando un día real a la vez y manteniendo paralelismo interno solo para las plataformas (Facebook + Instagram).
+- `run_jornada1_normal.py`: El runner operativo normal para la jornada 1. Ahora **enfocado exclusivamente en Facebook**, delegando Instagram al Vigía para maximizar la resiliencia de la ráfaga. Implementa el auto-move de archivos completados.
+- `fb_to_ig_vigia.py`: Agente Vigía encargado de la reconciliación FB -> IG. Rescata los videos `#full` de Facebook y los publica en Instagram (Feed/Reel/Stories), permitiendo que el runner principal se libre de la carga de Instagram.
 
-## Carriles funcionales
-
-- **Carril compartido Reel/Reel**: usa el subconjunto mas seguro para publicar
-  el mismo asset en Facebook Reels e Instagram Reels.
-- **Carril Facebook video estandar**: conserva un flujo separado para videos de
-  pagina que no dependan del formato Reel. El transfer ahora reutiliza sesion
-  HTTP por hilo y usa chunk adaptativo para reducir el overhead de miles de
-  requests de `1 MB`.
-- **Stories**: `Instagram Stories` se intenta solo cuando el asset vertical del
-  dia cumple una politica conservadora (`<=60s`, vertical). `Facebook Stories`
-  permanece fuera del alcance automatizado actual hasta versionar soporte
-  oficial especifico para ese flujo.
-- **Carril videos optimizados**: `second_pass/local_clip_optimizer.py` y
-  `second_pass/prepare_second_jornada_meta.py` derivan clips `shared_reel` e
-  `instagram_story` desde material crudo, escriben colas separadas en
-  `second_pass/queues/` y solo promocionan derivados a `pendientes_reels.json`
-  mediante opt-in explicito. Para full-length compatibles con IG existe
-  `second_pass/transcode_instagram_api_safe.py`, que exporta una version
-  completa H.264/AAC dentro del limite oficial y la deja en su propia cola de
-  videos optimizados.
+- **Delegación Total de Instagram**: Instagram ya no se procesa en el runner principal. El runner marca las tareas como `delegated_to_vigia`. Esto elimina los fallos de IG como causa de aborto de la ráfaga de Facebook y ahorra tiempo de CPU al no transcodificar para IG en el flujo principal.
+- **Carril Facebook Dual (Teaser + Full)**: Facebook sigue recibiendo dos versiones: un `#teaser` (Reel inmediato de 60s) y el video completo (`#full`) programado. Esto maximiza el alcance orgánico inmediato mientras se construye la biblioteca completa.
+- **Vigía (Rescate FB -> IG)**: El Vigía monitorea Facebook, detecta los videos `#full` y los promueve a Instagram. Los `#teaser` de Facebook son ignorados por el Vigía para mantener el feed de Instagram limpio de fragmentos cortos duplicados.
+- **Gestión de Archivos Post-Subida**: Una vez completada una jornada, el sistema mueve automáticamente los archivos:
+    - Videos originales -> `ya_subidos_fb_ig/`
+    - Archivos temporales (`slice_60s`, `ig_compat`) -> `ya_subidos_ig_temp/`
+    - Ambas carpetas son excluidas de futuros escaneos para evitar duplicados.
 - **Preflight IG en jornada 1**: antes de intentar `instagram_feed` o
   `instagram_reel`, el runner valida el asset crudo contra limites oficiales
   del flujo `REELS`/`share_to_feed` y `STORIES` (tamano, ancho, fps, bitrate,

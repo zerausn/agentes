@@ -74,7 +74,16 @@ def is_shared_safe_reel(props):
 
 
 def iter_video_files(target_path):
-    exclude_dirs = {"videos subidos exitosamente", "videos_excluidos_ya_en_youtube", "ya_subidos_fb_ig", "ya_subidos_meta"}
+    exclude_dirs = {
+        "videos subidos exitosamente", 
+        "videos_excluidos_ya_en_youtube", 
+        "ya_subidos_fb_ig", 
+        "ya_subidos_meta",
+        "ya_subidos_ig_temp",
+        ".ig_temp",
+        ".fb_upload_checkpoints",
+        "ig_compat"
+    }
     
     for root, dirs, files in os.walk(target_path):
         dirs[:] = [d for d in dirs if d.lower() not in exclude_dirs]
