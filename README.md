@@ -16,6 +16,7 @@ Aquí se encuentran los arquivos para definir, revisar y mejorar el **sistema de
 |---------|-----------|
 | **PROPUESTA_SISTEMA_AGENTES_COORDINADOS.md** | 📋 Propuesta detallada del sistema completo |
 | **CHECKLIST_REVISION.md** | ✅ Criterios de revisión y fallas potenciales |
+| **CASCADING_STACKING_GUIDE.md** | 🚀 Guía técnica del Motor Meta v6.0 |
 | **README.md** | 📖 Este archivo |
 
 ### 📁 Carpetas
@@ -166,22 +167,19 @@ Tu Petición
 
 ---
 
+## 🚀 Versión 6.0: Meta Cascading Stacking Engine
+Hemos implementado un motor de publicación avanzado que rompe la linealidad de Meta:
+- **Lógica de Cascada**: Rellena el calendario de 28 días en ráfagas (07:00 AM / 18:30 PM).
+- **Supervisor PW**: Bucle infinito que gestiona la red y la API de forma autónoma.
+- **Auto-Rebuild**: El sistema detecta nuevos videos y los inyecta en el flujo futuro automáticamente.
+
+Para más detalles, consulta la [Guía de Apilamiento](file:///c:/Users/ZN-/Documents/Antigravity/agentes/meta_uploader/CASCADING_STACKING_GUIDE.md).
+
+---
+
 ## 📝 Notas
-
-Este sistema está **en fase de diseño**. No está implementado aún. 
-
-**Lo que tenemos:**
-- ✅ Propuesta conceptual
-- ✅ Diagrama de flujo
-- ✅ Checklist de revisión
-- ⏳ Configuración inicial
-
-**Lo que necesitamos:**
-- 🔧 Implementación del coordinador
-- 🔐 Sistema de seguridad (credenciales, RBAC)
-- 🧪 Tests de integración
-- 📊 Monitoreo y alertas
-- 🔄 Recuperación ante fallos
+- El sistema de Meta ya está **OPERATIVO v6.0**.
+- NemoClaw y otros módulos siguen en fase de diseño/implementación.
 
 ---
 

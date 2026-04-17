@@ -1,8 +1,14 @@
 .env
 .env.*
+meta_calendar.json
+pendientes_*.json
 !.env.example
 *.secret
 *.secrets
+*.log
+*.pyc
+*.pyo
+__pycache__/
 secrets/
 local/
 tmp/

@@ -1,0 +1,44 @@
+{
+  "generated_at": "2026-04-08T17:30:48.867340",
+  "target_dir": "C:\\Users\\ZN-\\Documents\\ADM\\Carpeta 1\\videos subidos exitosamente",
+  "total_videos_in_folder": 34,
+  "facebook_items_scanned": 802,
+  "instagram_items_scanned": 77,
+  "facebook_errors": [],
+  "instagram_errors": [],
+  "already_uploaded_both_count": 1,
+  "already_uploaded_both": [
+    {
+      "filename": "20260310_184517.mp4",
+      "stem": "20260310_184517",
+      "facebook_matches": [
+        {
+          "id": "1863981500985541",
+          "created_time": "2026-04-08T02:04:19+0000",
+          "permalink_url": "/reel/1863981500985541/",
+          "edge": "videos",
+          "description": "Prueba automatizada FB reel: probe_vertical_20260310_184517",
+          "title": null
+        },
+        {
+          "id": "1863981500985541",
+          "created_time": "2026-04-08T02:04:19+0000",
+          "permalink_url": "/reel/1863981500985541/",
+          "edge": "video_reels",
+          "description": "Prueba automatizada FB reel: probe_vertical_20260310_184517",
+          "title": null
+        }
+      ],
+      "instagram_matches": [
+        {
+          "id": "18578908267001931",
+          "timestamp": "2026-04-08T00:11:50+0000",
+          "permalink": "https://www.instagram.com/reel/DW2Z_iwiRfW/",
+          "media_type": "VIDEO",
+          "media_product_type": "REELS",
+          "caption": "Prueba automatizada IG post: 20260310_184517"
+        }
+      ]
+    }
+  ]
+}

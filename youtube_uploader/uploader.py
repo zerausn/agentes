@@ -1,0 +1,708 @@
+import json
+import logging
+import shutil
+import threading
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import httplib2
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+from googleapiclient.http import MediaFileUpload
+
+from video_helpers import build_upload_metadata
+from video_helpers import enrich_video_record
+from video_helpers import is_ephemeral_video_artifact
+from video_helpers import load_config
+from video_helpers import save_json_file
+from video_helpers import apply_faststart
+
+UPLOAD_STALL_CHECK_SECONDS = 10
+UPLOAD_STALL_MAX_NO_PROGRESS_CHECKS = 2
+
+BASE_DIR = Path(__file__).resolve().parent
+LOG_FILE = BASE_DIR / "uploader.log"
+JSON_DB = BASE_DIR / "scanned_videos.json"
+CREDENTIALS_DIR = BASE_DIR / "credentials"
+CONFIG_FILE = BASE_DIR / "config.json"
+QUOTA_STATUS_FILE = BASE_DIR / "quota_status.json"
+STOP_FILE = BASE_DIR / "STOP"
+CACHE_FILE = BASE_DIR / "yt_schedule_cache.json"
+CACHE_EXPIRY_SECONDS = 3600
+SCOPES = [
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube.readonly",
+]
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler()],
+)
+
+config = load_config(BASE_DIR)
+
+
+class UploadWatchdog:
+    def __init__(self, label):
+        self.label = label
+        self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._thread = None
+        self._started_at = time.monotonic()
+        self._last_change_at = self._started_at
+        self._last_seen = 0
+        self._last_total = 0
+        self._no_progress_checks = 0
+        self._alerted = False
+
+    def start(self):
+        self._thread = threading.Thread(target=self._run, name=f"watchdog-{self.label}", daemon=True)
+        self._thread.start()
+
+    def update(self, seen, total):
+        with self._lock:
+            if seen > self._last_seen:
+                recovered = self._alerted
+                self._last_seen = seen
+                self._last_total = total
+                self._last_change_at = time.monotonic()
+                self._no_progress_checks = 0
+                self._alerted = False
+            else:
+                recovered = False
+
+        if recovered:
+            logging.info(
+                "%s reanudo avance despues del bloqueo temporal. Progreso actual: %s/%s bytes.",
+                self.label,
+                seen,
+                total or "?",
+            )
+
+    def stop(self):
+        self._stop_event.set()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=1)
+
+    def _run(self):
+        while not self._stop_event.wait(UPLOAD_STALL_CHECK_SECONDS):
+            with self._lock:
+                now = time.monotonic()
+                stalled_seconds = int(now - self._last_change_at)
+                total_runtime = int(now - self._started_at)
+                has_progress = self._last_seen > 0
+
+                if has_progress:
+                    self._no_progress_checks = self._no_progress_checks + 1 if stalled_seconds >= UPLOAD_STALL_CHECK_SECONDS else 0
+                else:
+                    self._no_progress_checks = self._no_progress_checks + 1 if total_runtime >= UPLOAD_STALL_CHECK_SECONDS else 0
+
+                should_alert = self._no_progress_checks >= UPLOAD_STALL_MAX_NO_PROGRESS_CHECKS and not self._alerted
+                seen = self._last_seen
+                total = self._last_total
+
+            if should_alert:
+                if has_progress:
+                    logging.warning(
+                        "%s parece detenida: sin avance en %ss (%s verificaciones de %ss). Ultimo progreso: %s/%s bytes.",
+                        self.label,
+                        stalled_seconds,
+                        self._no_progress_checks,
+                        UPLOAD_STALL_CHECK_SECONDS,
+                        seen,
+                        total or "?",
+                    )
+                else:
+                    logging.warning(
+                        "%s parece detenida en el inicio (%ss sin emitir el primer chunk).",
+                        self.label,
+                        total_runtime,
+                    )
+                self._alerted = True
+
+
+def get_next_publish_date(videos, video_type="video", yt_scheduled_dates=None, now_utc=None):
+    if yt_scheduled_dates is None:
+        yt_scheduled_dates = {}
+
+    tz_offset = config.get("scheduling", {}).get("colombia_time_offset", -5)
+    target_hour = config.get("scheduling", {}).get("publish_hour", 17)
+    target_minute = config.get("scheduling", {}).get("publish_minute", 45)
+    colombia_tz = timezone(timedelta(hours=tz_offset))
+
+    if now_utc is None:
+        now_utc = datetime.now(timezone.utc)
+    now_col = now_utc.astimezone(colombia_tz)
+    base_date = now_col + timedelta(days=1)
+
+    for offset in range(730):
+        check_date = base_date + timedelta(days=offset)
+        date_str = check_date.strftime("%Y-%m-%d")
+
+        local_counts = {"videos": 0, "shorts": 0}
+        for video in videos:
+            if not (video.get("uploaded") and video.get("publishAt")):
+                continue
+            publish_date = video["publishAt"].split("T")[0]
+            if publish_date != date_str:
+                continue
+            if video.get("type") == "short":
+                local_counts["shorts"] += 1
+            else:
+                local_counts["videos"] += 1
+
+        yt_counts = yt_scheduled_dates.get(date_str, {"videos": 0, "shorts": 0})
+        total_videos = local_counts["videos"] + yt_counts["videos"]
+        total_shorts = local_counts["shorts"] + yt_counts["shorts"]
+
+        if video_type == "short" and total_shorts == 0:
+            return check_date.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0).astimezone(timezone.utc)
+        if video_type != "short" and total_videos == 0:
+            return check_date.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0).astimezone(timezone.utc)
+
+    return base_date.astimezone(timezone.utc)
+
+
+def normalize_upload_lane(video):
+    return "short" if video.get("type") == "short" else "video"
+
+
+def build_pending_upload_queues(videos):
+    queues = {"video": [], "short": []}
+    for video in videos:
+        if video.get("uploaded", False):
+            continue
+        if is_ephemeral_video_artifact(video.get("filename") or video.get("path")):
+            continue
+        lane = normalize_upload_lane(video)
+        queues[lane].append(video)
+
+    for lane in queues:
+        queues[lane].sort(key=lambda item: item.get("size_mb", 0) or 0, reverse=True)
+    return queues
+
+
+def pop_next_pending_video(queues, videos, yt_scheduled_dates, now_utc=None):
+    candidates = []
+
+    for lane, queue in queues.items():
+        while queue and queue[0].get("uploaded", False):
+            queue.pop(0)
+        if not queue:
+            continue
+
+        head = queue[0]
+        next_date = get_next_publish_date(videos, lane, yt_scheduled_dates, now_utc=now_utc)
+        size_mb = float(head.get("size_mb") or 0)
+        lane_priority = 0 if lane == "video" else 1
+        candidates.append((next_date, -size_mb, lane_priority, lane))
+
+    if not candidates:
+        return None, None, None
+
+    next_date, _neg_size, _lane_priority, selected_lane = min(candidates)
+    video = queues[selected_lane].pop(0)
+    return video, selected_lane, next_date
+
+
+def get_authenticated_service(client_secret_file, creds_cache_file, scopes=None):
+    from google.auth.exceptions import RefreshError
+    client_secret_file = Path(client_secret_file)
+    creds_cache_file = Path(creds_cache_file)
+    scopes = scopes or SCOPES
+
+    creds = None
+    if creds_cache_file.exists():
+        creds = Credentials.from_authorized_user_file(str(creds_cache_file), scopes)
+
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            try:
+                creds.refresh(Request())
+            except RefreshError as e:
+                logging.warning("Token OAuth revocado o expirado (%s). Borrando %s para forzar re-login...", e, creds_cache_file.name)
+                creds_cache_file.unlink(missing_ok=True)
+                flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_file), scopes)
+                creds = flow.run_local_server(port=0)
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_file), scopes)
+            creds = flow.run_local_server(port=0)
+        creds_cache_file.write_text(creds.to_json(), encoding="utf-8")
+
+    return build("youtube", "v3", credentials=creds)
+
+
+def extract_http_error_reason(error):
+    try:
+        payload = json.loads(error.content.decode("utf-8"))
+        return payload["error"]["errors"][0]["reason"]
+    except Exception:
+        return str(error)
+
+
+PROCESSING_POLL_INTERVAL_SECONDS = 30
+PROCESSING_MAX_POLLS = 20  # 20 * 30s = 10 minutos máximo de espera
+
+
+def wait_for_processing(youtube, video_id):
+    """
+    Verifica que YouTube haya completado el procesamiento del video.
+
+    Devuelve:
+    - True: procesamiento exitoso (uploadStatus='processed')
+    - False: procesamiento fallido (failureReason reportado)
+    - None: timeout sin confirmación (el video puede seguir procesando)
+    """
+    for poll in range(1, PROCESSING_MAX_POLLS + 1):
+        time.sleep(PROCESSING_POLL_INTERVAL_SECONDS)
+        try:
+            result = youtube.videos().list(
+                part="status,processingDetails",
+                id=video_id,
+            ).execute()
+
+            items = result.get("items", [])
+            if not items:
+                logging.warning(
+                    "Polling %s/%s: video %s no encontrado en la API.",
+                    poll, PROCESSING_MAX_POLLS, video_id,
+                )
+                continue
+
+            video = items[0]
+            status = video.get("status", {})
+            processing = video.get("processingDetails", {})
+            upload_status = status.get("uploadStatus", "unknown")
+            proc_status = processing.get("processingStatus", "unknown")
+            failure_reason = status.get("failureReason", "")
+
+            logging.info(
+                "Polling %s/%s: video %s | uploadStatus=%s | processingStatus=%s",
+                poll, PROCESSING_MAX_POLLS, video_id, upload_status, proc_status,
+            )
+
+            if upload_status == "processed":
+                return True
+
+            if upload_status in {"failed", "rejected", "deleted"}:
+                logging.error(
+                    "Video %s falló procesamiento: uploadStatus=%s, failureReason=%s",
+                    video_id, upload_status, failure_reason,
+                )
+                return False
+
+            if proc_status == "failed":
+                fail_reason = processing.get("processingFailureReason", "unknown")
+                logging.error(
+                    "Video %s: procesamiento YouTube falló: %s", video_id, fail_reason,
+                )
+                return False
+
+        except HttpError as exc:
+            logging.warning("Error consultando estado de procesamiento: %s", exc)
+        except Exception as exc:
+            logging.warning("Error inesperado en polling de procesamiento: %s", exc)
+
+    logging.warning(
+        "Timeout de verificación de procesamiento para %s tras %s polls.",
+        video_id, PROCESSING_MAX_POLLS,
+    )
+    return None
+
+
+def start_processing_verifier(video_id, client_secret_file, creds_cache_file):
+    client_secret_file = Path(client_secret_file)
+    creds_cache_file = Path(creds_cache_file)
+
+    def bg_verify():
+        verifier = None
+        try:
+            verifier = get_authenticated_service(client_secret_file, creds_cache_file)
+            processing_ok = wait_for_processing(verifier, video_id)
+        except Exception as exc:
+            logging.warning("No se pudo iniciar el verificador aislado para %s: %s", video_id, exc)
+            return
+        finally:
+            if verifier is not None:
+                http_client = getattr(verifier, "_http", None)
+                if hasattr(http_client, "close"):
+                    try:
+                        http_client.close()
+                    except Exception:
+                        pass
+
+        if processing_ok is False:
+            logging.error(
+                "YouTube reporto fallo en el procesamiento del video %s. "
+                "Revisar el YouTube Studio. Puede requerir re-subida manual.",
+                video_id,
+            )
+        elif processing_ok is None:
+            logging.warning(
+                "No se pudo confirmar el procesamiento del video %s a tiempo. "
+                "Verificar estado manualmente en YouTube Studio.",
+                video_id,
+            )
+        else:
+            logging.info("Procesamiento de YouTube confirmado OK para %s.", video_id)
+
+    thread = threading.Thread(target=bg_verify, name=f"Verify-{video_id}", daemon=True)
+    thread.start()
+    return thread
+
+
+def upload_video(youtube, file_path, upload_metadata, publish_at_dt, client_secret_file, creds_cache_file):
+    publish_at_str = publish_at_dt.isoformat().replace("+00:00", "Z")
+    audience = config.get("audience_settings", {"selfDeclaredMadeForKids": False})
+    title = upload_metadata["title"]
+
+    body = {
+        "snippet": {
+            "title": upload_metadata["title"],
+            "description": upload_metadata["description"],
+            "tags": upload_metadata["tags"],
+            "categoryId": upload_metadata["categoryId"],
+        },
+        "status": {
+            "privacyStatus": upload_metadata["privacyStatus"],
+            "publishAt": publish_at_str,
+            "selfDeclaredMadeForKids": audience.get("selfDeclaredMadeForKids", False),
+            "hasAlteredContentDisclosure": audience.get("hasAlteredContentDisclosure", False),
+            "license": upload_metadata["license"],
+        },
+    }
+
+    media = MediaFileUpload(str(file_path), chunksize=1024 * 1024 * 10, resumable=True)
+    insert_request = youtube.videos().insert(
+        part="snippet,status",
+        body=body,
+        media_body=media,
+        notifySubscribers=False,
+    )
+
+    logging.info("Iniciando subida: %s (%s)", title, file_path)
+    logging.info("Programado para: %s (MadeForKids: %s)", publish_at_str, body["status"]["selfDeclaredMadeForKids"])
+
+    response = None
+    retry_count = 0
+    max_retries = 5
+    total_size = media.size() if callable(getattr(media, "size", None)) else 0
+    watchdog = UploadWatchdog(Path(file_path).name)
+    watchdog.start()
+
+    try:
+        while response is None:
+            try:
+                status, response = insert_request.next_chunk()
+                if not status:
+                    continue
+
+                progress_bytes = int(getattr(status, "resumable_progress", 0) or 0)
+                total_bytes = int(getattr(status, "total_size", total_size) or total_size or 0)
+                watchdog.update(progress_bytes, total_bytes)
+                logging.info("Progreso: %s%%", int(status.progress() * 100))
+                retry_count = 0
+            except (httplib2.HttpLib2Error, ConnectionError, TimeoutError) as exc:
+                retry_count += 1
+                if retry_count > max_retries:
+                    logging.error("Fallo critico tras %s reintentos de red: %s", max_retries, exc)
+                    return None
+
+                wait_time = retry_count * 5
+                logging.warning(
+                    "Error de red (%s). Reintentando en %ss... (Intento %s/%s)",
+                    exc,
+                    wait_time,
+                    retry_count,
+                    max_retries,
+                )
+                time.sleep(wait_time)
+            except HttpError as exc:
+                reason = extract_http_error_reason(exc)
+                if exc.resp.status == 403 and reason in {"quotaExceeded", "rateLimitExceeded"}:
+                    return "QUOTA_EXCEEDED"
+                if exc.resp.status == 400 and reason == "uploadLimitExceeded":
+                    logging.warning("Limite de subidas de YouTube alcanzado para esta cuenta o canal.")
+                    return "LIMIT_EXCEEDED"
+
+                logging.error("Error HTTP (%s): %s - %s", exc.resp.status, reason, exc)
+                return None
+            except Exception as exc:
+                logging.error("Error inesperado: %s", exc)
+                return None
+    finally:
+        watchdog.stop()
+        if hasattr(media, "_fd") and media._fd:
+            try:
+                media._fd.close()
+                logging.debug("Manejador de archivo cerrado para %s", file_path)
+            except Exception as exc:
+                logging.error("Error cerrando manejador de archivo: %s", exc)
+
+    if not response or "id" not in response:
+        logging.error("La API no devolvio un id de video para %s.", file_path)
+        return None
+
+    video_id = response["id"]
+    logging.info("Subida completada. Video ID: %s. Iniciando verificador de procesamiento en segundo plano...", video_id)
+    start_processing_verifier(video_id, client_secret_file, creds_cache_file)
+
+    return video_id
+
+
+def update_quota_status(client_name):
+    status = {}
+    if QUOTA_STATUS_FILE.exists():
+        try:
+            status = json.loads(QUOTA_STATUS_FILE.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            logging.warning("quota_status.json estaba corrupto; se reescribira.")
+
+    status[client_name] = {
+        "last_quota_exceeded": datetime.now().isoformat(),
+        "date": datetime.now().strftime("%Y-%m-%d"),
+    }
+    QUOTA_STATUS_FILE.write_text(json.dumps(status, indent=4), encoding="utf-8")
+
+
+def is_client_available(client_name):
+    if not QUOTA_STATUS_FILE.exists():
+        return True
+    try:
+        status = json.loads(QUOTA_STATUS_FILE.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return True
+
+    entry = status.get(client_name)
+    if entry and entry.get("date") == datetime.now().strftime("%Y-%m-%d"):
+        return False
+    return True
+
+
+def fetch_yt_schedule(youtube, force_refresh=False):
+    if not force_refresh and CACHE_FILE.exists():
+        try:
+            cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
+            cache_time = datetime.fromisoformat(cache.get("timestamp", "2000-01-01"))
+            if (datetime.now() - cache_time).total_seconds() < CACHE_EXPIRY_SECONDS:
+                logging.info("Usando cache del calendario de YouTube.")
+                return cache.get("schedule", {})
+        except Exception as exc:
+            logging.warning("Error leyendo cache: %s", exc)
+
+    logging.info("Auditando calendario completo de YouTube (esto consume cuota de lectura)...")
+    schedule = {}
+
+    try:
+        channels_response = youtube.channels().list(mine=True, part="contentDetails").execute()
+        uploads_playlist_id = channels_response["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
+
+        next_page_token = None
+        while True:
+            playlist_request = youtube.playlistItems().list(
+                part="snippet",
+                playlistId=uploads_playlist_id,
+                maxResults=50,
+                pageToken=next_page_token,
+            )
+            playlist_response = playlist_request.execute()
+            video_ids = [item["snippet"]["resourceId"]["videoId"] for item in playlist_response.get("items", [])]
+            if not video_ids:
+                next_page_token = playlist_response.get("nextPageToken")
+                if not next_page_token:
+                    break
+                continue
+
+            videos_response = youtube.videos().list(part="status,contentDetails", id=",".join(video_ids)).execute()
+
+            for video in videos_response.get("items", []):
+                status = video.get("status", {})
+                content = video.get("contentDetails", {})
+                publish_at = status.get("publishAt")
+                if not publish_at:
+                    continue
+
+                date_str = publish_at.split("T")[0]
+                if date_str not in schedule:
+                    schedule[date_str] = {"videos": 0, "shorts": 0}
+
+                duration_string = content.get("duration", "")
+                hours = re_search_duration(duration_string, "H")
+                minutes = re_search_duration(duration_string, "M")
+                seconds = re_search_duration(duration_string, "S")
+                total_seconds = hours * 3600 + minutes * 60 + seconds
+
+                if total_seconds <= 180:
+                    schedule[date_str]["shorts"] += 1
+                else:
+                    schedule[date_str]["videos"] += 1
+
+            next_page_token = playlist_response.get("nextPageToken")
+            if not next_page_token:
+                break
+
+        CACHE_FILE.write_text(
+            json.dumps({"timestamp": datetime.now().isoformat(), "schedule": schedule}, indent=4),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        logging.error("Error en auditoria previa: %s", exc)
+
+    return schedule
+
+
+def re_search_duration(duration_string, suffix):
+    import re
+
+    match = re.search(rf"(\d+){suffix}", duration_string)
+    return int(match.group(1)) if match else 0
+
+
+def enrich_pending_videos(videos):
+    changed = False
+    for video in videos:
+        if video.get("uploaded"):
+            continue
+        if enrich_video_record(video, include_probe=True):
+            changed = True
+    return changed
+
+
+def main():
+    if not CONFIG_FILE.exists():
+        logging.error("Falta config.json. Copia config.example.json y ajusta tu configuracion local.")
+        return
+
+    CREDENTIALS_DIR.mkdir(exist_ok=True)
+
+    client_files = sorted(path.name for path in CREDENTIALS_DIR.glob("client_secret*.json"))
+    if not client_files:
+        logging.error("No hay client_secret_X.json en credentials/.")
+        return
+
+    if not JSON_DB.exists():
+        logging.error("Falta scanned_videos.json. Ejecuta video_scanner.py primero.")
+        return
+
+    videos = json.loads(JSON_DB.read_text(encoding="utf-8"))
+    if enrich_pending_videos(videos):
+        save_json_file(JSON_DB, videos)
+
+    pending_count = sum(1 for video in videos if not video.get("uploaded", False))
+    logging.info("Videos pendientes: %s", pending_count)
+    if not pending_count:
+        return
+
+    current_idx = 0
+    while current_idx < len(client_files) and not is_client_available(client_files[current_idx]):
+        current_idx += 1
+
+    if current_idx >= len(client_files):
+        logging.warning("Todas las llaves estan agotadas por hoy segun quota_status.json.")
+        return
+
+    current_client_secret = CREDENTIALS_DIR / client_files[current_idx]
+    current_token_file = CREDENTIALS_DIR / f"token_{current_idx}.json"
+    youtube = get_authenticated_service(current_client_secret, current_token_file)
+
+    logging.info("Auditando calendario de YouTube antes de comenzar...")
+    yt_schedule = fetch_yt_schedule(youtube)
+    pending_queues = build_pending_upload_queues(videos)
+    logging.info(
+        "Colas por carril: %s videos largos, %s shorts.",
+        len(pending_queues["video"]),
+        len(pending_queues["short"]),
+    )
+
+    while True:
+        if STOP_FILE.exists():
+            logging.warning("Archivo STOP detectado. Deteniendo.")
+            break
+
+        video, video_type, next_date = pop_next_pending_video(pending_queues, videos, yt_schedule)
+        if not video:
+            break
+
+        file_path = Path(video["path"])
+        if not file_path.exists():
+            logging.warning("Archivo no encontrado: %s", file_path)
+            continue
+
+        if enrich_video_record(video, include_probe=True):
+            save_json_file(JSON_DB, videos)
+
+        if not video.get("faststart_applied"):
+            logging.info("Aplicando optimizacion faststart previa a la subida...")
+            if apply_faststart(file_path):
+                video["faststart_applied"] = True
+                save_json_file(JSON_DB, videos)
+
+        upload_metadata = build_upload_metadata(video, config)
+
+        while True:
+            result = upload_video(
+                youtube,
+                file_path,
+                upload_metadata,
+                next_date,
+                current_client_secret,
+                current_token_file,
+            )
+
+            if result == "QUOTA_EXCEEDED":
+                logging.info("Cuota agotada en llave %s. Rotando...", current_idx)
+
+                update_quota_status(client_files[current_idx])
+                current_idx += 1
+                if current_idx >= len(client_files):
+                    logging.error("Se agotaron todas las llaves disponibles por hoy.")
+                    return
+
+                current_client_secret = CREDENTIALS_DIR / client_files[current_idx]
+                current_token_file = CREDENTIALS_DIR / f"token_{current_idx}.json"
+                youtube = get_authenticated_service(current_client_secret, current_token_file)
+                continue
+
+            if result == "LIMIT_EXCEEDED":
+                logging.error(
+                    "El canal alcanzo su limite de subidas/borradores. Ejecuta schedule_drafts.py "
+                    "o libera borradores antes de reintentar la subida."
+                )
+                return
+
+            if not result:
+                break
+
+            video["uploaded"] = True
+            video["youtube_id"] = result
+            video["publishAt"] = next_date.isoformat().replace("+00:00", "Z")
+
+            date_key = next_date.strftime("%Y-%m-%d")
+            if date_key not in yt_schedule:
+                yt_schedule[date_key] = {"videos": 0, "shorts": 0}
+            if video_type == "short":
+                yt_schedule[date_key]["shorts"] += 1
+            else:
+                yt_schedule[date_key]["videos"] += 1
+
+            try:
+                success_folder = file_path.parent / "videos subidos exitosamente"
+                success_folder.mkdir(exist_ok=True)
+                new_path = success_folder / file_path.name
+                shutil.move(str(file_path), str(new_path))
+                video["path"] = str(new_path)
+                file_path = new_path
+            except Exception as exc:
+                logging.error("Error moviendo archivo: %s", exc)
+
+            save_json_file(JSON_DB, videos)
+            break
+
+
+if __name__ == "__main__":
+    main()

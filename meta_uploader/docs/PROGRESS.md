@@ -1,0 +1,74 @@
+# Progreso - Meta Uploader
+
+- [x] Estructura base del subproyecto.
+- [x] Contexto local (`AGENTS.md`, `AI.md`, `docs/`).
+- [x] Clasificacion local de videos con `ffprobe`.
+- [x] Utilidades de diagnostico y tokens.
+- [x] Revision contra documentacion oficial de Meta.
+- [x] Limpieza de artefactos locales fuera de Git.
+- [x] Documentacion publica minima para App Review.
+- [x] Icono base 1024x1024 para la app de Meta.
+- [x] Sitio estatico local para App Review (`site/`).
+- [x] Sitio estatico ajustado con nombre, direccion y telefono visibles para verificacion.
+- [x] Despliegue confirmado de GitHub Pages con URLs publicas limpias para Meta.
+- [x] Sitio publico ajustado para verificacion de acceso con nombre, direccion y correo visibles.
+- [x] Evaluacion del repositorio oficial `facebook-python-business-sdk`.
+- [x] Watchdog de subidas con verificacion cada 10s y diagnostico de conectividad local vs Meta.
+- [x] Sonda real de un solo asset que prueba formatos compatibles desde la cola mas pesada disponible.
+- [x] Prueba en vivo confirmada para Instagram post con media id `17921696511315151`.
+- [x] Evidencia guardada de fallo actual en Facebook post por `ConnectionResetError(10054)` del host remoto durante la subida binaria.
+- [x] Confirmacion oficial de soporte para `Instagram Stories` con `media_type=STORIES`.
+- [x] Sonda real con clip vertical derivado (`1080x1920`, `30s`) para destrabar pruebas de stories/reels cuando la cola Reel esta vacia.
+- [x] Prueba en vivo confirmada para `Facebook Reel` con video id `1863981500985541`.
+- [x] Nueva prueba en vivo confirmada para `Instagram Post` con media id `17883639039504468`.
+- [x] Identificacion del bug de `Facebook Post`: `finish` exigia `upload_session_id`, ya corregido localmente en el cliente.
+- [x] Corrida normal de `15 minutos` sobre `pendientes_posts.json` con un segundo agente, arrancando desde `start-index=1` para evitar duplicar el asset ya sondeado.
+- [x] Confirmacion operativa de que el batch normal sigue avanzando aunque falle un asset individual; durante la corrida toco los indices `[2]` a `[7]` antes de cerrarse la ventana.
+- [x] Evidencia local de inestabilidad mixta en Facebook Post durante corrida sostenida: `ConnectionResetError(10054)` en `rupload`, `NameResolutionError` al resolver `graph.facebook.com`, `OSError(22, Invalid argument)` y alerta del watchdog por degradacion fuerte de conectividad.
+- [x] Tarea versionada para manana con plan tecnico de endurecimiento del carril `Facebook Post` en `docs/TODO_FB_POST_RESILIENCE.md`.
+- [x] Primera pasada de endurecimiento implementada: retries clasificados en `_request_json(...)` y `_post_binary(...)`.
+- [x] `test_batch_upload.py` ya no avanza ciegamente ante un fallo transitorio del asset actual; ahora reintenta y puede pausar el batch.
+- [x] Runner normal unificado de jornada 1 (`run_jornada1_normal.py`) para videos crudos: calendario por dias, prioridad por peso dentro del dia, `FB Reel + IG Reel`, `FB Post + IG Feed`, `IG Story` best-effort y `Facebook Stories` como salto explicito.
+- [x] Validacion local del runner normal con `python -m py_compile ...` y generacion real de `meta_calendar.json` en modo `--plan-only`.
+- [x] Correccion del `second_pass` para acumular colas optimizadas sin sobrescribirlas al procesar multiples fuentes.
+- [x] Nuevo preparador `second_pass/prepare_second_jornada_meta.py` para derivar videos optimizados `shared_reel` e `instagram_story` desde colas crudas y promocionar reels optimizados al main queue solo con opt-in.
+- [x] Validacion local real del `second_pass`: dos clips pequenos generaron y acumularon correctamente `pendientes_reels_second_pass.json` y `pendientes_ig_stories_second_pass.json`.
+- [x] Herramienta experimental separada `second_pass/experimental_yolo_reframer.py` para probar reencuadre YOLO 9:16 antes de integrarlo al clipping real.
+- [x] Validacion inicial del experimento YOLO a nivel de CLI/compilacion (`py_compile`, `--help`).
+- [x] `ultralytics` instalado localmente (`8.4.35`) y primera corrida YOLO real completada sobre `probe_vertical_20260310_184517.mp4` con tasa de deteccion `1.0`.
+- [x] Modelo `yolov8n.pt` reubicado a `second_pass/outputs/yolo_reframe_experiments/models/` para no ensuciar la raiz del repo.
+- [x] Optimizado el carril `Facebook Post/Reel` con sesion HTTP persistente por hilo y chunk objetivo de `8 MB`, con reduccion automatica hasta `1 MB` cuando aparecen fallos transitorios.
+- [x] Logging separado por plataforma: `meta_uploader_facebook.log` y `meta_uploader_instagram.log`, manteniendo `meta_uploader.log` como vista maestra.
+- [x] Preflight oficial de Instagram en `run_jornada1_normal.py` para no reintentar crudos incompatibles; ahora se marcan para videos optimizados en vez de tumbar la dupla con `ProcessingFailedError`.
+- [x] Herramienta separada `second_pass/transcode_instagram_api_safe.py` para generar versiones full-length compatibles con IG API con la maxima calidad posible dentro de los limites oficiales de videos optimizados.
+- [x] Reanudacion de jornada 1 desde `meta_calendar.json`, con estado `in_progress`, escritura atomica del calendario y supervisor local `run_jornada1_supervisor.py` para relanzar salidas inesperadas sin perder los dias ya completados.
+- [x] Checkpoints locales del upload resumible de Facebook (`upload_session_id` + `current_offset`) para intentar retomar archivos grandes sin recomenzar siempre desde cero; verificacion en vivo hecha con reinicio controlado del runner y reanudacion desde offset persistido.
+- [x] Guardia remota anti-duplicados en `run_jornada1_normal.py` usando consultas de Meta para detectar un stem ya publicado y marcarlo como `already_exists_remote`.
+- [x] Deteccion real de programados futuros via `/{page}/scheduled_posts`, integrada tanto al guardia remoto como a la limpieza previa de `pendientes_posts.json`/`pendientes_reels.json`.
+- [x] Correccion del falso `failed` en el carril post cuando el video completo ya quedo programado y solo falla el reel inmediato auxiliar.
+- [x] Regla operativa de `1 publicacion por dia real` aplicada en vivo: el runner y el supervisor ya no avanzan a fechas futuras del calendario dentro de la misma corrida.
+- [x] Confirmacion en vivo de duplicado real para `20260310_183619.mp4` en Facebook con ids `1882074735828642` y `2143750206382044`; el flujo nuevo evita volverlo a publicar.
+- [x] Motor de Reconciliación 3.0: Caché masiva de 2000 videos (80 páginas) para detectar duplicados en backlogs grandes.
+- [x] Detección 360: Soporte total para videos programados (`is_published=false`) y posts programados (`scheduled_posts`).
+- [x] Limpieza Triple Nuclear: Sincronización atómica que purga el video de la carpeta física, de las colas JSON y del calendario en una sola pasada.
+- [x] Gestión de Spam: Transición a modo secuencial de días para mitigar el Error 368 de Meta y proteger la cuenta.
+- [x] Optimización de Red: Implementación de chunks de 16MB para maximizar velocidad en archivos de video pesados.
+- [x] Limpieza masiva de 34 videos zombis en YouTube (atascados en procesamiento).
+- [x] Implementación de **Estrategia Dual de Reels** en Instagram (60s Teaser + Full) para maximizar alcance.
+- [x] Cambio de Instagram Stories a modo **Opt-in** (`--enable-ig-stories`) para priorizar la tracción del feed.
+- [x] **Resiliencia API**: Solución al error HTTP 500 mediante **reducción adaptativa de límites** (ahora base 5).
+- [x] **Control de Duplicados**: Implementación de etiquetas `#teaser` y `#full` para diferenciar versiones y frenado de seguridad si el catálogo de Meta es ilegible.
+- [x] **Estado**: Sistema blindado contra duplicados; listo para evacuación masiva estable.
+- [ ] Revalidar en vivo `Facebook Post` después del enfriamiento de la cuenta de Meta.
+
+### 2026-04-14: Reparación Motor Supervisor (Cascada Infinita)
+- [x] Eliminado el bloqueo de fechas futuras (\ locked_by_future_day\) en \un_jornada1_supervisor.py\ que impedía que el script encolara masivamente en la programación remota de Meta (Límite 28 días) y se pasmara en esperas de 10 segundos.
+- [x] Mejorada la lógica del contador de reinicios (\\estart_attempt\\) para no penalizar ni auto-cortar el script si las subidas individuales se completan con éxito y código 0.
+
+### 2026-04-17: Delegación de Instagram al Vigía
+- [x] Eliminadas todas las subidas de Instagram (Reel, Feed, Story) del runner `run_jornada1_normal.py`.
+- [x] Instagram delegado a `fb_to_ig_vigia.py` con status `delegated_to_vigia`.
+- [x] Cláusula de rescate: si FB queda resuelto, la ráfaga no se aborta aunque IG falle o esté delegado.
+- [x] Nuevos statuses: `published_with_ig_delegated`, `scheduled_with_ig_delegated`.
+- [x] Eliminado el transcoding de IG (`ensure_ig_compatibility` + deep clean) del flujo principal, ahorrando ~2 min de CPU por video.
+- [x] Auto-move de videos completos a `ya_subidos_fb_ig/` y reubicación de temporales `slice_60s/ig_compat` a `ya_subidos_ig_temp/` (fuera del alcance del uploader).
