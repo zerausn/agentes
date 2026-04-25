@@ -14,7 +14,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-# Configuración básica
+# Configuracion basica
 BASE_DIR = Path(__file__).resolve().parent
 LOG_FILE = BASE_DIR / "youtube_to_fb_sync.log"
 CREDENTIALS_DIR = BASE_DIR / "credentials"
@@ -30,6 +30,16 @@ TARGET_DATE = datetime(2026, 3, 1, tzinfo=timezone.utc)
 BATCH_SIZE = 20
 
 SCOPES = ["https://www.googleapis.com/auth/youtube.readonly"]
+YT_DLP_BIN = str((BASE_DIR.parents[1] / ".venv_parrot_sync" / "bin" / "yt-dlp").resolve())
+YTDLP_BASE_ARGS = [
+    YT_DLP_BIN if Path(YT_DLP_BIN).exists() else "yt-dlp",
+    "--js-runtimes",
+    "node",
+    "--force-ipv4",
+    "--concurrent-fragments",
+    "1",
+    "--no-part",
+]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,24 +47,26 @@ logging.basicConfig(
     handlers=[logging.FileHandler(LOG_FILE, encoding="utf-8"), logging.StreamHandler()],
 )
 
+
 def get_authenticated_service(client_secret_file, key_idx):
-    """Obtiene el servicio de YouTube v3 usando una llave específica."""
+    """Obtiene el servicio de YouTube v3 usando una llave especifica."""
     token_file = CREDENTIALS_DIR / f"token_sync_{key_idx}.json"
-    
+
     creds = None
     if token_file.exists():
         creds = Credentials.from_authorized_user_file(str(token_file), SCOPES)
-    
+
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_file), SCOPES)
             creds = flow.run_local_server(port=0)
-        
+
         token_file.write_text(creds.to_json(), encoding="utf-8")
-    
+
     return build("youtube", "v3", credentials=creds)
+
 
 def load_history():
     if not HISTORY_FILE.exists():
@@ -65,8 +77,10 @@ def load_history():
     except Exception:
         return set()
 
+
 def save_history(history):
     HISTORY_FILE.write_text(json.dumps(list(history), indent=2), encoding="utf-8")
+
 
 def resolve_destination_dir():
     for candidate in SYNC_DEST_CANDIDATES:
@@ -84,257 +98,199 @@ def sanitize_title_for_filename(title):
     return sanitized or "video_sin_titulo"
 
 
-def unique_destination_path(dest_dir, title, video_id):
+def final_destination_path(dest_dir, title):
     base_name = sanitize_title_for_filename(title)
-    candidate = dest_dir / f"{base_name}.mp4"
-    if not candidate.exists():
-        return candidate
+    return dest_dir / f"{base_name}.mp4"
+
+
+def legacy_destination_path(dest_dir, title, video_id):
+    base_name = sanitize_title_for_filename(title)
     return dest_dir / f"{base_name}_{video_id}.mp4"
 
 
+def adopt_legacy_named_file(dest_dir, title, video_id):
+    final_path = final_destination_path(dest_dir, title)
+    legacy_path = legacy_destination_path(dest_dir, title, video_id)
+
+    if final_path.exists():
+        return final_path
+
+    if legacy_path.exists():
+        try:
+            os.rename(legacy_path, final_path)
+            logging.info("  Archivo legado renombrado a nombre canonico: %s", final_path.name)
+            return final_path
+        except OSError as exc:
+            logging.warning("  No se pudo renombrar archivo legado %s: %s", legacy_path.name, exc)
+
+    return final_path
+
+
 def get_public_videos(youtube, history, limit=100):
-    """Obtiene videos públicos antiguos, deteniéndose al alcanzar el límite."""
-    logging.info("Buscando videos públicos no sincronizados...")
-    
+    """Obtiene videos publicos antiguos, deteniendose al alcanzar el limite."""
+    logging.info("Buscando videos publicos no sincronizados...")
+
     channels_resp = youtube.channels().list(mine=True, part="contentDetails").execute()
     uploads_playlist_id = channels_resp["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
-    
+
     videos = []
     seen_ids = set()
     next_page_token = None
-    
+
     while True:
         playlist_items_resp = youtube.playlistItems().list(
             playlistId=uploads_playlist_id,
             part="snippet,status",
             maxResults=50,
-            pageToken=next_page_token
+            pageToken=next_page_token,
         ).execute()
-        
+
         for item in playlist_items_resp.get("items", []):
             video_id = item["snippet"]["resourceId"]["videoId"]
             if video_id in seen_ids:
                 continue
             seen_ids.add(video_id)
 
-            # Ignorar si ya está en el historial
             if video_id in history:
                 continue
-                
+
             status = item.get("status", {}).get("privacyStatus")
             if status != "public":
                 continue
-                
+
             published_at_str = item["snippet"]["publishedAt"]
             published_at = datetime.fromisoformat(published_at_str.replace("Z", "+00:00"))
-            
+
             if published_at < TARGET_DATE:
-                videos.append({
-                    "id": video_id,
-                    "title": item["snippet"]["title"],
-                    "publishedAt": published_at_str
-                })
-            
+                videos.append(
+                    {
+                        "id": video_id,
+                        "title": item["snippet"]["title"],
+                        "publishedAt": published_at_str,
+                    }
+                )
+
             if len(videos) >= limit:
                 break
-        
+
         if len(videos) >= limit:
             break
-            
+
         next_page_token = playlist_items_resp.get("nextPageToken")
         if not next_page_token:
             break
-            
+
     return videos
 
+
 def download_video(video_id, title):
-    """Descarga un video en 4K usando estrategia de 2 pasos para evitar 403 en audio."""
-    final_path = unique_destination_path(DEST_DIR, title, video_id)
-
+    """Descarga en maxima calidad priorizando 4K y usando EJS+Node para recuperar DASH reales."""
+    final_path = adopt_legacy_named_file(DEST_DIR, title, video_id)
     url = f"https://www.youtube.com/watch?v={video_id}"
-    EDGE_PROFILE = "/home/zerausn/.var/app/com.microsoft.Edge/config/microsoft-edge"
-    
-    video_tmp = DEST_DIR / f"dl_{video_id}_video.mp4"
-    audio_tmp = DEST_DIR / f"dl_{video_id}_audio.m4a"
-    merged_tmp = DEST_DIR / f"dl_{video_id}_merged.mp4"
+    download_stub = DEST_DIR / f"dl_{video_id}_merged"
+    merged_mp4_tmp = DEST_DIR / f"dl_{video_id}_merged.mp4"
+    merged_mkv_tmp = DEST_DIR / f"dl_{video_id}_merged.mkv"
+    merged_webm_tmp = DEST_DIR / f"dl_{video_id}_merged.webm"
 
-    video_args = [
-        "--extractor-args", "youtube:player_client=ios",
-        "--force-ipv4",
-        "--concurrent-fragments", "1",
-        "--no-part",
-    ]
+    logging.info("Descargando [%s] (%s) en 4K...", title, video_id)
 
-    # Args para AUDIO: web CON cookies (para autenticación, evita restricciones)
-    audio_args_base = [
-        "--cookies-from-browser", f"edge:{EDGE_PROFILE}",
-        "--force-ipv4",
-        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0",
-        "--referer", "https://www.youtube.com/",
-        "--concurrent-fragments", "1",
-        "--sleep-requests", "1",
-        "--retry-sleep", "10",
-        "--no-part",
-    ]
-    
-    logging.info(f"Descargando [{title}] ({video_id}) en 4K...")
-    
     try:
-        # PASO 1: Descargar solo VIDEO en máxima calidad
-        logging.info(f"  Paso 1/3: Descargando video 4K...")
-        video_ok = False
-        for client in ["ios", "tv", "web"]:
-            logging.info(f"    Intentando cliente para video: {client}")
-            # iOS/TV sin cookies para máxima velocidad, web con cookies por si acaso
-            client_video_args = [] if client in ["ios", "tv"] else ["--cookies-from-browser", f"edge:{EDGE_PROFILE}"]
-            cmd_video = [
-                "yt-dlp", "-f", "bestvideo",
-                "--extractor-args", f"youtube:player_client={client}",
-                "-o", str(video_tmp),
-                *client_video_args,
-                "--force-ipv4", "--concurrent-fragments", "1", "--no-part",
-                url
-            ]
-            try:
-                # Removemos capture_output para que el progreso se vea en el terminal 
-                subprocess.run(cmd_video, check=True)
-                result_returncode = 0
-            except subprocess.CalledProcessError as e:
-                result_returncode = e.returncode
-                
-            if result_returncode == 0 and video_tmp.exists() and video_tmp.stat().st_size > 1024 * 1024:
-                video_ok = True
-                logging.info(f"    Video OK con cliente '{client}': {video_tmp.stat().st_size / (1024*1024):.1f} MB")
-                break
-            else:
-                if video_tmp.exists(): video_tmp.unlink()
-                logging.warning(f"    Cliente video '{client}' falló, probando siguiente...")
-
-        if not video_ok:
-            logging.error(f"  No se pudo descargar video 4K con ningún cliente.")
-            _cleanup_temps(video_tmp, audio_tmp, merged_tmp)
-            return False
-        
-        # PASO 2: Descargar solo AUDIO con múltiples estrategias
-        logging.info(f"  Paso 2/3: Descargando audio...")
-        audio_ok = False
-        
-        # Probar múltiples clientes para obtener el audio
-        for client in ["ios", "tv", "web", "mweb"]:
-            logging.info(f"    Intentando cliente: {client}")
-            # iOS no soporta cookies, los demás sí
-            client_cookies = [] if client == "ios" else ["--cookies-from-browser", f"edge:{EDGE_PROFILE}"]
-            cmd_audio = [
-                "yt-dlp", "-f", "bestaudio",
-                "--extractor-args", f"youtube:player_client={client}",
-                "-o", str(audio_tmp),
-                *client_cookies,
-                "--force-ipv4", "--concurrent-fragments", "1", "--no-part",
-                url
-            ]
-            try:
-                subprocess.run(cmd_audio, check=True)
-                audio_returncode = 0
-            except subprocess.CalledProcessError as e:
-                audio_returncode = e.returncode
-                
-            if audio_returncode == 0 and audio_tmp.exists() and audio_tmp.stat().st_size > 10000:
-                audio_ok = True
-                logging.info(f"    Audio OK con cliente '{client}': {audio_tmp.stat().st_size / 1024:.1f} KB")
-                break
-            else:
-                # Limpiar intento fallido
-                if audio_tmp.exists():
-                    audio_tmp.unlink()
-                logging.warning(f"    Cliente '{client}' falló para audio, probando siguiente...")
-        
-        if not audio_ok:
-            logging.warning(f"  No se pudo descargar audio por separado. Intentando formato combinado...")
-            combined_ok = False
-            combined_candidates = [
-                ("bv*+ba/b", ["--extractor-args", "youtube:player_client=ios"]),
-                (
-                    "bestvideo*+bestaudio/best",
-                    [
-                        "--cookies-from-browser", f"edge:{EDGE_PROFILE}",
-                        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0",
-                        "--referer", "https://www.youtube.com/",
-                    ],
-                ),
-            ]
-
-            for format_selector, extra_args in combined_candidates:
-                logging.info("    Intentando fallback combinado con formato: %s", format_selector)
-                cmd_combined = [
-                    "yt-dlp",
-                    "-f",
-                    format_selector,
-                    "-o",
-                    str(merged_tmp),
-                    "--merge-output-format",
-                    "mp4",
-                    "--force-ipv4",
-                    "--concurrent-fragments",
-                    "1",
-                    "--no-part",
-                    *extra_args,
-                    url,
-                ]
-                try:
-                    subprocess.run(cmd_combined, check=True)
-                    combined_returncode = 0
-                except subprocess.CalledProcessError as e:
-                    combined_returncode = e.returncode
-
-                if combined_returncode == 0 and merged_tmp.exists() and merged_tmp.stat().st_size > 1024 * 1024:
-                    combined_ok = True
-                    break
-                if merged_tmp.exists():
-                    merged_tmp.unlink()
-
-            if combined_ok:
-                os.rename(merged_tmp, final_path)
-                _cleanup_temps(video_tmp, audio_tmp, None)
-                logging.info(f"  Descarga combinada exitosa: {final_path.name}")
-                return True
-
-            logging.error(f"  Todas las estrategias de audio fallaron para {video_id}")
-            _cleanup_temps(video_tmp, audio_tmp, merged_tmp)
-            return False
-        
-        # PASO 3: Mezclar video + audio con ffmpeg
-        logging.info(f"  Paso 3/3: Mezclando video + audio con ffmpeg...")
-        cmd_merge = [
-            "ffmpeg", "-y",
-            "-i", str(video_tmp),
-            "-i", str(audio_tmp),
-            "-c", "copy",
-            "-movflags", "+faststart",
-            str(merged_tmp)
-        ]
-        subprocess.run(cmd_merge, check=True, capture_output=True)
-        
-        if merged_tmp.exists() and merged_tmp.stat().st_size > 1024 * 1024:
-            os.rename(merged_tmp, final_path)
-            _cleanup_temps(video_tmp, audio_tmp, None)
-            logging.info(f"  ✅ Descarga exitosa: {final_path.name} ({final_path.stat().st_size / (1024*1024):.1f} MB)")
+        if final_path.exists() and final_path.stat().st_size > 1024 * 1024:
+            logging.info("  Ya existe archivo canonico, se reutiliza sin renombrar: %s", final_path.name)
             return True
-        else:
-            logging.error(f"  Merge falló para {video_id}")
-            _cleanup_temps(video_tmp, audio_tmp, merged_tmp)
+
+        logging.info("  Paso 1/2: Descargando video+audio en maxima calidad...")
+        format_candidates = [
+            "bestvideo[height>=2160]+bestaudio[ext=m4a]/bestvideo[height>=2160]+bestaudio/best[height>=2160]/bestvideo+bestaudio/best",
+            "bestvideo+bestaudio/best",
+        ]
+        downloaded_path = None
+
+        for selector in format_candidates:
+            logging.info("    Intentando selector combinado: %s", selector)
+            _cleanup_temps(merged_mp4_tmp, merged_mkv_tmp, merged_webm_tmp)
+            cmd_download = [
+                *YTDLP_BASE_ARGS,
+                "-f",
+                selector,
+                "-o",
+                str(download_stub) + ".%(ext)s",
+                "--merge-output-format",
+                "mkv",
+                url,
+            ]
+            try:
+                subprocess.run(cmd_download, check=True)
+                result_returncode = 0
+            except subprocess.CalledProcessError as exc:
+                result_returncode = exc.returncode
+
+            for candidate in [merged_mkv_tmp, merged_mp4_tmp, merged_webm_tmp]:
+                if candidate.exists() and candidate.stat().st_size > 1024 * 1024:
+                    downloaded_path = candidate
+                    break
+
+            if result_returncode == 0 and downloaded_path is not None:
+                logging.info("    Descarga OK con selector '%s': %.1f MB", selector, downloaded_path.stat().st_size / (1024 * 1024))
+                break
+
+            downloaded_path = None
+            logging.warning("    Selector combinado '%s' fallo, probando siguiente...", selector)
+
+        if downloaded_path is None:
+            logging.error("  No se pudo descargar el asset 4K con audio.")
+            _cleanup_temps(merged_mp4_tmp, merged_mkv_tmp, merged_webm_tmp)
             return False
-            
-    except subprocess.CalledProcessError as e:
-        logging.error(f"Fallo la descarga de {video_id}: {e}")
-        _cleanup_temps(video_tmp, audio_tmp, merged_tmp)
+
+        if downloaded_path.suffix.lower() == ".mp4":
+            os.rename(downloaded_path, final_path)
+            logging.info("  Descarga final MP4 OK: %s", final_path.name)
+            return True
+
+        logging.info("  Paso 2/2: Transcodificando a MP4 compatible manteniendo maxima calidad...")
+        transcode_cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(downloaded_path),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "slow",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-movflags",
+            "+faststart",
+            str(final_path),
+        ]
+        subprocess.run(transcode_cmd, check=True, capture_output=True)
+        _cleanup_temps(downloaded_path)
+
+        if final_path.exists() and final_path.stat().st_size > 1024 * 1024:
+            logging.info("  Descarga final transcodificada OK: %s (%.1f MB)", final_path.name, final_path.stat().st_size / (1024 * 1024))
+            return True
+
+        logging.error("  La transcodificacion a MP4 fallo para %s", video_id)
         return False
+
+    except subprocess.CalledProcessError as exc:
+        logging.error("Fallo la descarga de %s: %s", video_id, exc)
+        _cleanup_temps(merged_mp4_tmp, merged_mkv_tmp, merged_webm_tmp)
+        return False
+
 
 def _cleanup_temps(*paths):
     """Elimina archivos temporales de descarga."""
-    for p in paths:
-        if p and p.exists():
+    for path in paths:
+        if path and path.exists():
             try:
-                p.unlink()
+                path.unlink()
             except Exception:
                 pass
 
@@ -342,21 +298,24 @@ def _cleanup_temps(*paths):
 def generate_checklist(videos, history):
     """Genera un archivo Markdown con el listado de videos y su estado."""
     checklist_path = BASE_DIR / "checklist_sincronizacion.md"
-    lines = ["# Checklist de Sincronización YouTube -> Facebook\n", 
-             f"Generado el: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n",
-             "Estado: [x] Sincronizado | [ ] Pendiente\n\n"]
-    
-    for v in videos:
-        status = "[x]" if v["id"] in history else "[ ]"
-        lines.append(f"- {status} {v['publishedAt'][:10]} | {v['title']} (ID: {v['id']})\n")
-    
+    lines = [
+        "# Checklist de Sincronizacion YouTube -> Facebook\n",
+        f"Generado el: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n",
+        "Estado: [x] Sincronizado | [ ] Pendiente\n\n",
+    ]
+
+    for video in videos:
+        status = "[x]" if video["id"] in history else "[ ]"
+        lines.append(f"- {status} {video['publishedAt'][:10]} | {video['title']} (ID: {video['id']})\n")
+
     checklist_path.write_text("".join(lines), encoding="utf-8")
-    logging.info(f"Checklist generado en: {checklist_path}")
+    logging.info("Checklist generado en: %s", checklist_path)
+
 
 def main():
     parser = argparse.ArgumentParser(description="YouTube to Meta Video Sync Watcher")
     parser.add_argument("--dry-run", action="store_true", help="Solo listar videos encontrados sin descargar.")
-    parser.add_argument("--limit", type=int, default=BATCH_SIZE, help="Cantidad máxima de videos a descargar en este lote.")
+    parser.add_argument("--limit", type=int, default=BATCH_SIZE, help="Cantidad maxima de videos a descargar en este lote.")
     parser.add_argument("--generate-checklist", action="store_true", help="Generar checklist.md con todos los videos compatibles.")
     args = parser.parse_args()
 
@@ -367,24 +326,22 @@ def main():
 
     history = load_history()
     all_videos = []
-    
-    # Intentar con llaves rotativas hasta conseguir la lista de videos
-    # Para el checklist listamos TODO (limite alto), para descarga solo el lote
+
     search_limit = 5000 if args.generate_checklist else args.limit + 50
-    
+
     for idx, secret_file in enumerate(client_secrets):
         try:
-            logging.info(f"Probando llave {idx} ({secret_file.name})...")
+            logging.info("Probando llave %s (%s)...", idx, secret_file.name)
             youtube = get_authenticated_service(secret_file, idx)
             all_videos = get_public_videos(youtube, history, limit=search_limit)
             break
-        except HttpError as e:
-            if e.resp.status == 430 or "quota" in str(e).lower():
-                logging.warning(f"Cuota excedida en llave {idx}. Intentando con la siguiente...")
+        except HttpError as exc:
+            if exc.resp.status == 430 or "quota" in str(exc).lower():
+                logging.warning("Cuota excedida en llave %s. Intentando con la siguiente...", idx)
                 continue
             raise
-        except Exception as e:
-            logging.error(f"Error inesperado con llave {idx}: {e}")
+        except Exception as exc:
+            logging.error("Error inesperado con llave %s: %s", idx, exc)
             continue
 
     if not all_videos:
@@ -396,19 +353,18 @@ def main():
         if not args.dry_run and not args.limit:
             return
 
-    to_sync = [v for v in all_videos if v["id"] not in history]
+    to_sync = [video for video in all_videos if video["id"] not in history]
 
     if args.dry_run:
-        logging.info(f"MODO DRY-RUN: Los siguientes {len(to_sync[:args.limit])} videos se descargarían:")
-        for v in to_sync[:args.limit]:
-            logging.info(f"- [{v['publishedAt']}] {v['title']} (ID: {v['id']})")
+        logging.info("MODO DRY-RUN: Los siguientes %s videos se descargarian:", len(to_sync[:args.limit]))
+        for video in to_sync[:args.limit]:
+            logging.info("- [%s] %s (ID: %s)", video["publishedAt"], video["title"], video["id"])
         return
 
     if not DEST_DIR.exists():
-        logging.error(f"Directorio de destino no encontrado: {DEST_DIR}")
+        logging.error("Directorio de destino no encontrado: %s", DEST_DIR)
         return
 
-    # Procesar descargas
     success_count = 0
     batch = to_sync[:args.limit]
     for video in batch:
@@ -418,8 +374,9 @@ def main():
             save_history(history)
             logging.info("Esperando 5 segundos antes de la siguiente descarga para evitar bloqueos...")
             time.sleep(5)
-            
-    logging.info(f"Sincronización finalizada: {success_count} videos descargados.")
+
+    logging.info("Sincronizacion finalizada: %s videos descargados.", success_count)
+
 
 if __name__ == "__main__":
     main()
