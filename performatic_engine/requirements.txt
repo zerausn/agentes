@@ -1,0 +1,30 @@
+# requirements.txt - Performatic Content Engine
+# Instalar con: pip install -r requirements.txt --break-system-packages
+# (en Parrot OS / Debian usa el flag --break-system-packages)
+
+# === Core de procesamiento de video ===
+ffmpeg-python>=0.2.0
+scenedetect[opencv]>=0.6.3
+opencv-python>=4.9.0
+ultralytics>=8.2.0          # YOLOv8
+
+# === Transcripción ===
+openai-whisper>=20231117
+whisper-timestamped>=1.15.4  # marcas de tiempo por palabra (DTW)
+
+# === NLP en español ===
+spacy>=3.7.0
+# Descargar modelo: python -m spacy download es_core_news_lg
+
+# === Google Cloud / YouTube API ===
+google-api-python-client>=2.130.0
+google-auth-httplib2>=0.2.0
+google-auth-oauthlib>=1.2.0
+
+# === LLM (Claude) para SMO ===
+anthropic>=0.26.0
+
+# === Utilidades ===
+numpy>=1.26.0
+Pillow>=10.3.0               # thumbnails opcionales
+tqdm>=4.66.0                 # barras de progreso

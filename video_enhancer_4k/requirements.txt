@@ -1,0 +1,13 @@
+# Componentes principales
+torch --index-url https://download.pytorch.org/whl/cpu
+torchvision --index-url https://download.pytorch.org/whl/cpu
+basicsr
+realesrgan
+pillow
+tqdm
+opencv-python-headless
+
+# Herramientas externas (No-Python):
+# - ffmpeg / ffprobe
+# - realesrgan-ncnn-vulkan (binarios en bin/)
+# - rife-ncnn-vulkan (opcional, descarga automatica)

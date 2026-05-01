@@ -1,0 +1,195 @@
+# 🤖 Sistema de Agentes Coordinados - Antigravity
+
+**Estado:** 📋 Para Revisar y Mejorar  
+**Versión:** 1.0  
+**Última actualización:** 31 de marzo de 2026
+
+---
+
+## 📚 Contenido de Esta Carpeta
+
+Aquí se encuentran los arquivos para definir, revisar y mejorar el **sistema de agentes coordinados** que debería ejecutarse continuamente en tu entorno de desarrollo.
+
+### 📄 Archivos Principales
+
+| Archivo | Propósito |
+|---------|-----------|
+| **PROPUESTA_SISTEMA_AGENTES_COORDINADOS.md** | 📋 Propuesta detallada del sistema completo |
+| **CHECKLIST_REVISION.md** | ✅ Criterios de revisión y fallas potenciales |
+| **MOBILE_MIGRATION.md** | 📱 Guía maestra para replicar `agentes` en Android ARM64 con Termux, Debian, ADB y SSH |
+| **CASCADING_STACKING_GUIDE.md** | 🚀 Guía técnica del Motor Meta v6.0 |
+| **README.md** | 📖 Este archivo |
+
+### 📁 Carpetas
+
+| Carpeta | Contenido |
+|---------|-----------|
+| **configs/** | 🔧 Archivos de configuración YAML para cada agente |
+| **scripts/** | 🖥️ Scripts PowerShell para inicialización y automatización |
+| **historial/** | 📊 Registros de sesiones, decisiones y ejecuciones |
+| **nemoclaw/** | 🦞 Contexto operativo, replicación, seguridad y Telegram para NVIDIA NemoClaw |
+| **comandos para linux/** | 🐧 Notas y scripts de soporte para Linux |
+
+---
+
+## 🚀 Cómo Usar Esta Carpeta
+
+### Paso 1: Revisar la Propuesta
+```bash
+# Abre este archivo:
+code PROPUESTA_SISTEMA_AGENTES_COORDINADOS.md
+```
+
+Lee la propuesta completa del sistema de 5 agentes y el flujo de ejecución.
+
+### Paso 2: Usar el Checklist
+```bash
+# Abre este archivo:
+code CHECKLIST_REVISION.md
+```
+
+Revisa los puntos de validación, fallas potenciales y sugerencias de mejora.
+
+### Paso 3: Inicializar el Sistema (Opcional)
+```powershell
+# En PowerShell, ejecuta:
+cd "/media/zerausn/D69493CF9493B08B/Users/ZN-/Documents\antigravity\agentes"
+.\scripts\init-agents.ps1
+```
+
+Esto creará la estructura de carpetas y archivos necesarios.
+
+### Paso 4: Revisar NemoClaw
+```bash
+# Archivos clave para continuar el trabajo de NemoClaw:
+code nemoclaw/README.md
+code nemoclaw/CONTEXTO_IMPLEMENTACION.md
+code nemoclaw/REPLICACION_OTRO_PC.md
+code nemoclaw/SEGURIDAD_Y_SECRETOS.md
+code nemoclaw/TELEGRAM.md
+```
+
+Estos archivos documentan la instalación real realizada en Linux y dejan un flujo replicable para otro PC sin subir secretos al repositorio.
+
+### Paso 5: Si el destino es un celular o tablet Android
+```bash
+code MOBILE_MIGRATION.md
+```
+
+Ese archivo es la referencia operativa para Termux, Debian, SSH, widgets y ADB
+por WiFi en la rama `linux-arm64`.
+
+---
+
+## 🎯 Objetivo Principal
+
+**CREAR UN SISTEMA DE AGENTES QUE:**
+
+1. ✅ **Coordine** tareas entre múltiples IAs
+2. 📝 **Documente** automáticamente todo lo que se hace
+3. 🔍 **Revise** código antes de hacer commit
+4. ✓ **Valide** con tests y QA
+5. 🚀 **Suba automáticamente** a GitHub
+
+---
+
+## 🔄 Flujo Propuesto
+
+```
+Tu Petición
+    ↓
+[COORDINADOR] - Recibe y planifica
+    ↓
+[DOCUMENTADOR] - Crea especificación
+    ↓
+[DESARROLLADOR] - Genera código
+    ↓
+[REVISOR] - Valida código
+    ↓
+[QA] - Ejecuta tests
+    ↓
+[GITHUB] - Sube a repositorio
+    ↓
+✅ COMPLETADO
+```
+
+---
+
+## 🤔 Preguntas Importantes
+
+**Antes de implementar, necesitamos responder:**
+
+1. **¿Cuántos agentes realmente necesito?**
+   - ¿5 es demasiado? ¿3 es suficiente?
+
+2. **¿Cómo me notifico del progreso?**
+   - ¿Logs, email, Slack, Discord?
+
+3. **¿Quién aprueba merges a `main`?**
+   - ¿El agente solo? ¿Necesito yo aprobarlo?
+
+4. **¿Y si algo falla?**
+   - ¿Se revierte automáticamente?
+   - ¿Me lo comunica inmediatamente?
+
+5. **¿Cómo escalo esto a múltiples proyectos?**
+   - ¿Un coordinador por proyecto o uno central?
+
+---
+
+## 📊 Evaluación Inicial
+
+| Aspecto | Calificación | Comentario |
+|---------|-------------|-----------|
+| Conceptualmente sólido | ✅ 4/5 | Bien pensado, pero necesita implementación |
+| Viable técnicamente | ⚠️ 3/5 | Posible, pero requiere validación |
+| Seguro | ❌ 2/5 | Necesita protección de credenciales y RBAC |
+| Escalable | ⚠️ 3/5 | Basado en archivos JSON, puede ser lento |
+| Documentado | ✅ 4/5 | Propuesta clara |
+
+**VEREDICTO: ✅ VIABLE CON MEJORAS**
+
+---
+
+## 🔧 Siguientes Pasos
+
+### Para ti (usuario):
+1. Lee la propuesta completa
+2. Decide qué agentes son críticos
+3. Define criterios de aprobación
+4. Considera seguridad (credenciales, permisos)
+
+### Para otros agentes (revisores):
+1. Analiza la propuesta usando el checklist
+2. Identifica fallas y riesgos
+3. Propone simplificaciones
+4. Sugiere herramientas para implementación
+5. Propone un MVP (Minimum Viable Product)
+
+---
+
+## 📞 Contacto / Referencias
+
+- **Usuario:** zerausn
+- **Repositorio Principal:** antigravity (este)
+- **Fecha Creación:** 2026-03-31
+
+---
+
+## 🚀 Versión 6.0: Meta Cascading Stacking Engine
+Hemos implementado un motor de publicación avanzado que rompe la linealidad de Meta:
+- **Lógica de Cascada**: Rellena el calendario de 28 días en ráfagas (07:00 AM / 18:30 PM).
+- **Supervisor PW**: Bucle infinito que gestiona la red y la API de forma autónoma.
+- **Auto-Rebuild**: El sistema detecta nuevos videos y los inyecta en el flujo futuro automáticamente.
+
+Para más detalles, consulta la [Guía de Apilamiento](file:///c:/Users/ZN-/Documents/Antigravity/agentes/meta_uploader/CASCADING_STACKING_GUIDE.md).
+
+---
+
+## 📝 Notas
+- El sistema de Meta ya está **OPERATIVO v6.0**.
+- NemoClaw y otros módulos siguen en fase de diseño/implementación.
+
+---
+
+**¿Listo para mejorar esto? Envía esta carpeta a un agente revisor.** 🚀
