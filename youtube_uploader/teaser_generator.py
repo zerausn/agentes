@@ -4,11 +4,15 @@ import os
 import subprocess
 from pathlib import Path
 
+from video_helpers import load_config
+
 # Configuracion General
 BASE_DIR = Path(__file__).resolve().parent
 JSON_DB = BASE_DIR / "scanned_videos.json"
-TEASERS_DIR = Path("/media/zerausn/D69493CF9493B08B/Users/ZN-/Documents/ADM/Carpeta 1/teasers_pendientes")
 LOG_FILE = BASE_DIR / "teaser_generator.log"
+
+config = load_config(BASE_DIR)
+TEASERS_DIR = Path(config.get("teaser_input_directory", "/tmp/teasers"))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -184,8 +188,12 @@ def main():
             # Rutas
             teaser_script = BASE_DIR / "teaser_uploader.py"
             crudo_script = BASE_DIR / "uploader.py"
+            
+            # Deteccion de Binario Python (PC vs Termux)
             python_bin = BASE_DIR.parent.parent / ".venv/bin/python3"
-            if not python_bin.exists():
+            if os.environ.get('PREFIX') and 'com.termux' in os.environ.get('PREFIX', ''):
+                python_bin = "python3"
+            elif not python_bin.exists():
                 python_bin = "python3" # Fallback
                 
             logging.info(f"Lanzando CARGADORES EN PARALELO para: {file_path.name}")
