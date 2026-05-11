@@ -1,0 +1,9 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# chrome-beta-open — Abre URLs en Chrome Beta para OAuth de YouTube
+# Uso: export BROWSER=/data/data/com.termux/files/home/bin/chrome-beta-open
+URL="$1"
+am start -a android.intent.action.VIEW \
+  -n com.chrome.beta/com.google.android.apps.chrome.Main \
+  -d "$URL" \
+  --activity-single-top \
+  >/dev/null 2>&1
