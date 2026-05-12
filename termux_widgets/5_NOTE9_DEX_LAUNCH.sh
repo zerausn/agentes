@@ -1,17 +1,36 @@
 #!/bin/bash
 # 5_NOTE9_DEX_LAUNCH.sh
-# Widget para lanzar scrcpy (Note 9) desde el Debian de la tablet
+# Widget para lanzar scrcpy (Note 9) desde la tablet (Termux/proot)
 
-# Intentar encontrar la IP del Note 9 que ya esté conectado a ADB
-IP=$(adb devices | grep ":5555" | head -n 1 | awk '{print $1}' | cut -d: -f1)
+set -euo pipefail
 
-if [ -z "$IP" ]; then
-    echo "Note 9 no está conectado por WiFi. Ejecuta primero el script de configuración."
-    exit 1
+ADB="${ADB:-adb}"
+SCRCPY="${SCRCPY:-scrcpy}"
+
+# Detect device (tcpip preferred)
+dev="$($ADB devices | awk '/:/ && /device/{print $1; exit}')"
+if [ -z "$dev" ]; then
+  dev="$($ADB devices | awk '/\tdevice$/{print $1; exit}')"
 fi
 
-echo "Lanzando DeX de Note 9 ($IP) en Debian..."
+if [ -z "$dev" ]; then
+  echo "Note 9 no está conectado por ADB. Ejecuta primero la configuración." >&2
+  exit 1
+fi
 
-# Entrar a Debian y ejecutar scrcpy
-# Se asume que el display virtual es el ID 6 tras el truco del monitor fantasma
-proot-distro login debian -- bash -c "DISPLAY=:0 scrcpy -s $IP:5555 --display-id=6 --no-audio -f"
+echo "Usando dispositivo: $dev"
+
+# Obtener display list y elegir el último (virtual/DeX)
+displays=$($SCRCPY -s "$dev" --list-displays 2>&1 || true)
+echo "$displays"
+display_id=$(echo "$displays" | awk -F= '/--display-id=/{print $2}' | tail -n1)
+[ -z "$display_id" ] && display_id=0
+
+echo "Lanzando scrcpy en display $display_id (device $dev)..."
+
+# Si scrcpy está disponible en Termux, usarlo; si no, invocar proot-distro
+if command -v "$SCRCPY" >/dev/null 2>&1; then
+  $SCRCPY -s "$dev" --display-id="$display_id" --no-audio -f
+else
+  proot-distro login debian -- bash -lc "scrcpy -s $dev --display-id=$display_id --no-audio -f"
+fi
