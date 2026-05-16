@@ -4,7 +4,15 @@ import os
 import subprocess
 from pathlib import Path
 
-from video_helpers import resolve_ffmpeg_binary, is_hdr, ffmpeg_has_mediacodec, probe_video_metadata
+from datetime import datetime
+from video_helpers import (
+    resolve_ffmpeg_binary,
+    is_hdr,
+    ffmpeg_has_mediacodec,
+    probe_video_metadata,
+    load_json_file,
+    save_json_file,
+)
 
 # Configuración HARDENED para S24 Ultra
 BASE_DIR = Path('/data/data/com.termux/files/home/agentes/youtube_uploader')
@@ -21,28 +29,34 @@ logging.basicConfig(
 TEASER_DURATION_SEC = 16
 
 
-def build_ffmpeg_teaser_cmd(input_file, start_sec, output_path):
+def build_ffmpeg_teaser_cmd(input_file, start_sec, output_path, ffmpeg_path=None, mediacodec_available=None, codec=None, hdr=None):
+    """Build the ffmpeg command for a teaser using pre-computed classification.
+
+    Accepts ffmpeg_path and mediacodec_available to avoid probing repeatedly.
+    codec and hdr may be provided by the caller (classification step).
+    """
     # Ruta absoluta al ffmpeg de Termux para evitar fallos de PATH en el Widget
-    ffmpeg = resolve_ffmpeg_binary(BASE_DIR)
-    ffmpeg_path = str(ffmpeg)
+    if ffmpeg_path is None:
+        ffmpeg = resolve_ffmpeg_binary(BASE_DIR)
+        ffmpeg_path = str(ffmpeg)
 
-    try:
-        hdr = is_hdr(input_file, ffmpeg_binary=ffmpeg_path)
-    except Exception:
-        hdr = False
+    if mediacodec_available is None:
+        mediacodec_available = ffmpeg_has_mediacodec(ffmpeg_path)
 
-    mediacodec_available = ffmpeg_has_mediacodec(ffmpeg_path)
-
-    # Inspect codec to decide safe fast-paths. Only remux-copy when input is
-    # already H.264 (compatible with most upload endpoints). If input is HEVC
-    # we transcode to H.264 preferably using mediacodec for speed.
+    # If caller didn't provide codec/hdr, probe here (cheapish)
     meta = None
-    try:
-        meta = probe_video_metadata(input_file)
-    except Exception:
-        meta = None
+    if codec is None:
+        try:
+            meta = probe_video_metadata(input_file)
+        except Exception:
+            meta = None
+        codec = (meta.get('codec_name') or '').lower() if meta else ''
 
-    codec = (meta.get('codec_name') or '').lower() if meta else ''
+    if hdr is None:
+        try:
+            hdr = is_hdr(input_file, ffmpeg_binary=ffmpeg_path)
+        except Exception:
+            hdr = False
 
     # Fast conservative path: input already H.264 and not HDR -> remux copy
     if codec == 'h264' and not hdr:
@@ -86,6 +100,38 @@ def build_ffmpeg_teaser_cmd(input_file, start_sec, output_path):
         str(output_path),
     ]
 
+
+def classify_video_for_pipeline(input_file, ffmpeg_path, mediacodec_available):
+    """Return a simple classification dict for the input file.
+
+    Keys: codec (str), hdr (bool), pipeline (one of 'remux','hw_transcode','sw_transcode'), meta (ffprobe metadata or None)
+    """
+    meta = None
+    try:
+        meta = probe_video_metadata(input_file)
+    except Exception:
+        meta = None
+
+    codec = (meta.get('codec_name') or '').lower() if meta else ''
+    try:
+        hdr = is_hdr(input_file, ffmpeg_binary=ffmpeg_path)
+    except Exception:
+        hdr = False
+
+    if codec == 'h264' and not hdr:
+        pipeline = 'remux'
+    elif codec in ('hevc', 'h265') and not hdr and mediacodec_available:
+        pipeline = 'hw_transcode'
+    else:
+        pipeline = 'sw_transcode'
+
+    return {
+        'codec': codec,
+        'hdr': bool(hdr),
+        'pipeline': pipeline,
+        'meta': meta,
+    }
+
 def main():
     logging.info('=' * 60)
     logging.info(' INICIANDO GENERADOR DE TEASERS (S24 ULTRA HARDENED) ')
@@ -100,18 +146,56 @@ def main():
         logging.info('No se encontraron videos en /sdcard/Antigravity/crudos_pendientes/')
         return
 
+    # Precompute ffmpeg path and mediacodec availability once per run
+    ffmpeg_path = str(resolve_ffmpeg_binary(BASE_DIR))
+    mediacodec_available = ffmpeg_has_mediacodec(ffmpeg_path)
+
     for f in files:
         base_name = f.stem
-        # Para depuración, solo procesamos si no existen ya muchos teasers
         logging.info(f'Procesando video: {f.name}')
+
+        # Classify the input to decide pipeline; store classification in small DB
+        classification_db_path = Path('/sdcard/Antigravity') / 'classification_db.json'
+        try:
+            db = load_json_file(classification_db_path, {})
+        except Exception:
+            db = {}
+
+        key = str(f.resolve())
+        entry = db.get(key) or {}
+        # if we don't have a recent classification, compute it
+        needs_probe = True
+        if entry.get('classified_at'):
+            try:
+                classified_time = datetime.fromisoformat(entry['classified_at'])
+                # re-probe if older than 1 day
+                if (datetime.now() - classified_time).total_seconds() < 86400:
+                    needs_probe = False
+            except Exception:
+                needs_probe = True
+
+        if needs_probe:
+            try:
+                cls = classify_video_for_pipeline(f, ffmpeg_path, mediacodec_available)
+                entry.update(cls)
+                entry['classified_at'] = datetime.now().isoformat()
+                db[key] = entry
+                save_json_file(classification_db_path, db)
+                logging.info('  Clasificación: codec=%s hdr=%s pipeline=%s', entry.get('codec'), entry.get('hdr'), entry.get('pipeline'))
+            except Exception as e:
+                logging.error('  No se pudo clasificar %s: %s', f.name, e)
+                entry = entry or {'codec': None, 'hdr': False, 'pipeline': 'sw_transcode'}
+
+        pipeline = entry.get('pipeline', 'sw_transcode')
 
         # Generar segmentos
         for i in range(1, 4):  # Generamos los primeros 3 segmentos como prueba robusta
             out_path = output_dir / f'{base_name}_teaser_{i}.mp4'
             start_sec = (i - 1) * TEASER_DURATION_SEC
 
-            cmd = build_ffmpeg_teaser_cmd(f, start_sec, out_path)
-            logging.info('EJECUTANDO COMANDO: %s', ' '.join(map(str, cmd)))
+            # build command using the precomputed classification
+            cmd = build_ffmpeg_teaser_cmd(f, start_sec, out_path, ffmpeg_path=ffmpeg_path, mediacodec_available=mediacodec_available, codec=entry.get('codec'), hdr=entry.get('hdr'))
+            logging.info('EJECUTANDO COMANDO (pipeline=%s): %s', pipeline, ' '.join(map(str, cmd)))
 
             # Ejecutar con captura de error completa
             try:
