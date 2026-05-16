@@ -4,7 +4,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from video_helpers import resolve_ffmpeg_binary, is_hdr, ffmpeg_has_mediacodec
+from video_helpers import resolve_ffmpeg_binary, is_hdr, ffmpeg_has_mediacodec, probe_video_metadata
 
 # Configuración HARDENED para S24 Ultra
 BASE_DIR = Path('/data/data/com.termux/files/home/agentes/youtube_uploader')
@@ -33,8 +33,19 @@ def build_ffmpeg_teaser_cmd(input_file, start_sec, output_path):
 
     mediacodec_available = ffmpeg_has_mediacodec(ffmpeg_path)
 
-    # Fast path: if not HDR, attempt remux (-c copy) which is fastest.
-    if not hdr:
+    # Inspect codec to decide safe fast-paths. Only remux-copy when input is
+    # already H.264 (compatible with most upload endpoints). If input is HEVC
+    # we transcode to H.264 preferably using mediacodec for speed.
+    meta = None
+    try:
+        meta = probe_video_metadata(input_file)
+    except Exception:
+        meta = None
+
+    codec = (meta.get('codec_name') or '').lower() if meta else ''
+
+    # Fast conservative path: input already H.264 and not HDR -> remux copy
+    if codec == 'h264' and not hdr:
         return [
             ffmpeg_path, '-y',
             '-ss', str(round(start_sec, 3)),
@@ -44,10 +55,14 @@ def build_ffmpeg_teaser_cmd(input_file, start_sec, output_path):
             str(output_path),
         ]
 
-    # If HDR or unknown and mediacodec available, try HW encode
-    if mediacodec_available:
+    # If input codec is HEVC (common on S24) but not HDR, prefer HW transcode
+    # to H.264 via mediacodec if available; keeps compatibility with uploaders
+    # while speeding up compared to software libx264.
+    if codec in ('hevc', 'h265') and not hdr and mediacodec_available:
         return [
             ffmpeg_path, '-y',
+            '-hwaccel', 'mediacodec',
+            '-c:v', 'hevc_mediacodec',
             '-i', str(input_file),
             '-ss', str(round(start_sec, 3)),
             '-t', str(TEASER_DURATION_SEC),
@@ -58,7 +73,7 @@ def build_ffmpeg_teaser_cmd(input_file, start_sec, output_path):
             str(output_path),
         ]
 
-    # Fallback: software encode (conservador para HDR)
+    # Otherwise: fallback to software encode to H.264 (safe, compatible)
     return [
         ffmpeg_path, '-y',
         '-i', str(input_file),
