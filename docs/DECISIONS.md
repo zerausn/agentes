@@ -86,6 +86,45 @@ canal.
   `meta_uploader_facebook.log`, `meta_uploader_instagram.log` o `uploader.log`,
   tambien debe actualizarse el monitor para no romper la observabilidad.
 
+## 2026-05-18: Pipeline completo S24 con solapamiento de uploads
+- Contexto: El flujo anterior requería ejecutar 4 widgets manualmente en
+  secuencia (1_CORTAR_TEASERS → 3_SUBIR_TEASERS → 2_SUBIR_CRUDOS →
+  4_VIGIA_FACEBOOK), con tiempos muertos entre cada crudo y entre YouTube y
+  Facebook.
+- Decisión: Crear `0_PIPELINE_COMPLETO.sh` que orquesta toda la cadena en un
+  solo script. Cada crudo se procesa individualmente: corta teasers → sube
+  teasers (espera confirmación) → inicia subida del crudo en BACKGROUND → pasa
+  al siguiente. Las subidas de crudos se solapan (crudo N+1 empieza mientras
+  crudo N aún se sube). Facebook se lanza inmediatamente después de cada subida
+  exitosa y al final del pipeline.
+- Consecuencia: Sin tiempos muertos entre crudos ni entre YouTube y Facebook.
+
+## 2026-05-18: Facebook evacuador paralelo con confirmación
+- Contexto: `subir_fb_evacuador.py` subía videos a Facebook uno tras otro,
+  esperando confirmación de procesamiento antes de empezar el siguiente.
+- Decisión: Cada video se sube en su propio hilo Python con `background=False`
+  (espera confirmación). Todos los hilos corren simultáneamente. El archivo se
+  mueve a "subidos a facebbok" solo cuando su hilo confirma procesamiento.
+- Consecuencia: Múltiples videos se suben a Facebook en paralelo, cada uno se
+  mueve apenas está confirmado, sin bloquear a los demás.
+
+## 2026-05-18: Bitrate de teasers incrementado a 70 Mbps
+- Contexto: Los teasers generados vía HW transcode (HEVC → H.264 mediacodec)
+  usaban `-b:v 6000k` (6 Mbps), insuficiente para 4K, causando pixelación.
+- Decisión: Subir a `70000k` (70 Mbps) en `teaser_generator.py:85`. El encoder
+  HW del S24 maneja cualquier bitrate hasta ~100 Mbps sin impacto en velocidad.
+- Consecuencia: Teasers sin pérdida visible de calidad.
+
+## 2026-05-17: Control remoto Note 9 vía VNC+SSH (no ADB WiFi)
+- Contexto: Se intentó ADB WiFi desde la tablet SM-X210 al Note 9 SM-N9600 para
+  control remoto, pero el Note 9 nunca autorizaba a la tablet (permanecía
+  "unauthorized") a pesar de `alwaysAllow=true`.
+- Decisión: Abandonar ADB WiFi. En su lugar, usar droidVNC-NG (VNC server) +
+  OpenSSH (túnel). La tablet crea un túnel SSH al Note 9 y conecta freebVNC
+  a `localhost:5900`.
+- Consecuencia: Control remoto funcional con VNC. También disponible noVNC vía
+  navegador (puerto 5800, sin túnel).
+
 ## 2026-04-10: Unificar la convención de Meta
 - Contexto: el usuario decidio que "sube videos a Meta" debe apuntar al flujo
   programado vigente, y que el carril previo de Meta pase a llamarse

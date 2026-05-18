@@ -154,3 +154,51 @@
   - `fb_to_ig_vigia.py --help` responde
   - dry-run del watcher movil con `AGENTES_SYNC_SEARCH_LIMIT=20`: `20`
     videos pendientes y primera muestra `2026-02-19 - 20251108 182940`
+
+## Pipeline Completo S24: `0_PIPELINE_COMPLETO.sh`
+- Creado el `2026-05-18` en el S24 como copia mejorada de `1_CORTAR_TEASERS.sh`.
+- **Flujo:** escanea DB → corta teasers de todos los crudos pendientes → por cada
+  crudo (en orden): sube SUS teasers (espera confirmación) → inicia subida del
+  crudo en BACKGROUND → pasa al siguiente crudo inmediatamente.
+- **Solapamiento clave:** mientras el crudo N se sube (BG), se cortan y suben los
+  teasers del crudo N+1. Sin tiempos muertos entre crudos.
+- Al final del pipeline, lanza automáticamente `subir_fb_evacuador.py` (Facebook).
+- Ubicación: `~/.shortcuts/0_PIPELINE_COMPLETO.sh` (widget #0).
+
+## Teaser Generator: bitrate incrementado a 70 Mbps
+- `2026-05-18`: se aumentó `-b:v` de `6000k` a `70000k` en
+  `teaser_generator.py:85` para el pipeline `hw_transcode` (HEVC → H.264 vía
+  mediacodec). El bitrate anterior (6 Mbps) producía pixelación notable en 4K.
+- El encoder HW del S24 procesa cualquier bitrate hasta ~100 Mbps a la misma
+  velocidad; no hay impacto en tiempo de corte.
+
+## Facebook Evacuador: modo paralelo con confirmación
+- `2026-05-18`: `subir_fb_evacuador.py` modificado para usar `threading`.
+  Cada video se sube+verifica en su propio hilo. Todos corren simultáneamente.
+  El archivo se mueve a "subidos a facebbok" SOLO cuando su hilo confirma el
+  procesamiento en Facebook.
+
+## Note 9 (SM-N9600): VNC + SSH
+- `2026-05-17`: Se configuró el Note 9 (Android 10, SDM845) como dispositivo
+  controlable remotamente desde la tablet SM-X210.
+- **droidVNC-NG 2.19.0** instalado y funcionando como servidor VNC en puerto
+  `5900`, también HTTP (noVNC) en puerto `5800`. Contraseña: `antigravity`.
+- **OpenSSH** en Termux, puerto `8022`, usuario `u0_a309`, contraseña
+  `antigravity`. SSH funcional desde la tablet.
+- **ADB WiFi:** Se intentó autorizar desde la tablet al Note 9 sin éxito
+  (permanecía "unauthorized" a pesar de `alwaysAllow=true` en el Note 9).
+  Abandonado en favor de VNC+SSH.
+
+## Tablet SM-X210: Control remoto del Note 9 por VNC
+- `2026-05-17`: Se estableció túnel SSH desde la tablet al Note 9:
+  `ssh -L 5900:localhost:5900 -p 8022 u0_a309@10.31.120.236`
+- **freebVNC** (`com.iiordanov.freebVNC`) instalado en la tablet con conexión
+  "Note9" apuntando a `localhost:5900`, contraseña `antigravity`.
+- La conexión VNC se confirmó operativa: `RemoteCanvasActivity` activa mostrando
+  la pantalla del Note 9.
+- Scripts en la tablet:
+  - `~/tunel_vnc.sh` — túnel SSH simple
+  - `~/vnc_control.sh` — túnel + lanzar freebVNC
+  - `~/.shortcuts/6_VNC_NOTE9.sh` — shortcut para Termux Widget (un toque)
+- **noVNC** también probado: `http://10.31.120.236:5800/vnc.html` cargó en
+  Chrome de la tablet (sin túnel necesario), requiere clickear "Connect".
