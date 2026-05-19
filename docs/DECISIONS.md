@@ -108,6 +108,33 @@ canal.
 - Consecuencia: Múltiples videos se suben a Facebook en paralelo, cada uno se
   mueve apenas está confirmado, sin bloquear a los demás.
 
+## 2026-05-18: Pipeline v4-v6 — eliminación del loop, markers y paralelismo por teaser
+- Contexto: El pipeline original (`0_PIPELINE_COMPLETO.sh` v1) llamaba a `teaser_generator.py`
+  dentro del while loop de cada crudo, causando un loop infinito de cortes sin avanzar a subidas.
+  Además, los teasers se subían secuencialmente (un proceso bloqueante por crudo) y el crudo
+  arrancaba solo después de subir todos los teasers.
+- Decisión v2: Eliminar la llamada redundante a `teaser_generator` dentro del loop.
+- Decisión v3: `teaser_generator` corre en background; un loop vigilante revisa cada 2s y sube
+  teasers al instante cuando aparecen. Crudo arranca 2s después del primer teaser.
+- Decisión v4: Corregido — crudo arranca 2s después del ÚLTIMO teaser subido. Se añade
+  `--single-file` y `--state-dir` a `teaser_uploader.py` para subir teasers individuales y
+  escribir marker `.uploaded` apenas la API devuelve éxito (sin esperar processing de YT).
+- Decisión v5: Conteo dinámico de teasers (sin hardcodear "3").
+- Decisión v6: `teaser_generator` vuelve a foreground para que el usuario vea los logs en
+  tiempo real. Después de cortar, lanza todos los teasers en paralelo. Espera markers
+  `.uploaded` → 2s → crudo.
+- Consecuencia: Pipeline sin loop, cada teaser se sube en su propio proceso, crudo arranca
+  solo cuando todos los teasers terminaron de subirse.
+
+## 2026-05-18: teaser_generator con escritura atómica y markers
+- Contexto: `teaser_generator.py` escribía teasers directamente al `.mp4` final. El pipeline
+  u otros procesos podían detectar el archivo antes de que `ffmpeg` terminara, causando
+  subidas de archivos truncados o loops de detección.
+- Decisión: Escribir a `<nombre>.part` y renombrar (`os.replace`) solo cuando `ffmpeg` termina
+  con éxito. Además, crear markers `.state/<crudo>.lock` (mientras procesa) y
+  `.state/<crudo>.done` (cuando termina) para evitar reprocesos y ejecuciones paralelas.
+- Consecuencia: Subidas nunca ven archivos incompletos. Pipeline no reprocesa el mismo crudo.
+
 ## 2026-05-18: Bitrate de teasers incrementado a 70 Mbps
 - Contexto: Los teasers generados vía HW transcode (HEVC → H.264 mediacodec)
   usaban `-b:v 6000k` (6 Mbps), insuficiente para 4K, causando pixelación.

@@ -97,7 +97,7 @@ def main():
 
     videos = sorted(
         f for f in SOURCE_DIR.iterdir()
-        if f.is_file() and f.suffix.lower() in SUPPORTED_EXTS
+        if f.is_file() and f.suffix.lower() in SUPPORTED_EXTS and not f.name.endswith('.part')
     )
 
     if not videos:
@@ -110,6 +110,27 @@ def main():
     fallos = 0
     for video in videos:
         try:
+            # Evitar procesar archivos parciales en curso (.part)
+            if video.name.endswith('.part'):
+                logging.info('Saltando archivo parcial: %s', video.name)
+                continue
+
+            # Esperar brevemente a que el archivo deje de crecer (estabilidad)
+            stable = False
+            last_size = video.stat().st_size
+            for _ in range(3):
+                time.sleep(1)
+                try:
+                    sz = video.stat().st_size
+                except Exception:
+                    sz = last_size
+                if sz == last_size:
+                    stable = True
+                    break
+                last_size = sz
+            if not stable:
+                logging.info('Archivo en cambio activo, saltando por ahora: %s', video.name)
+                continue
             ok = upload_video(video)
             if ok:
                 move_to_done(video)

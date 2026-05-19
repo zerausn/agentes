@@ -157,12 +157,18 @@
 
 ## Pipeline Completo S24: `0_PIPELINE_COMPLETO.sh`
 - Creado el `2026-05-18` en el S24 como copia mejorada de `1_CORTAR_TEASERS.sh`.
-- **Flujo:** escanea DB → corta teasers de todos los crudos pendientes → por cada
-  crudo (en orden): sube SUS teasers (espera confirmación) → inicia subida del
-  crudo en BACKGROUND → pasa al siguiente crudo inmediatamente.
-- **Solapamiento clave:** mientras el crudo N se sube (BG), se cortan y suben los
-  teasers del crudo N+1. Sin tiempos muertos entre crudos.
-- Al final del pipeline, lanza automáticamente `subir_fb_evacuador.py` (Facebook).
+- **v6 actual (2026-05-18):** Pipeline reescrito. Flujo:
+  1. `video_scanner.py` → escanea DB (foreground)
+  2. `teaser_generator.py` → corta teasers de TODOS los crudos (foreground, ves logs)
+  3. Por cada crudo: lanza TODOS sus teasers en PARALELO (`--single-file`, un proceso por teaser)
+  4. Espera markers `.uploaded` de todos los teasers → 2s → arranca `uploader.py` del crudo
+  5. Facebook sweep al final
+- **Bug fixes v1→v6:**
+  - Loop infinito: se eliminó la llamada redundante a `teaser_generator` dentro del while loop
+  - Subida de teasers paralela: `--single-file` + background process por teaser
+  - Crudo arranca 2s DESPUÉS del ÚLTIMO teaser subido (no después del primero)
+  - `teaser_generator.py` escribe `.part` y renombra atómicamente (evita uploads prematuros)
+  - Markers `.state/<crudo>.done` y `.state/<teaser>.uploaded` para sincronización
 - Ubicación: `~/.shortcuts/0_PIPELINE_COMPLETO.sh` (widget #0).
 
 ## Teaser Generator: bitrate incrementado a 70 Mbps
