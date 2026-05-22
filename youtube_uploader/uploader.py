@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import shutil
 import threading
 import time
@@ -28,6 +29,7 @@ UPLOAD_STALL_MAX_NO_PROGRESS_CHECKS = 2
 
 BASE_DIR = Path(__file__).resolve().parent
 LOG_FILE = BASE_DIR / "uploader.log"
+STORAGE_ROOT = Path(os.environ.get("AGENTES_STORAGE_ROOT", "/sdcard/Antigravity"))
 JSON_DB = BASE_DIR / "scanned_videos.json"
 CREDENTIALS_DIR = BASE_DIR / "credentials"
 CONFIG_FILE = BASE_DIR / "config.json"
@@ -491,7 +493,7 @@ def wait_for_processing(youtube, video_id):
 
 def move_file_and_update_db(file_path, v_rec, videos):
     try:
-        success_folder = file_path.parent / "videos subidos exitosamente"
+        success_folder = STORAGE_ROOT / "videos subidos exitosamente"
         if not success_folder.exists():
             success_folder.mkdir(parents=True, exist_ok=True)
         
