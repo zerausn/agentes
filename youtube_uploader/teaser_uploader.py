@@ -33,8 +33,13 @@ QUOTA_STATUS_FILE = BASE_DIR / "quota_status.json"
 STOP_FILE = BASE_DIR / "STOP_TEASER"
 CACHE_FILE = BASE_DIR / "yt_schedule_cache.json"
 
-INPUT_DIR = Path("/media/zerausn/D69493CF9493B08B/Users/ZN-/Documents/ADM/Carpeta 1/teasers_pendientes")
-OUTPUT_DIR = Path("/media/zerausn/D69493CF9493B08B/Users/ZN-/Documents/ADM/Carpeta 1/videos subidos exitosamente")
+STORAGE_ROOT = Path(os.environ.get("AGENTES_STORAGE_ROOT", "/sdcard/Antigravity"))
+if STORAGE_ROOT.exists():
+    INPUT_DIR = STORAGE_ROOT / "teasers_pendientes"
+    OUTPUT_DIR = STORAGE_ROOT / "videos subidos exitosamente"
+else:
+    INPUT_DIR = Path("/media/zerausn/D69493CF9493B08B/Users/ZN-/Documents/ADM/Carpeta 1/teasers_pendientes")
+    OUTPUT_DIR = Path("/media/zerausn/D69493CF9493B08B/Users/ZN-/Documents/ADM/Carpeta 1/videos subidos exitosamente")
 SUPPORTED_EXTS = {".mp4", ".mov", ".mkv"}
 
 UPLOAD_STALL_CHECK_SECONDS = 30
@@ -45,7 +50,6 @@ STRICT_TEASER_PUBLISH_MINUTE = 45
 SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube.readonly",
-    "https://www.googleapis.com/auth/youtube.force-ssl",
 ]
 
 logging.basicConfig(
@@ -120,11 +124,160 @@ class UploadWatchdog:
                 self._alerted = True
 
 
+def _read_client_id(json_file):
+    try:
+        payload = json.loads(Path(json_file).read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+
+    for section in ("installed", "web"):
+        client_id = payload.get(section, {}).get("client_id")
+        if client_id:
+            return client_id
+
+    return payload.get("client_id")
+
+
+def _extract_numeric_suffix(path_like, prefix):
+    stem = Path(path_like).stem
+    if not stem.startswith(prefix):
+        return None
+
+    suffix = stem[len(prefix):].lstrip("_")
+    return int(suffix) if suffix.isdigit() else None
+
+
+def _credential_sort_key(path_like, prefix):
+    path = Path(path_like)
+    suffix = _extract_numeric_suffix(path, prefix)
+    if suffix is None:
+        return (1, path.name.lower())
+    return (0, suffix)
+
+
+def _list_client_secret_files():
+    return sorted(
+        (path for path in CREDENTIALS_DIR.glob("client_secret*.json") if path.suffix.lower() == ".json"),
+        key=lambda path: _credential_sort_key(path, "client_secret"),
+    )
+
+
+def _list_token_files():
+    return sorted(
+        (
+            token_file
+            for token_file in CREDENTIALS_DIR.glob("token_*.json")
+            if _extract_numeric_suffix(token_file, "token") is not None
+        ),
+        key=lambda path: _credential_sort_key(path, "token"),
+    )
+
+
+def _default_token_cache_file(client_secret_file, fallback_index=None):
+    client_number = _extract_numeric_suffix(client_secret_file, "client_secret")
+    if client_number is not None:
+        return CREDENTIALS_DIR / f"token_{max(client_number - 1, 0)}.json"
+
+    if fallback_index is not None:
+        return CREDENTIALS_DIR / f"token_{fallback_index}.json"
+
+    return CREDENTIALS_DIR / "token_0.json"
+
+
+def _read_token_scopes(json_file):
+    try:
+        payload = json.loads(Path(json_file).read_text(encoding="utf-8"))
+    except Exception:
+        return set()
+
+    scopes = payload.get("scopes") or []
+    return set(scopes) if isinstance(scopes, list) else set()
+
+
+def resolve_token_cache_file(client_secret_file, key_index=0):
+    client_secret_file = Path(client_secret_file)
+    preferred_cache_file = _default_token_cache_file(client_secret_file, fallback_index=key_index)
+    required_scopes = set(SCOPES)
+    client_id = _read_client_id(client_secret_file)
+    ordered_candidates = [preferred_cache_file]
+    ordered_candidates.extend(
+        token_file for token_file in _list_token_files() if token_file != preferred_cache_file
+    )
+
+    for token_file in ordered_candidates:
+        if not token_file.exists():
+            continue
+
+        if not required_scopes.issubset(_read_token_scopes(token_file)):
+            continue
+
+        if client_id:
+            if _read_client_id(token_file) != client_id:
+                continue
+            if token_file != preferred_cache_file:
+                logging.info(
+                    "Usando %s para %s (client_id coincidente).",
+                    token_file.name,
+                    client_secret_file.name,
+                )
+            return token_file
+
+        if token_file == preferred_cache_file:
+            return token_file
+
+    fallback_token = preferred_cache_file
+    logging.warning(
+        "No se encontro token compatible para %s. Se intentara crear %s si hace falta relogin.",
+        client_secret_file.name,
+        fallback_token.name,
+    )
+    return fallback_token
+
+
+def _build_credential_pool():
+    slots = []
+    for legacy_index, client_secret_file in enumerate(_list_client_secret_files()):
+        token_file = resolve_token_cache_file(client_secret_file, key_index=legacy_index)
+        if not token_file.exists():
+            logging.warning(
+                "Saltando %s: no hay token OAuth compatible presente en credentials/.",
+                client_secret_file.name,
+            )
+            continue
+
+        client_id = _read_client_id(client_secret_file)
+        token_client_id = _read_client_id(token_file)
+        if client_id and token_client_id != client_id:
+            logging.warning(
+                "Saltando %s: %s pertenece a otra app OAuth (%s).",
+                client_secret_file.name,
+                token_file.name,
+                token_client_id or "sin client_id",
+            )
+            continue
+
+        slots.append(
+            {
+                "legacy_index": legacy_index,
+                "client_name": client_secret_file.name,
+            }
+        )
+
+    return slots
+
+
 def get_authenticated_service(key_index=0):
     from google.auth.exceptions import RefreshError
-    # Tradicionalmente llave 1 -> client_secret_1 -> token_0
-    client_secret_file = CREDENTIALS_DIR / f"client_secret_{key_index + 1}.json"
-    creds_cache_file = CREDENTIALS_DIR / f"token_{key_index}.json"
+    client_secret_files = _list_client_secret_files()
+    if key_index < 0 or key_index >= len(client_secret_files):
+        logging.error("Indice de credencial fuera de rango: %s", key_index)
+        return None
+
+    client_secret_file = client_secret_files[key_index]
+    creds_cache_file = resolve_token_cache_file(client_secret_file, key_index)
     
     if not client_secret_file.exists():
         logging.error(f"No se encuentra el secreto de cliente: {client_secret_file}")
@@ -143,10 +296,10 @@ def get_authenticated_service(key_index=0):
                 logging.warning("Token revocado o fallido (%s). Borrando %s y relogueando...", e, creds_cache_file.name)
                 creds_cache_file.unlink(missing_ok=True)
                 flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_file), scopes)
-                creds = flow.run_local_server(port=0)
+                creds = flow.run_local_server(port=0, open_browser=False, timeout_seconds=300)
         else:
             flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_file), scopes)
-            creds = flow.run_local_server(port=0)
+            creds = flow.run_local_server(port=0, open_browser=False, timeout_seconds=300)
         creds_cache_file.write_text(creds.to_json(), encoding="utf-8")
 
     return build("youtube", "v3", credentials=creds)
@@ -445,6 +598,8 @@ def main():
     parser.add_argument("--source-video", help="Nombre (sin extension) del video original para filtrar sus teasers.")
     parser.add_argument("--from-orchestrator", action="store_true", help="Saltar bloqueo de instancia (.lock).")
     parser.add_argument("--key", type=int, default=0, help="Indice del token a usar (0, 1, 2, 3)")
+    parser.add_argument("--single-file", help="Subir un solo archivo (ruta completa). Ignora --source-video y list_pending_teasers.")
+    parser.add_argument("--state-dir", default="/sdcard/Antigravity/.state", help="Directorio para markers de estado.")
     args = parser.parse_args()
 
     print("=" * 60)
@@ -469,29 +624,53 @@ def main():
         CREDENTIALS_DIR.mkdir(exist_ok=True)
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-        client_files = sorted(path.name for path in CREDENTIALS_DIR.glob("client_secret*.json"))
-        if not client_files:
+        client_secret_files = _list_client_secret_files()
+        if not client_secret_files:
             logging.error("No hay client_secret en credentials/.")
             return
-
-        pending = list_pending_teasers(source_video_stem=args.source_video)
-        if not pending:
-            msg = f"No hay teasers pendientes para procesar{f' (filtro: {args.source_video})' if args.source_video else ''}."
-            logging.info(msg)
+        credential_slots = _build_credential_pool()
+        if not credential_slots:
+            logging.error(
+                "No hay llaves con token OAuth compatible en credentials/. "
+                "Renueva o genera tokens antes de reintentar."
+            )
             return
+
+        # --- MODO SINGLE FILE ---
+        if args.single_file:
+            single_path = Path(args.single_file)
+            if not single_path.exists():
+                logging.error("Archivo --single-file no existe: %s", args.single_file)
+                return
+            pending = [single_path]
+            logging.info("Modo single-file: %s", single_path.name)
+        else:
+            pending = list_pending_teasers(source_video_stem=args.source_video)
+            if not pending:
+                msg = f"No hay teasers pendientes para procesar{f' (filtro: {args.source_video})' if args.source_video else ''}."
+                logging.info(msg)
+                return
 
         logging.info("Se encontraron %s videos de descarte para procesar como Teasers.", len(pending))
 
         # Seleccionar credenciales disponibles con Quota
-        current_idx = args.key
-        while current_idx < len(client_files) and not is_client_available(client_files[current_idx]):
-            current_idx += 1
+        current_idx = 0
+        while current_idx < len(credential_slots):
+            current_slot = credential_slots[current_idx]
+            if current_slot["legacy_index"] < args.key:
+                current_idx += 1
+                continue
+            if not is_client_available(current_slot["client_name"]):
+                current_idx += 1
+                continue
+            break
 
-        if current_idx >= len(client_files):
-            logging.warning("Todas las llaves estan agotadas por hoy (QUOTA).")
+        if current_idx >= len(credential_slots):
+            logging.warning("Todas las llaves con token compatible estan agotadas por hoy (QUOTA).")
             return
 
-        youtube = get_authenticated_service(current_idx)
+        current_slot = credential_slots[current_idx]
+        youtube = get_authenticated_service(current_slot["legacy_index"])
 
         yt_schedule = fetch_yt_schedule(youtube)
         active_threads = []
@@ -529,17 +708,20 @@ def main():
             verifier_thread = None
             while True:
                 ret_val = upload_video(
-                    youtube, file_path, upload_metadata, next_date, current_idx, True
+                    youtube, file_path, upload_metadata, next_date, current_slot["legacy_index"], True
                 )
                 
                 if ret_val == "QUOTA_EXCEEDED":
-                    logging.info("Cuota agotada en %s. Rotando...", client_files[current_idx])
-                    update_quota_status(client_files[current_idx])
+                    logging.info("Cuota agotada en %s. Rotando...", current_slot["client_name"])
+                    update_quota_status(current_slot["client_name"])
                     current_idx += 1
-                    if current_idx >= len(client_files):
-                        logging.error("Se agotaron todas las llaves por hoy.")
+                    while current_idx < len(credential_slots) and not is_client_available(credential_slots[current_idx]["client_name"]):
+                        current_idx += 1
+                    if current_idx >= len(credential_slots):
+                        logging.error("Se agotaron todas las llaves con token compatible por hoy.")
                         return
-                    youtube = get_authenticated_service(current_idx)
+                    current_slot = credential_slots[current_idx]
+                    youtube = get_authenticated_service(current_slot["legacy_index"])
                     continue
 
                 if ret_val == "LIMIT_EXCEEDED":
@@ -553,6 +735,12 @@ def main():
             if result:
                 if verifier_thread:
                     active_threads.append(verifier_thread)
+
+                # Marker inmediato de subida completada (no espera processing de YT)
+                if args.single_file:
+                    marker_path = Path(args.state_dir) / f"{file_path.name}.uploaded"
+                    marker_path.parent.mkdir(parents=True, exist_ok=True)
+                    marker_path.write_text(datetime.now().isoformat())
 
                 date_key = next_date.strftime("%Y-%m-%d")
                 if date_key not in yt_schedule:

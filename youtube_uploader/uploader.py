@@ -38,7 +38,6 @@ CACHE_EXPIRY_SECONDS = 3600
 SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube.readonly",
-    "https://www.googleapis.com/auth/youtube.force-ssl",
 ]
 
 logging.basicConfig(
@@ -215,10 +214,164 @@ def pop_next_pending_video(queues, videos, yt_scheduled_dates, now_utc=None):
     return video, selected_lane, next_date
 
 
+def _read_client_id(json_file):
+    try:
+        payload = json.loads(Path(json_file).read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+
+    for section in ("installed", "web"):
+        client_id = payload.get(section, {}).get("client_id")
+        if client_id:
+            return client_id
+
+    return payload.get("client_id")
+
+
+def _extract_numeric_suffix(path_like, prefix):
+    stem = Path(path_like).stem
+    if not stem.startswith(prefix):
+        return None
+
+    suffix = stem[len(prefix):].lstrip("_")
+    return int(suffix) if suffix.isdigit() else None
+
+
+def _credential_sort_key(path_like, prefix):
+    path = Path(path_like)
+    suffix = _extract_numeric_suffix(path, prefix)
+    if suffix is None:
+        return (1, path.name.lower())
+    return (0, suffix)
+
+
+def _list_client_secret_files():
+    return sorted(
+        (path for path in CREDENTIALS_DIR.glob("client_secret*.json") if path.suffix.lower() == ".json"),
+        key=lambda path: _credential_sort_key(path, "client_secret"),
+    )
+
+
+def _list_token_files():
+    return sorted(
+        (
+            token_file
+            for token_file in CREDENTIALS_DIR.glob("token_*.json")
+            if _extract_numeric_suffix(token_file, "token") is not None
+        ),
+        key=lambda path: _credential_sort_key(path, "token"),
+    )
+
+
+def _default_token_cache_file(client_secret_file, fallback_index=None):
+    client_number = _extract_numeric_suffix(client_secret_file, "client_secret")
+    if client_number is not None:
+        return CREDENTIALS_DIR / f"token_{max(client_number - 1, 0)}.json"
+
+    if fallback_index is not None:
+        return CREDENTIALS_DIR / f"token_{fallback_index}.json"
+
+    return CREDENTIALS_DIR / "token_0.json"
+
+
+def _read_token_scopes(json_file):
+    try:
+        payload = json.loads(Path(json_file).read_text(encoding="utf-8"))
+    except Exception:
+        return set()
+
+    scopes = payload.get("scopes") or []
+    return set(scopes) if isinstance(scopes, list) else set()
+
+
+def resolve_creds_cache_file(client_secret_file, creds_cache_file):
+    client_secret_file = Path(client_secret_file)
+    creds_cache_file = Path(creds_cache_file)
+    preferred_cache_file = _default_token_cache_file(
+        client_secret_file,
+        fallback_index=_extract_numeric_suffix(creds_cache_file, "token"),
+    )
+    required_scopes = set(SCOPES)
+    client_id = _read_client_id(client_secret_file)
+    ordered_candidates = [preferred_cache_file]
+    if creds_cache_file != preferred_cache_file:
+        ordered_candidates.append(creds_cache_file)
+    ordered_candidates.extend(
+        token_file for token_file in _list_token_files() if token_file not in ordered_candidates
+    )
+
+    for token_file in ordered_candidates:
+        if not token_file.exists():
+            continue
+
+        if not required_scopes.issubset(_read_token_scopes(token_file)):
+            continue
+
+        if client_id:
+            if _read_client_id(token_file) != client_id:
+                continue
+            if token_file != preferred_cache_file:
+                logging.info(
+                    "Reasignando token %s -> %s para %s (client_id coincidente).",
+                    preferred_cache_file.name,
+                    token_file.name,
+                    client_secret_file.name,
+                )
+            return token_file
+
+        if token_file in {preferred_cache_file, creds_cache_file}:
+            return token_file
+
+    logging.warning(
+        "No se encontro token compatible para %s. Se intentara crear %s si hace falta relogin.",
+        client_secret_file.name,
+        preferred_cache_file.name,
+    )
+    return preferred_cache_file
+
+
+def _build_credential_pool():
+    slots = []
+    for legacy_index, client_secret_file in enumerate(_list_client_secret_files()):
+        preferred_token = _default_token_cache_file(client_secret_file, fallback_index=legacy_index)
+        token_file = resolve_creds_cache_file(client_secret_file, preferred_token)
+        if not token_file.exists():
+            logging.warning(
+                "Saltando %s: no hay token OAuth compatible presente en credentials/.",
+                client_secret_file.name,
+            )
+            continue
+
+        client_id = _read_client_id(client_secret_file)
+        token_client_id = _read_client_id(token_file)
+        if client_id and token_client_id != client_id:
+            logging.warning(
+                "Saltando %s: %s pertenece a otra app OAuth (%s).",
+                client_secret_file.name,
+                token_file.name,
+                token_client_id or "sin client_id",
+            )
+            continue
+
+        slots.append(
+            {
+                "legacy_index": legacy_index,
+                "client_secret_file": client_secret_file,
+                "token_file": token_file,
+                "client_name": client_secret_file.name,
+            }
+        )
+
+    return slots
+
+
 def get_authenticated_service(client_secret_file, creds_cache_file, scopes=None):
     from google.auth.exceptions import RefreshError
     client_secret_file = Path(client_secret_file)
-    creds_cache_file = Path(creds_cache_file)
+    creds_cache_file = resolve_creds_cache_file(client_secret_file, creds_cache_file)
     scopes = scopes or SCOPES
 
     creds = None
@@ -235,7 +388,7 @@ def get_authenticated_service(client_secret_file, creds_cache_file, scopes=None)
                 flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_file), scopes)
                 try:
                     # Esperamos 300s para que el usuario tenga tiempo de sobra en Edge
-                    creds = flow.run_local_server(port=0, timeout_seconds=300)
+                    creds = flow.run_local_server(port=0, open_browser=False, timeout_seconds=300)
                 except Exception:
                     auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
                     print(f"\n[!] Servidor local no disponible. Por favor visita esta URL en Edge:\n{auth_url}\n")
@@ -245,7 +398,7 @@ def get_authenticated_service(client_secret_file, creds_cache_file, scopes=None)
         else:
             flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_file), scopes)
             try:
-                creds = flow.run_local_server(port=0, timeout_seconds=300)
+                creds = flow.run_local_server(port=0, open_browser=False, timeout_seconds=300)
             except Exception:
                 auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
                 print(f"\n[!] Servidor local no disponible. Por favor visita esta URL en Edge:\n{auth_url}\n")
@@ -628,9 +781,16 @@ def main():
 
     CREDENTIALS_DIR.mkdir(exist_ok=True)
 
-    client_files = sorted(path.name for path in CREDENTIALS_DIR.glob("client_secret*.json"))
-    if not client_files:
+    client_secret_files = _list_client_secret_files()
+    if not client_secret_files:
         logging.error("No hay client_secret_X.json en credentials/.")
+        return
+    credential_slots = _build_credential_pool()
+    if not credential_slots:
+        logging.error(
+            "No hay llaves con token OAuth compatible en credentials/. "
+            "Renueva o genera tokens antes de reintentar."
+        )
         return
 
     if not JSON_DB.exists():
@@ -658,15 +818,16 @@ def main():
         return
 
     current_idx = 0
-    while current_idx < len(client_files) and not is_client_available(client_files[current_idx]):
+    while current_idx < len(credential_slots) and not is_client_available(credential_slots[current_idx]["client_name"]):
         current_idx += 1
 
-    if current_idx >= len(client_files):
+    if current_idx >= len(credential_slots):
         logging.warning("Todas las llaves estan agotadas por hoy segun quota_status.json.")
         return
 
-    current_client_secret = CREDENTIALS_DIR / client_files[current_idx]
-    current_token_file = CREDENTIALS_DIR / f"token_{current_idx}.json"
+    current_slot = credential_slots[current_idx]
+    current_client_secret = current_slot["client_secret_file"]
+    current_token_file = current_slot["token_file"]
     youtube = get_authenticated_service(current_client_secret, current_token_file)
 
     yt_schedule = fetch_yt_schedule(youtube)
@@ -724,16 +885,19 @@ def main():
             )
 
             if result == "QUOTA_EXCEEDED":
-                logging.info("Cuota agotada en llave %s. Rotando...", current_idx)
+                logging.info("Cuota agotada en %s. Rotando...", current_client_secret.name)
 
-                update_quota_status(client_files[current_idx])
+                update_quota_status(current_client_secret.name)
                 current_idx += 1
-                if current_idx >= len(client_files):
-                    logging.error("Se agotaron todas las llaves disponibles por hoy.")
+                while current_idx < len(credential_slots) and not is_client_available(credential_slots[current_idx]["client_name"]):
+                    current_idx += 1
+                if current_idx >= len(credential_slots):
+                    logging.error("Se agotaron todas las llaves con token compatible por hoy.")
                     return
 
-                current_client_secret = CREDENTIALS_DIR / client_files[current_idx]
-                current_token_file = CREDENTIALS_DIR / f"token_{current_idx}.json"
+                current_slot = credential_slots[current_idx]
+                current_client_secret = current_slot["client_secret_file"]
+                current_token_file = current_slot["token_file"]
                 youtube = get_authenticated_service(current_client_secret, current_token_file)
                 continue
 

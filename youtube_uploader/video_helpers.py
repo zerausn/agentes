@@ -126,7 +126,11 @@ def extract_teaser_sequence(raw_value):
         return normalize_video_stem(stem), 1
 
     source_stem = normalize_video_stem(stem[: match.start()])
-    teaser_number = int(match.group(1)) + 1
+    raw_teaser_number = match.group(1)
+    teaser_number = int(raw_teaser_number)
+    if raw_teaser_number.startswith("0") and len(raw_teaser_number) > 1:
+        teaser_number += 1
+    teaser_number = max(teaser_number, 1)
     return source_stem, teaser_number
 
 
@@ -245,10 +249,6 @@ def parse_ffprobe_stream_data(payload):
         width = int(stream.get("width") or 0)
         height = int(stream.get("height") or 0)
         duration = float(stream.get("duration") or 0.0)
-        codec_name = stream.get("codec_name")
-        pix_fmt = stream.get("pix_fmt")
-        color_transfer = stream.get("color_transfer") or stream.get("color_trc")
-        color_primaries = stream.get("color_primaries")
     except (TypeError, ValueError):
         return None
 
@@ -261,17 +261,12 @@ def parse_ffprobe_stream_data(payload):
         "duration": duration,
         "dimensions": f"{width}x{height}",
         "type": classify_video_kind(width, height, duration),
-        "codec_name": codec_name,
-        "pix_fmt": pix_fmt,
-        "color_transfer": color_transfer,
-        "color_primaries": color_primaries,
     }
 
 
 def probe_video_metadata(file_path, runner=None):
     runner = runner or subprocess.run
     ffprobe_binary = resolve_ffprobe_binary(Path(__file__).resolve().parent)
-    # Request a few extra fields that help decide pipelines (codec, pix_fmt, color metadata)
     command = [
         str(ffprobe_binary),
         "-v",
@@ -279,7 +274,7 @@ def probe_video_metadata(file_path, runner=None):
         "-select_streams",
         "v:0",
         "-show_entries",
-        "stream=width,height,duration,codec_name,pix_fmt,color_primaries,color_transfer",
+        "stream=width,height,duration",
         "-of",
         "json",
         str(file_path),
@@ -296,61 +291,6 @@ def probe_video_metadata(file_path, runner=None):
         return parse_ffprobe_stream_data(json.loads(result.stdout))
     except json.JSONDecodeError:
         return None
-
-
-def ffmpeg_probe_output(file_path, ffmpeg_binary=None, timeout=8):
-    """Return ffmpeg stderr/stdout for a quick inspection (used to detect SEI/HDR tags)."""
-    ffmpeg_binary = ffmpeg_binary or str(resolve_ffmpeg_binary(Path(__file__).resolve().parent))
-    cmd = [str(ffmpeg_binary), "-i", str(file_path)]
-    try:
-        res = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=timeout)
-        return (res.stderr or "") + (res.stdout or "")
-    except Exception:
-        return ""
-
-
-def is_hdr(file_path, ffmpeg_binary=None):
-    """Heurística rápida para detectar si un video contiene metadata HDR.
-
-    Usa la salida de ffmpeg -i para buscar SEI/mastering/max_cll u otras pistas.
-    Esto no es perfecto pero es suficiente para elegir un pipeline rápido vs uno
-    que preserve o trate HDR con más cuidado.
-    """
-    txt = ffmpeg_probe_output(file_path, ffmpeg_binary=ffmpeg_binary)
-    if not txt:
-        return False
-    low = txt.lower()
-    hdr_signals = [
-        "mastering display",
-        "content light level",
-        "maxcll",
-        "maxfall",
-        "smpte2084",
-        "pq",
-        "hlg",
-        "sei",
-    ]
-    for s in hdr_signals:
-        if s in low:
-            return True
-    # fallback: check color_primaries/pix_fmt via ffprobe
-    meta = probe_video_metadata(file_path)
-    if meta:
-        cp = (meta.get("color_primaries") or "").lower()
-        if cp and ("bt2020" in cp or "bt2100" in cp):
-            return True
-    return False
-
-
-def ffmpeg_has_mediacodec(ffmpeg_binary=None):
-    """Detect if the ffmpeg binary advertises mediacodec encoders/decoders."""
-    ffmpeg_binary = ffmpeg_binary or str(resolve_ffmpeg_binary(Path(__file__).resolve().parent))
-    try:
-        res = subprocess.run([str(ffmpeg_binary), "-encoders"], capture_output=True, text=True, check=False, timeout=6)
-        out = res.stdout or ""
-        return "h264_mediacodec" in out or "hevc_mediacodec" in out
-    except Exception:
-        return False
 
 
 def enrich_video_record(video, include_probe=False):

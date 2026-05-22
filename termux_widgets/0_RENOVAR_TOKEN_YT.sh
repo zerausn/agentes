@@ -9,7 +9,7 @@ export PREFIX=/data/data/com.termux/files/usr
 export PATH="$PREFIX/bin:/bin:/system/bin:/system/xbin"
 
 # CRITICO: usar navegador nativo Android
-export BROWSER=/data/data/com.termux/files/home/bin/chrome-beta-open
+export BROWSER=termux-open-url
 
 # Pausa al salir para leer el resultado
 trap 'echo ""; echo "========================================"; echo " RENOVACION FINALIZADA — cerrando en 20s"; echo "========================================"; sleep 20' EXIT

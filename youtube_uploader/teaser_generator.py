@@ -1,217 +1,263 @@
-import json
 import logging
 import os
 import subprocess
 from pathlib import Path
 
-from datetime import datetime
-from video_helpers import (
-    resolve_ffmpeg_binary,
-    is_hdr,
-    ffmpeg_has_mediacodec,
-    probe_video_metadata,
-    load_json_file,
-    save_json_file,
-)
 
-# Configuración HARDENED para S24 Ultra
-BASE_DIR = Path('/data/data/com.termux/files/home/agentes/youtube_uploader')
-JSON_DB = BASE_DIR / 'videos_db.json'
-# Log en SDCard para que el usuario pueda verlo desde cualquier app de archivos
-LOG_FILE = Path('/sdcard/Antigravity/teaser_generator_debug.log')
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler()],
-)
+BASE_DIR = Path("/data/data/com.termux/files/home/agentes/youtube_uploader")
+JSON_DB = BASE_DIR / "videos_db.json"
+LOG_FILE = Path("/sdcard/Antigravity/teaser_generator_debug.log")
+STORAGE_ROOT = Path(os.environ.get("AGENTES_STORAGE_ROOT", "/sdcard/Antigravity"))
 
 TEASER_DURATION_SEC = 16
+FFMPEG_BIN = "/data/data/com.termux/files/usr/bin/ffmpeg"
+FFPROBE_BIN = "/data/data/com.termux/files/usr/bin/ffprobe"
+SEGMENT_EPSILON_SEC = 0.001
 
 
-def build_ffmpeg_teaser_cmd(input_file, start_sec, output_path, ffmpeg_path=None, mediacodec_available=None, codec=None, hdr=None):
-    """Build the ffmpeg command for a teaser using pre-computed classification.
+def configure_logging() -> None:
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler()],
+        force=True,
+    )
 
-    Accepts ffmpeg_path and mediacodec_available to avoid probing repeatedly.
-    codec and hdr may be provided by the caller (classification step).
-    """
-    # Ruta absoluta al ffmpeg de Termux para evitar fallos de PATH en el Widget
-    if ffmpeg_path is None:
-        ffmpeg = resolve_ffmpeg_binary(BASE_DIR)
-        ffmpeg_path = str(ffmpeg)
 
-    if mediacodec_available is None:
-        mediacodec_available = ffmpeg_has_mediacodec(ffmpeg_path)
-
-    # If caller didn't provide codec/hdr, probe here (cheapish)
-    meta = None
-    if codec is None:
-        try:
-            meta = probe_video_metadata(input_file)
-        except Exception:
-            meta = None
-        codec = (meta.get('codec_name') or '').lower() if meta else ''
-
-    if hdr is None:
-        try:
-            hdr = is_hdr(input_file, ffmpeg_binary=ffmpeg_path)
-        except Exception:
-            hdr = False
-
-    # Fast conservative path: input already H.264 and not HDR -> remux copy
-    if codec == 'h264' and not hdr:
-        return [
-            ffmpeg_path, '-y',
-            '-ss', str(round(start_sec, 3)),
-            '-t', str(TEASER_DURATION_SEC),
-            '-i', str(input_file),
-            '-c', 'copy',
-            str(output_path),
-        ]
-
-    # If input codec is HEVC (common on S24) but not HDR, prefer HW transcode
-    # to H.264 via mediacodec if available; keeps compatibility with uploaders
-    # while speeding up compared to software libx264.
-    if codec in ('hevc', 'h265') and not hdr and mediacodec_available:
-        return [
-            ffmpeg_path, '-y',
-            '-hwaccel', 'mediacodec',
-            '-c:v', 'hevc_mediacodec',
-            '-i', str(input_file),
-            '-ss', str(round(start_sec, 3)),
-            '-t', str(TEASER_DURATION_SEC),
-            '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p',
-            '-pix_fmt', 'yuv420p',
-            '-c:v', 'h264_mediacodec', '-b:v', '6000k',
-            '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart',
-            str(output_path),
-        ]
-
-    # Otherwise: fallback to software encode to H.264 (safe, compatible)
+def build_ffmpeg_teaser_cmd(input_file: Path, start_sec: float, output_path: Path) -> list[str]:
     return [
-        ffmpeg_path, '-y',
-        '-i', str(input_file),
-        '-ss', str(round(start_sec, 3)),
-        '-t', str(TEASER_DURATION_SEC),
-        '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p',
-        '-pix_fmt', 'yuv420p',
-        '-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast',
-        '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart',
+        FFMPEG_BIN,
+        "-y",
+        "-ss",
+        str(round(start_sec, 3)),
+        "-t",
+        str(TEASER_DURATION_SEC),
+        "-i",
+        str(input_file),
+        "-vf",
+        "scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:v",
+        "libx264",
+        "-crf",
+        "18",
+        "-preset",
+        "ultrafast",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-movflags",
+        "+faststart",
+        "-f",
+        "mp4",
         str(output_path),
     ]
 
 
-def classify_video_for_pipeline(input_file, ffmpeg_path, mediacodec_available):
-    """Return a simple classification dict for the input file.
-
-    Keys: codec (str), hdr (bool), pipeline (one of 'remux','hw_transcode','sw_transcode'), meta (ffprobe metadata or None)
-    """
-    meta = None
+def probe_duration_seconds(input_file: Path) -> float | None:
+    command = [
+        FFPROBE_BIN,
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        str(input_file),
+    ]
     try:
-        meta = probe_video_metadata(input_file)
-    except Exception:
-        meta = None
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+    except FileNotFoundError:
+        logging.error("ffprobe no encontrado en %s", FFPROBE_BIN)
+        return None
+    except Exception as exc:
+        logging.error("No se pudo ejecutar ffprobe sobre %s: %s", input_file.name, exc)
+        return None
 
-    codec = (meta.get('codec_name') or '').lower() if meta else ''
+    if result.returncode != 0:
+        logging.error("ffprobe fallo para %s", input_file.name)
+        logging.error("  STDOUT: %s", result.stdout)
+        logging.error("  STDERR: %s", result.stderr)
+        return None
+
+    raw_duration = (result.stdout or "").strip()
     try:
-        hdr = is_hdr(input_file, ffmpeg_binary=ffmpeg_path)
-    except Exception:
-        hdr = False
+        duration_sec = float(raw_duration)
+    except ValueError:
+        logging.error("ffprobe devolvio una duracion invalida para %s: %r", input_file.name, raw_duration)
+        return None
 
-    if codec == 'h264' and not hdr:
-        pipeline = 'remux'
-    elif codec in ('hevc', 'h265') and not hdr and mediacodec_available:
-        pipeline = 'hw_transcode'
-    else:
-        pipeline = 'sw_transcode'
+    if duration_sec <= 0:
+        logging.error("Duracion no valida para %s: %.6f", input_file.name, duration_sec)
+        return None
+    return duration_sec
 
-    return {
-        'codec': codec,
-        'hdr': bool(hdr),
-        'pipeline': pipeline,
-        'meta': meta,
-    }
 
-def main():
-    logging.info('=' * 60)
-    logging.info(' INICIANDO GENERADOR DE TEASERS (S24 ULTRA HARDENED) ')
-    logging.info('=' * 60)
-    
-    input_dir = Path('/sdcard/Antigravity/crudos_pendientes')
-    output_dir = Path('/sdcard/Antigravity/teasers_pendientes')
+def build_segment_starts(duration_sec: float) -> list[float]:
+    segment_starts = []
+    start_sec = 0.0
+    while start_sec + TEASER_DURATION_SEC <= duration_sec + SEGMENT_EPSILON_SEC:
+        segment_starts.append(round(start_sec, 3))
+        start_sec += TEASER_DURATION_SEC
+    if not segment_starts and duration_sec > 0:
+        segment_starts = [0.0]
+    return segment_starts
+
+
+def expected_outputs_for(output_dir: Path, base_name: str, duration_sec: float) -> list[Path]:
+    return [
+        output_dir / f"{base_name}_teaser_{index}.mp4"
+        for index, _start_sec in enumerate(build_segment_starts(duration_sec), start=1)
+    ]
+
+
+def main() -> None:
+    configure_logging()
+    logging.info("=" * 60)
+    logging.info(" INICIANDO GENERADOR DE TEASERS (CORTES DE 16 SEG)")
+    logging.info("=" * 60)
+
+    input_dir = STORAGE_ROOT / "crudos_pendientes"
+    output_dir = STORAGE_ROOT / "teasers_pendientes"
+    markers_dir = STORAGE_ROOT / ".state"
     output_dir.mkdir(exist_ok=True, parents=True)
-    
-    files = list(input_dir.glob('*.mp4'))
+    markers_dir.mkdir(exist_ok=True, parents=True)
+
+    files = list(input_dir.glob("*.mp4"))
     if not files:
-        logging.info('No se encontraron videos en /sdcard/Antigravity/crudos_pendientes/')
+        logging.info("No se encontraron videos en %s", input_dir)
         return
 
-    # Precompute ffmpeg path and mediacodec availability once per run
-    ffmpeg_path = str(resolve_ffmpeg_binary(BASE_DIR))
-    mediacodec_available = ffmpeg_has_mediacodec(ffmpeg_path)
+    for input_file in files:
+        base_name = input_file.stem
+        logging.info("Generando teasers para: %s", input_file.name)
 
-    for f in files:
-        base_name = f.stem
-        logging.info(f'Procesando video: {f.name}')
+        duration_sec = probe_duration_seconds(input_file)
+        if duration_sec is None:
+            logging.error("  Saltando %s: no se pudo determinar la duracion real", input_file.name)
+            continue
 
-        # Classify the input to decide pipeline; store classification in small DB
-        classification_db_path = Path('/sdcard/Antigravity') / 'classification_db.json'
-        try:
-            db = load_json_file(classification_db_path, {})
-        except Exception:
-            db = {}
+        segment_starts = build_segment_starts(duration_sec)
+        if not segment_starts:
+            logging.warning(
+                "  Saltando %s: la duracion %.3fs no alcanza para generar teasers",
+                input_file.name,
+                duration_sec,
+            )
+            continue
 
-        key = str(f.resolve())
-        entry = db.get(key) or {}
-        # if we don't have a recent classification, compute it
-        needs_probe = True
-        if entry.get('classified_at'):
-            try:
-                classified_time = datetime.fromisoformat(entry['classified_at'])
-                # re-probe if older than 1 day
-                if (datetime.now() - classified_time).total_seconds() < 86400:
-                    needs_probe = False
-            except Exception:
-                needs_probe = True
+        logging.info(
+            "Video: %s | Duracion: %.1fs | Partes de %ss -> %s segmentos totales",
+            input_file.name,
+            duration_sec,
+            TEASER_DURATION_SEC,
+            len(segment_starts),
+        )
 
-        if needs_probe:
-            try:
-                cls = classify_video_for_pipeline(f, ffmpeg_path, mediacodec_available)
-                entry.update(cls)
-                entry['classified_at'] = datetime.now().isoformat()
-                db[key] = entry
-                save_json_file(classification_db_path, db)
-                logging.info('  Clasificación: codec=%s hdr=%s pipeline=%s', entry.get('codec'), entry.get('hdr'), entry.get('pipeline'))
-            except Exception as e:
-                logging.error('  No se pudo clasificar %s: %s', f.name, e)
-                entry = entry or {'codec': None, 'hdr': False, 'pipeline': 'sw_transcode'}
+        done_marker = markers_dir / f"{base_name}.done"
+        lock_marker = markers_dir / f"{base_name}.lock"
+        expected_outputs = expected_outputs_for(output_dir, base_name, duration_sec)
+        missing_outputs = [path for path in expected_outputs if not path.exists()]
 
-        pipeline = entry.get('pipeline', 'sw_transcode')
-
-        # Generar segmentos
-        for i in range(1, 4):  # Generamos los primeros 3 segmentos como prueba robusta
-            out_path = output_dir / f'{base_name}_teaser_{i}.mp4'
-            start_sec = (i - 1) * TEASER_DURATION_SEC
-
-            # build command using the precomputed classification
-            cmd = build_ffmpeg_teaser_cmd(f, start_sec, out_path, ffmpeg_path=ffmpeg_path, mediacodec_available=mediacodec_available, codec=entry.get('codec'), hdr=entry.get('hdr'))
-            logging.info('EJECUTANDO COMANDO (pipeline=%s): %s', pipeline, ' '.join(map(str, cmd)))
-
-            # Ejecutar con captura de error completa
-            try:
-                res = subprocess.run(cmd, capture_output=True, text=True, check=False)
-            except Exception as e:
-                logging.error('  [FAIL] Segmento %s FALLÓ al ejecutar: %s', i, e)
+        if done_marker.exists():
+            if not missing_outputs:
+                logging.info(
+                    "  Ignorando %s porque ya existe marker .done y estan los %s teasers esperados",
+                    input_file.name,
+                    len(expected_outputs),
+                )
                 continue
+            logging.warning(
+                "  Marker .done huerfano detectado para %s: faltan %s teaser(s). Se regenerara.",
+                input_file.name,
+                len(missing_outputs),
+            )
+            done_marker.unlink(missing_ok=True)
 
-            if res.returncode == 0:
-                logging.info('  [OK] Segmento %s generado exitosamente: %s', i, out_path.name)
+        if lock_marker.exists():
+            logging.info(
+                "  Ignorando %s porque ya existe marker .lock (otro proceso)",
+                input_file.name,
+            )
+            continue
+
+        try:
+            lock_marker.write_text(str(os.getpid()), encoding="utf-8")
+            failed_segments: list[int] = []
+
+            for index, start_sec in enumerate(segment_starts, start=1):
+                final_output = output_dir / f"{base_name}_teaser_{index}.mp4"
+                if final_output.exists():
+                    logging.info(
+                        "  Saltando segmento %s porque ya existe: %s",
+                        index,
+                        final_output.name,
+                    )
+                    continue
+
+                temp_output = Path(str(final_output) + ".part")
+                command = build_ffmpeg_teaser_cmd(input_file, start_sec, temp_output)
+                segment_end_sec = min(start_sec + TEASER_DURATION_SEC, duration_sec)
+
+                result = subprocess.run(command, capture_output=True, text=True)
+                if result.returncode == 0:
+                    try:
+                        os.replace(str(temp_output), str(final_output))
+                        logging.info(
+                            "  [OK] Parte %s/%s -> %s (s%s - s%s)",
+                            index,
+                            len(segment_starts),
+                            final_output.name,
+                            round(start_sec),
+                            round(segment_end_sec),
+                        )
+                    except Exception as exc:
+                        failed_segments.append(index)
+                        logging.error(
+                            "  [FAIL] Parte %s/%s no se pudo cerrar como %s: %s",
+                            index,
+                            len(segment_starts),
+                            final_output,
+                            exc,
+                        )
+                        temp_output.unlink(missing_ok=True)
+                else:
+                    failed_segments.append(index)
+                    logging.error(
+                        "  [FAIL] Parte %s/%s -> %s (s%s - s%s)",
+                        index,
+                        len(segment_starts),
+                        final_output.name,
+                        round(start_sec),
+                        round(segment_end_sec),
+                    )
+                    logging.error("  STDOUT: %s", result.stdout)
+                    logging.error("  STDERR: %s", result.stderr)
+                    temp_output.unlink(missing_ok=True)
+
+            missing_outputs = [path for path in expected_outputs if not path.exists()]
+            if missing_outputs or failed_segments:
+                done_marker.unlink(missing_ok=True)
+                logging.error(
+                    "  No se crea marker .done para %s. Faltan %s teaser(s): %s",
+                    input_file.name,
+                    len(missing_outputs),
+                    ", ".join(path.name for path in missing_outputs) if missing_outputs else "ninguno",
+                )
             else:
-                logging.error('  [FAIL] Segmento %s FALLÓ.', i)
-                logging.error('  STDOUT: %s', (res.stdout or '')[-1000:])
-                logging.error('  STDERR: %s', (res.stderr or '')[-2000:])
+                done_marker.write_text("ok", encoding="utf-8")
+                logging.info("  Marca de procesado creada: %s", done_marker.name)
+        finally:
+            lock_marker.unlink(missing_ok=True)
 
-    logging.info('Proceso finalizado. Puedes revisar los archivos en /sdcard/Antigravity/teasers_pendientes/')
+    logging.info(
+        "Proceso finalizado. Puedes revisar los archivos en %s",
+        output_dir,
+    )
+
 
 if __name__ == "__main__":
     main()

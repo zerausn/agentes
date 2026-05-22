@@ -110,10 +110,13 @@ cat > "$SHORTCUTS_DIR/vigia_meta.sh" <<'EOF'
 set -euo pipefail
 export PATH="/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin"
 TERMUX_HOME="/data/data/com.termux/files/home"
-PROOT="/data/data/com.termux/files/usr/bin/proot-distro"
-LAUNCHER="$TERMUX_HOME/agentes/scripts/linux/vigia_meta_termux.sh"
-LOG_FILE="$TERMUX_HOME/agentes/meta_uploader/fb_to_ig_vigia.log"
-exec "$PROOT" login debian -- /bin/bash -lc "$LAUNCHER & sleep 3; tail -f '$LOG_FILE'"
+LAUNCHER="$TERMUX_HOME/agentes/scripts/linux/vigia_meta_widget.sh"
+if [ ! -f "$LAUNCHER" ]; then
+  echo "[ERROR] no existe $LAUNCHER"
+  echo "        Corre primero 0_RENOVAR_REPO para actualizar el repo."
+  exit 1
+fi
+exec bash "$LAUNCHER" "$@"
 EOF
 
 cat > "$SHORTCUTS_DIR/Monitorear_Temperaturas.sh" <<'EOF'
@@ -160,6 +163,54 @@ echo
 read -r -p "Enter para cerrar..."
 EOF
 
+# --- Widget 0: PIPELINE COMPLETO ---
+cat > "$SHORTCUTS_DIR/0_PIPELINE_COMPLETO.sh" << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+export PATH="/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin"
+exec bash "/data/data/com.termux/files/home/agentes/scripts/linux/pipeline_completo_termux.sh"
+EOF
+
+# --- Widget 0: RENOVAR REPO ---
+cat > "$SHORTCUTS_DIR/0_RENOVAR_REPO.sh" << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+export PATH="/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin"
+exec bash "/data/data/com.termux/files/home/agentes/scripts/linux/renovar_repo_termux.sh"
+EOF
+
+# --- Widget 1: CORTAR TEASERS ---
+cat > "$SHORTCUTS_DIR/1_CORTAR_TEASERS.sh" << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+export PATH="/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin"
+exec bash "/data/data/com.termux/files/home/agentes/scripts/linux/cortar_teasers_termux.sh"
+EOF
+
+# --- Widget 2: SUBIR CRUDOS YT ---
+cat > "$SHORTCUTS_DIR/2_SUBIR_CRUDOS_YT.sh" << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+export PATH="/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin"
+exec bash "/data/data/com.termux/files/home/agentes/scripts/linux/subir_crudos_yt_termux.sh"
+EOF
+
+# --- Widget 3: SUBIR TEASERS YT ---
+cat > "$SHORTCUTS_DIR/3_SUBIR_TEASERS_YT.sh" << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+export PATH="/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin"
+exec bash "/data/data/com.termux/files/home/agentes/scripts/linux/subir_teasers_termux.sh"
+EOF
+
+# --- Widget 4: VIGIA FACEBOOK ---
+cat > "$SHORTCUTS_DIR/4_VIGIA_FACEBOOK.sh" << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+export PATH="/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin"
+exec bash "/data/data/com.termux/files/home/agentes/scripts/linux/vigia_facebook_termux.sh"
+EOF
+
 chmod +x \
   "$REPO_DIR/scripts/linux/bootstrap_termux_arm64.sh" \
   "$REPO_DIR/scripts/linux/sincronizar_yt_a_fb.sh" \
@@ -167,13 +218,25 @@ chmod +x \
   "$REPO_DIR/scripts/linux/vigia_meta.sh" \
   "$REPO_DIR/scripts/linux/vigia_meta_termux.sh" \
   "$REPO_DIR/scripts/linux/vigia_meta_widget.sh" \
+  "$REPO_DIR/scripts/linux/pipeline_completo_termux.sh" \
+  "$REPO_DIR/scripts/linux/renovar_repo_termux.sh" \
+  "$REPO_DIR/scripts/linux/cortar_teasers_termux.sh" \
+  "$REPO_DIR/scripts/linux/subir_crudos_yt_termux.sh" \
+  "$REPO_DIR/scripts/linux/subir_teasers_termux.sh" \
+  "$REPO_DIR/scripts/linux/vigia_facebook_termux.sh" \
   "$BOOT_DIR/start_sshd.sh" \
   "$SHORTCUTS_DIR/Arrancar_SSH.sh" \
   "$SHORTCUTS_DIR/Estado_Remoto.sh" \
   "$SHORTCUTS_DIR/sincronizar_yt_a_fb.sh" \
   "$SHORTCUTS_DIR/vigia_meta.sh" \
   "$SHORTCUTS_DIR/Monitorear_Temperaturas.sh" \
-  "$SHORTCUTS_DIR/Monitor_Logs.sh"
+  "$SHORTCUTS_DIR/Monitor_Logs.sh" \
+  "$SHORTCUTS_DIR/0_PIPELINE_COMPLETO.sh" \
+  "$SHORTCUTS_DIR/0_RENOVAR_REPO.sh" \
+  "$SHORTCUTS_DIR/1_CORTAR_TEASERS.sh" \
+  "$SHORTCUTS_DIR/2_SUBIR_CRUDOS_YT.sh" \
+  "$SHORTCUTS_DIR/3_SUBIR_TEASERS_YT.sh" \
+  "$SHORTCUTS_DIR/4_VIGIA_FACEBOOK.sh"
 
 mkdir -p "$REPO_DIR/youtube_uploader/downloads" "$REPO_DIR/meta_uploader"
 
