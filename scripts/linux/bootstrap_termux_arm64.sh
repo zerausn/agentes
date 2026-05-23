@@ -211,6 +211,14 @@ export PATH="/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin"
 exec bash "/data/data/com.termux/files/home/agentes/scripts/linux/vigia_facebook_termux.sh"
 EOF
 
+# --- Widget: LIMPIAR CRUDOS ---
+cat > "$SHORTCUTS_DIR/LIMPIAR_CRUDOS.sh" << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+export PATH="/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin"
+exec bash "/data/data/com.termux/files/home/agentes/scripts/linux/limpiar_crudos_incompletos_termux.sh"
+EOF
+
 chmod +x \
   "$REPO_DIR/scripts/linux/bootstrap_termux_arm64.sh" \
   "$REPO_DIR/scripts/linux/sincronizar_yt_a_fb.sh" \
@@ -224,6 +232,7 @@ chmod +x \
   "$REPO_DIR/scripts/linux/subir_crudos_yt_termux.sh" \
   "$REPO_DIR/scripts/linux/subir_teasers_termux.sh" \
   "$REPO_DIR/scripts/linux/vigia_facebook_termux.sh" \
+  "$REPO_DIR/scripts/linux/limpiar_crudos_incompletos_termux.sh" \
   "$BOOT_DIR/start_sshd.sh" \
   "$SHORTCUTS_DIR/Arrancar_SSH.sh" \
   "$SHORTCUTS_DIR/Estado_Remoto.sh" \
@@ -236,7 +245,8 @@ chmod +x \
   "$SHORTCUTS_DIR/1_CORTAR_TEASERS.sh" \
   "$SHORTCUTS_DIR/2_SUBIR_CRUDOS_YT.sh" \
   "$SHORTCUTS_DIR/3_SUBIR_TEASERS_YT.sh" \
-  "$SHORTCUTS_DIR/4_VIGIA_FACEBOOK.sh"
+  "$SHORTCUTS_DIR/4_VIGIA_FACEBOOK.sh" \
+  "$SHORTCUTS_DIR/LIMPIAR_CRUDOS.sh"
 
 mkdir -p "$REPO_DIR/youtube_uploader/downloads" "$REPO_DIR/meta_uploader"
 

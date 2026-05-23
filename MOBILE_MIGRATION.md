@@ -576,6 +576,7 @@ El conjunto minimo recomendado es:
 - `~/.shortcuts/vigia_meta.sh`
 - `~/.shortcuts/Monitorear_Temperaturas.sh`
 - `~/.shortcuts/Monitor_Logs.sh`
+- `~/.shortcuts/LIMPIAR_CRUDOS.sh`
 
 Los wrappers reales verificados en el Vivo quedan asi:
 
@@ -630,6 +631,9 @@ Relaciones repo -> widget:
 - `scripts/linux/sincronizar_yt_a_fb_termux.sh` -> launcher real dentro de Debian
 - `scripts/linux/vigia_meta_widget.sh` -> wrapper de widget para Meta
 - `scripts/linux/vigia_meta_termux.sh` -> launcher real dentro de Debian
+- `scripts/linux/LIMPIAR_CRUDOS.sh` -> wrapper Termux de acceso directo para limpiar crudos
+- `scripts/linux/limpiar_crudos_incompletos_termux.sh` -> launcher real de limpieza
+- `youtube_uploader/clean_incomplete_crudos.py` -> script de Python para detectar y mover crudos sin teaser
 
 ### 11. Comportamiento esperado de los launchers moviles
 

@@ -302,7 +302,7 @@ def process_new_posts(dry_run=False):
                         for chunk in resp.iter_content(chunk_size=8192):
                             f.write(chunk)
                     
-                    local_path = ensure_ig_compatibility(str(temp_file), force_recode=True)
+                    local_path = ensure_ig_compatibility(str(temp_file), force_recode=False)
                     vinfo = probe_video(local_path)
                     duration = vinfo.get("duration_seconds", 0)
                     
@@ -351,15 +351,54 @@ def process_new_posts(dry_run=False):
                     
                     if item["type"] == "VIDEO":
                         if creation_id:
-                            logging.info("Contenedor %s listo. Esperando estabilizacion en Meta...", target_type)
-                            time.sleep(2)  # Pausa de propagación requerida para archivos pesados
-                            if upload_ig_binary(creation_id, path_for_target):
+                            # --- Intento con retry si Instagram rechaza por peso/formato ---
+                            upload_ok = False
+                            fallback_path = None
+                            for attempt in range(2):
+                                current_path = path_for_target if attempt == 0 else fallback_path
+                                logging.info(
+                                    "Contenedor %s listo. Esperando estabilizacion en Meta... (intento %s/2)",
+                                    target_type, attempt + 1,
+                                )
+                                time.sleep(2)
+                                if not upload_ig_binary(creation_id, current_path):
+                                    logging.warning("Upload binario fallo (intento %s/2)", attempt + 1)
+                                    if attempt == 0:
+                                        logging.info(
+                                            "Reintentando con recode CRF 18 para reducir peso..."
+                                        )
+                                        fallback_path = ensure_ig_compatibility(
+                                            local_path, force_recode=True, crf_value=18
+                                        )
+                                        # Re-crear contenedor para el reintento
+                                        from meta_uploader import _create_ig_video_container
+                                        if target_type == "REELS":
+                                            creation_id = _create_ig_video_container(
+                                                "REELS", caption=final_caption, share_to_feed=True
+                                            )
+                                        elif target_type == "STORIES":
+                                            creation_id = _create_ig_video_container("STORIES")
+                                        elif target_type == "FEED":
+                                            creation_id = _create_ig_video_container(
+                                                "REELS", caption=final_caption, share_to_feed=True
+                                            )
+                                        if not creation_id:
+                                            logging.error("No se pudo recrear contenedor para fallback.")
+                                            break
+                                    continue
                                 if wait_for_ig_container(creation_id):
                                     ig_id = publish_ig_container(creation_id)
-                                    if ig_id: 
+                                    if ig_id:
                                         logging.info("Video %s publicado en IG %s", post_id, target_type)
                                         at_least_one_success = True
+                                        upload_ok = True
+                                        break
+                                else:
+                                    logging.warning("Contenedor IG no listo (intento %s/2)", attempt + 1)
 
+                            if upload_ok and fallback_path is not None and fallback_path != path_for_target and os.path.exists(fallback_path):
+                                try: os.remove(fallback_path)
+                                except: pass
                         
                         if path_for_target != local_path and os.path.exists(path_for_target):
                             try: os.remove(path_for_target)

@@ -2079,7 +2079,7 @@ def get_instagram_user_feed(limit=5):
     return _request_json("GET", url, params=params)
 
 
-def ensure_ig_compatibility(file_path, max_duration=None, force_recode=False):
+def ensure_ig_compatibility(file_path, max_duration=None, force_recode=False, crf_value=23):
     """
     Optimiza el archivo para IG:
     1. Si excede 300MB -> Aplica Fast Slice (-fs 290M).
@@ -2126,7 +2126,7 @@ def ensure_ig_compatibility(file_path, max_duration=None, force_recode=False):
         cmd += [
             "-c:v", "libx264",
             "-preset", "veryfast",
-            "-crf", "23",
+            "-crf", str(crf_value),
             "-profile:v", "high",
             "-level:v", "4.1",
             "-pix_fmt", "yuv420p",
