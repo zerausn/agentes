@@ -208,3 +208,18 @@
   - `~/.shortcuts/6_VNC_NOTE9.sh` — shortcut para Termux Widget (un toque)
 - **noVNC** también probado: `http://10.31.120.236:5800/vnc.html` cargó en
   Chrome de la tablet (sin túnel necesario), requiere clickear "Connect".
+
+## Vivo V2058: Conexión ADB y widget unificado
+- `2026-05-22`: Se conectó un Vivo V2058 por USB al Parrot OS. Autorizada la
+  depuración USB y verificado el stack Termux (`com.termux`) con Python, FFmpeg
+  y scripts de agentes.
+- **Problema:** `2_SUBIR_CRUDOS_YT.sh` no encontraba los 4 crudos (20 GB total)
+  en `crudos_pendientes/` porque `video_scanner.py` no se había ejecutado desde
+  que se copiaron. El uploader reportaba "Videos pendientes: 0".
+- **Solución:** Se fusionó `video_scanner.py` + `uploader.py` en el widget
+  `2_SUBIR_CRUDOS_YT.sh`. Ahora ejecuta escaneo antes de subir, garantizando
+  que cualquier video nuevo en `crudos_pendientes/` sea detectado y subido.
+- **Script instalado:** `~/.shortcuts/2_SUBIR_CRUDOS_YT.sh` en el Vivo.
+  Fuente en repo: `scripts/linux/subir_crudos_yt_widget.sh`.
+- **Logging:** El widget ahora escribe a `widget_logs/2_SUBIR_CRUDOS_YT.log`
+  además de mostrar en terminal.
