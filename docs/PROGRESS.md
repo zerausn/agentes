@@ -209,6 +209,14 @@
 - **noVNC** también probado: `http://10.31.120.236:5800/vnc.html` cargó en
   Chrome de la tablet (sin túnel necesario), requiere clickear "Connect".
 
+## Note 9 SM-N9600: Mismo fix — scanner antes del uploader
+- `2026-05-22`: El widget `2_SUBIR_CRUDOS_YT` del Note 9 tenía el mismo problema
+  que el Vivo: corría solo `uploader.py` sin `video_scanner.py` previo.
+- **Fix:** Se añadió `video_scanner.py` antes del uploader en
+  `scripts/linux/subir_crudos_yt_termux.sh`. El widget ahora escanea
+  `crudos_pendientes/` y luego sube.
+- El Note 9 tiene **8 crudos** (12 GB) pendientes y **101 teasers** ya generados.
+
 ## Vivo V2058: Conexión ADB y widget unificado
 - `2026-05-22`: Se conectó un Vivo V2058 por USB al Parrot OS. Autorizada la
   depuración USB y verificado el stack Termux (`com.termux`) con Python, FFmpeg

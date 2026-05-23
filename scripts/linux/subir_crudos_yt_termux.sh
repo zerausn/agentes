@@ -34,11 +34,14 @@ fi
 
 touch "$LOG_FILE"
 
-echo "Iniciando uploader.py de YouTube dentro de Debian..."
-echo "Log: $LOG_FILE"
+echo "[1/2] Escaneando videos en crudos_pendientes..."
+"$PROOT" login debian -- /bin/bash -lc \
+    "cd /root/agentes/youtube_uploader && python3 video_scanner.py 2>&1 | tee -a '$LOG_FILE'"
 echo ""
 
-# Lanzar en Debian
+echo "[2/2] Subiendo crudos a YouTube..."
+echo "Log: $LOG_FILE"
+echo ""
 "$PROOT" login debian -- /bin/bash -lc \
     "cd /root/agentes/youtube_uploader && python3 uploader.py 2>&1 | tee -a '$LOG_FILE'"
 
