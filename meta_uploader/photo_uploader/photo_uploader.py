@@ -342,14 +342,14 @@ def ciclo_de_subida():
                         logging.info("[ciclo] Reel combinado publicado exitosamente.")
                     else:
                         logging.error("[ciclo] Fallo al publicar el Reel combinado.")
-                    else:
-                        logging.error("[ciclo] Fallo al subir el archivo del Reel combinado.")
-                except RuntimeError as exc:
-                    logging.error("[ciclo] Error iniciando subida combinada: %s", exc)
-            else:
-                logging.error("[ciclo] No se pudo crear el Reel combinado rapido.")
+                else:
+                    logging.error("[ciclo] Fallo al subir el archivo del Reel combinado.")
+            except RuntimeError as exc:
+                logging.error("[ciclo] Error iniciando subida combinada: %s", exc)
         else:
-            logging.error("[ciclo] No hubo videos validos generados en la fase A para armar el reel agrupado.")
+            logging.error("[ciclo] No se pudo crear el Reel combinado rapido.")
+    else:
+        logging.error("[ciclo] No hubo videos validos generados en la fase A para armar el reel agrupado.")
 
     logging.info(
         "[ciclo] Lote completado: %s/%s Reels individuales listos.",
