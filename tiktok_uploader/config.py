@@ -1,0 +1,10 @@
+CLIENT_KEY = "awhfxd65i4i468x8"
+CLIENT_SECRET = "QwlYmiutMspEQF266RnFoYFOtB6JaLAB"
+REDIRECT_URI = "https://uploaderbot.trapdoor.sh/callback"
+SCOPES = ["user.info.basic", "video.upload", "video.publish"]
+TIKTOK_AUTH_URL = "https://www.tiktok.com/v2/auth/authorize/"
+TIKTOK_TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/"
+TIKTOK_VIDEO_INIT = "https://open.tiktokapis.com/v2/post/publish/video/init/"
+TIKTOK_VIDEO_PUBLISH = "https://open.tiktokapis.com/v2/post/publish/video/publish/"
+TIKTOK_QUERY_CREATOR = "https://open.tiktokapis.com/v2/post/publish/creator_info/query/"
+SECRET_KEY = "demo-secret-key-change-in-production"
