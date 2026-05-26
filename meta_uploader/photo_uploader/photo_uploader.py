@@ -332,16 +332,16 @@ def ciclo_de_subida():
         
         ok_combinado = convert_video_clips_to_combined_reel(videos_para_combinar, reel_combinado, total_duration=30)
 
-            if ok_combinado:
-                desc_combinado = "#PW #HQ #PC"
-                file_size = reel_combinado.stat().st_size
-                try:
-                    video_id, upload_url = _reel_init_upload(file_size)
-                    if _reel_upload_file(upload_url, reel_combinado):
-                        if _reel_publish(video_id, desc_combinado):
-                            logging.info("[ciclo] Reel combinado publicado exitosamente.")
-                        else:
-                            logging.error("[ciclo] Fallo al publicar el Reel combinado.")
+        if ok_combinado:
+            desc_combinado = "#PW #HQ #PC"
+            file_size = reel_combinado.stat().st_size
+            try:
+                video_id, upload_url = _reel_init_upload(file_size)
+                if _reel_upload_file(upload_url, reel_combinado):
+                    if _reel_publish(video_id, desc_combinado):
+                        logging.info("[ciclo] Reel combinado publicado exitosamente.")
+                    else:
+                        logging.error("[ciclo] Fallo al publicar el Reel combinado.")
                     else:
                         logging.error("[ciclo] Fallo al subir el archivo del Reel combinado.")
                 except RuntimeError as exc:
