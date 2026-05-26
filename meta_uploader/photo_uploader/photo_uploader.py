@@ -332,24 +332,24 @@ def ciclo_de_subida():
         
         ok_combinado = convert_video_clips_to_combined_reel(videos_para_combinar, reel_combinado, total_duration=30)
 
-            if ok_combinado:
-                desc_combinado = "#PW #HQ #PC"
-                file_size = reel_combinado.stat().st_size
-                try:
-                    video_id, upload_url = _reel_init_upload(file_size)
-                    if _reel_upload_file(upload_url, reel_combinado):
-                        if _reel_publish(video_id, desc_combinado):
-                            logging.info("[ciclo] Reel combinado publicado exitosamente.")
-                        else:
-                            logging.error("[ciclo] Fallo al publicar el Reel combinado.")
+        if ok_combinado:
+            desc_combinado = "#PW #HQ #PC"
+            file_size = reel_combinado.stat().st_size
+            try:
+                video_id, upload_url = _reel_init_upload(file_size)
+                if _reel_upload_file(upload_url, reel_combinado):
+                    if _reel_publish(video_id, desc_combinado):
+                        logging.info("[ciclo] Reel combinado publicado exitosamente.")
                     else:
-                        logging.error("[ciclo] Fallo al subir el archivo del Reel combinado.")
-                except RuntimeError as exc:
-                    logging.error("[ciclo] Error iniciando subida combinada: %s", exc)
-            else:
-                logging.error("[ciclo] No se pudo crear el Reel combinado rapido.")
+                        logging.error("[ciclo] Fallo al publicar el Reel combinado.")
+                else:
+                    logging.error("[ciclo] Fallo al subir el archivo del Reel combinado.")
+            except RuntimeError as exc:
+                logging.error("[ciclo] Error iniciando subida combinada: %s", exc)
         else:
-            logging.error("[ciclo] No hubo videos validos generados en la fase A para armar el reel agrupado.")
+            logging.error("[ciclo] No se pudo crear el Reel combinado rapido.")
+    else:
+        logging.error("[ciclo] No hubo videos validos generados en la fase A para armar el reel agrupado.")
 
     logging.info(
         "[ciclo] Lote completado: %s/%s Reels individuales listos.",
