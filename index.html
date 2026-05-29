@@ -3,111 +3,91 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Performatic writings - Servicios para Facebook e Instagram</title>
-    <meta
-      name="description"
-      content="Sitio web publico de Performatic writings con descripcion del servicio, datos de contacto y paginas legales para Meta."
-    >
+    <title>Uploaderbot - Publicación de videos en TikTok</title>
+    <meta name="description" content="Uploaderbot permite a usuarios publicar videos en TikTok mediante autenticación OAuth y la Content Posting API oficial.">
     <meta name="tiktok-developers-site-verification" content="ALEnZUsQ03zFy7m5PDIbAIdwIo5954Fq">
+    <link rel="icon" type="image/png" href="./favicon.png">
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png">
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
     <main class="shell">
+      <header class="app-header">
+        <img src="./apple-touch-icon.png" alt="Uploaderbot icon" class="app-icon">
+        <div>
+          <p class="eyebrow">Uploaderbot</p>
+          <h1>Publica videos en TikTok</h1>
+        </div>
+      </header>
+
       <section class="hero">
-        <p class="eyebrow">Uploader Bot / Performatic writings</p>
-        <h1>Servicios de publicacion y gestion de contenido para Meta</h1>
         <p class="lede">
-          Performatic writings opera herramientas para autenticar, organizar y
-          ejecutar publicaciones de contenido en Facebook e Instagram para
-          marcas y clientes que autorizan el acceso a sus activos.
+          Uploaderbot es una aplicación web que permite a los creadores de contenido
+          autenticarse con su cuenta de TikTok y publicar videos directamente
+          a través de la Content Posting API oficial de TikTok.
         </p>
+        <a href="https://uploaderbot.trapdoor.sh/" class="btn-primary" target="_blank">Ir a Uploaderbot</a>
       </section>
 
       <section class="panel">
-        <h2>Datos de verificacion del negocio</h2>
-        <p><strong>Nombre:</strong> Performatic writings</p>
-        <p><strong>Direccion:</strong> 7600001, km 28 via dagua, 7600001 cali</p>
-        <p><strong>Correo:</strong> <a href="mailto:escriturasperformaticascali@gmail.com">escriturasperformaticascali@gmail.com</a></p>
+        <h2>Cómo funciona</h2>
+        <ol>
+          <li>Inicia sesión con tu cuenta de TikTok mediante OAuth.</li>
+          <li>Selecciona o arrastra un video MP4.</li>
+          <li>Ajusta el título y la configuración de privacidad.</li>
+          <li>Publica directamente en tu perfil de TikTok.</li>
+        </ol>
       </section>
 
       <section class="panel">
-        <h2>Descripcion del servicio</h2>
-        <p>
-          El servicio permite preparar, organizar y publicar contenido aprobado
-          por el cliente en paginas de Facebook y cuentas de Instagram
-          vinculadas a porfolios empresariales administrados por nuestra
-          operacion.
-        </p>
-        <p>
-          Los datos de la plataforma de Meta se utilizan para autenticar
-          solicitudes, identificar los activos autorizados, obtener los
-          identificadores tecnicos necesarios y ejecutar las acciones permitidas
-          mediante las APIs oficiales de Meta.
-        </p>
-        <p>
-          Los clientes usan este servicio para simplificar la administracion de
-          su presencia en Meta, centralizar flujos operativos y gestionar
-          publicaciones desde una operacion tecnica unificada.
-        </p>
+        <h2>Productos y scopes solicitados</h2>
+        <ul>
+          <li><strong>Login Kit</strong> — <code>user.info.basic</code>, <code>user.info.profile</code>, <code>user.info.stats</code>: identificación del usuario, nombre de avatar y estadísticas básicas.</li>
+          <li><strong>Content Posting API</strong> — <code>video.upload</code>, <code>video.publish</code>: subir y publicar videos en la cuenta autenticada.</li>
+          <li><strong>Share Kit</strong> — compartir enlaces desde la aplicación a TikTok.</li>
+        </ul>
       </section>
 
-      <section class="card-grid">
-        <article class="card">
-          <h2>Que hacemos</h2>
-          <p>Publicacion de contenido en Facebook e Instagram.</p>
-          <p>Organizacion operativa de activos y colas de publicacion.</p>
-          <p>Uso de APIs oficiales de Meta para acciones autorizadas.</p>
-        </article>
-
-        <article class="card">
-          <h2>Para quien</h2>
-          <p>Marcas y clientes que autorizan el acceso a sus activos.</p>
-          <p>Operaciones que administran uno o varios porfolios empresariales.</p>
-        </article>
-
-        <article class="card">
-          <h2>Como se usan los datos</h2>
-          <p>Autenticacion de solicitudes.</p>
-          <p>Identificacion de paginas, cuentas y recursos autorizados.</p>
-          <p>Ejecucion de acciones permitidas por la aplicacion.</p>
-        </article>
+      <section class="panel">
+        <h2>Uso de datos</h2>
+        <p>
+          Los datos obtenidos mediante los scopes se utilizan exclusivamente para:
+        </p>
+        <ul>
+          <li>Autenticar al usuario y mostrar su perfil en la interfaz.</li>
+          <li>Subir y publicar videos que el usuario selecciona voluntariamente.</li>
+          <li>Listar videos publicados para su gestión.</li>
+        </ul>
+        <p>
+          Uploaderbot no almacena ni comparte datos personales con terceros.
+          Los tokens de acceso se mantienen en memoria durante la sesión y no se persisten.
+        </p>
       </section>
 
       <section class="card-grid">
         <article class="card">
           <h2>Privacy Policy</h2>
-          <p>
-            Explica que datos procesa la app, para que se usan, como se protegen
-            y como contactarse.
-          </p>
-          <a href="./privacy.html">Abrir politica de privacidad</a>
+          <p>Información sobre qué datos procesa la app y cómo se protegen.</p>
+          <a href="./privacy.html">Abrir política de privacidad</a>
         </article>
-
         <article class="card">
           <h2>Data Deletion</h2>
-          <p>
-            Describe el procedimiento de solicitud y eliminacion de datos para
-            la app.
-          </p>
-          <a href="./data-deletion.html">Abrir eliminacion de datos</a>
+          <p>Procedimiento para solicitar la eliminación de datos.</p>
+          <a href="./data-deletion.html">Abrir eliminación de datos</a>
         </article>
-
         <article class="card">
           <h2>Terms of Service</h2>
-          <p>
-            Resume las condiciones basicas de uso permitido y responsabilidad
-            del operador.
-          </p>
-          <a href="./terms.html/">Abrir terminos del servicio</a>
+          <p>Condiciones de uso del servicio Uploaderbot.</p>
+          <a href="./terms.html/">Abrir términos del servicio</a>
         </article>
       </section>
 
       <section class="panel">
-        <h2>Datos de contacto</h2>
-        <p>Entidad mostrada para verificacion: Performatic writings</p>
-        <p>Direccion operativa: 7600001, km 28 via dagua, 7600001 cali</p>
-        <p>Correo operativo: <a href="mailto:escriturasperformaticascali@gmail.com">escriturasperformaticascali@gmail.com</a></p>
-        <p>Ultima actualizacion: 2026-04-07</p>
+        <h2>Contacto</h2>
+        <p><strong>Nombre:</strong> Performatic writings</p>
+        <p><strong>Dirección:</strong> 7600001, km 28 via dagua, 7600001 cali</p>
+        <p><strong>Correo:</strong> <a href="mailto:escriturasperformaticascali@gmail.com">escriturasperformaticascali@gmail.com</a></p>
+        <p>Última actualización: 2026-05-29</p>
       </section>
     </main>
   </body>
