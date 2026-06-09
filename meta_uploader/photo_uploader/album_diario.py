@@ -24,6 +24,7 @@ import sys
 import tempfile
 import time
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 
 import requests
@@ -43,13 +44,18 @@ GRAPH_URL = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
 SUPPORTED_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 RAW_EXTS = {".dng"}
 HASHTAGS = "#PW #HQ #P"
+REQUIRED_PAGE_SCOPES = {"pages_manage_posts", "pages_read_engagement"}
+RECOMMENDED_PAGE_SCOPES = {"pages_manage_metadata", "pages_read_user_content"}
 
 LINKTREE_URL = "https://linktr.ee/performaticwritingscali"
 
+SINGLE_PHOTO_ALBUM_NAME = "Fotos sueltas"
 TEASER_COUNT = 5
-CONFIRM_ATTEMPTS = 6
-CONFIRM_WAIT_SECONDS = 5
+CONFIRM_ATTEMPTS = 24
+CONFIRM_WAIT_SECONDS = 10
 GRAPH_IDS_CHUNK_SIZE = 50
+MAX_UPLOAD_EDGE = 2048
+JPEG_UPLOAD_QUALITY = 95
 
 logging.basicConfig(
     level=logging.INFO,
@@ -115,7 +121,17 @@ def seleccionar_fotos_teaser(fotos, cantidad=TEASER_COUNT):
     return seleccionadas
 
 
-def crear_caption_teaser(fecha, album_url):
+def crear_caption_teaser(fecha, album_url, nombre_album=None, total_fotos=None):
+    if nombre_album == SINGLE_PHOTO_ALBUM_NAME:
+        return (
+            f"New gallery: selected one-shot moments from the performative archive in Cali.\n\n"
+            f"{total_fotos or 'These'} standalone photo(s) are now live in one place.\n"
+            f"Full album: {album_url}\n"
+            f"{LINKTREE_URL}\n\n"
+            f"Which one should become the cover?\n\n"
+            f"{HASHTAGS}"
+        )
+
     fecha_legible = datetime.strptime(fecha, "%Y-%m-%d").strftime("%b %d, %Y")
     return (
         f"New gallery: a night from the performative archive in Cali.\n\n"
@@ -133,6 +149,47 @@ def crear_caption_foto(stem):
         f"Archive frame: {stem}\n\n"
         f"{HASHTAGS}"
     )
+
+
+def extraer_stem_caption(caption):
+    if not caption:
+        return None
+    match = re.search(r"Archive frame:\s*(.+)", caption)
+    if match:
+        return match.group(1).strip()
+    return None
+
+
+def crear_grupos_album(por_fecha):
+    grupos = []
+    fotos_sueltas = []
+
+    for fecha in sorted(por_fecha):
+        fotos = por_fecha[fecha]
+        if len(fotos) == 1:
+            fotos_sueltas.extend(fotos)
+        else:
+            grupos.append(
+                {
+                    "fecha": fecha,
+                    "etiqueta": fecha,
+                    "nombre_album": f"Fotos {fecha}",
+                    "fotos": fotos,
+                }
+            )
+
+    if fotos_sueltas:
+        grupos.insert(
+            0,
+            {
+                "fecha": None,
+                "etiqueta": SINGLE_PHOTO_ALBUM_NAME,
+                "nombre_album": SINGLE_PHOTO_ALBUM_NAME,
+                "fotos": sorted(fotos_sueltas, key=lambda p: p.name),
+            },
+        )
+
+    return grupos
 
 
 def _load_env():
@@ -153,6 +210,44 @@ def _load_env():
 ENV = _load_env()
 FB_PAGE_ID = ENV.get("META_FB_PAGE_ID", "")
 FB_TOKEN = ENV.get("META_FB_PAGE_TOKEN", "")
+FB_FALLBACK_ALBUM_ID = ENV.get("META_FB_FALLBACK_ALBUM_ID", "")
+FB_FALLBACK_ALBUM_NAME = ENV.get("META_FB_FALLBACK_ALBUM_NAME", "")
+
+
+class MetaAlbumCapabilityError(RuntimeError):
+    pass
+
+
+def resumir_error_meta(error):
+    partes = []
+    for key in ("message", "type", "code", "error_subcode", "fbtrace_id"):
+        value = error.get(key)
+        if value is not None:
+            partes.append(f"{key}={value}")
+    return ", ".join(partes) or str(error)
+
+
+def es_bloqueo_capability(error):
+    mensaje = str(error.get("message", "")).lower()
+    return error.get("code") == 3 and "capability" in mensaje
+
+
+def verificar_scopes_page_token(info):
+    scopes = set(info.get("scopes") or [])
+    faltantes_requeridos = sorted(REQUIRED_PAGE_SCOPES - scopes)
+    faltantes_recomendados = sorted(RECOMMENDED_PAGE_SCOPES - scopes)
+
+    if faltantes_requeridos:
+        logging.error("[auth] Faltan permisos requeridos en el Page token: %s",
+                      ", ".join(faltantes_requeridos))
+        return False
+
+    logging.info("[auth] Permisos requeridos presentes: %s",
+                 ", ".join(sorted(REQUIRED_PAGE_SCOPES)))
+    if faltantes_recomendados:
+        logging.warning("[auth] Permisos recomendados ausentes: %s",
+                        ", ".join(faltantes_recomendados))
+    return True
 
 
 def debug_token(token):
@@ -187,7 +282,7 @@ def asegurar_page_token():
     token_type = info.get("type")
     if token_type == "PAGE" and info.get("is_valid"):
         logging.info("[auth] META_FB_PAGE_TOKEN validado como PAGE.")
-        return True
+        return verificar_scopes_page_token(info)
 
     if token_type == "USER" and info.get("is_valid"):
         logging.warning("[auth] META_FB_PAGE_TOKEN es USER; derivando Page Access Token en memoria.")
@@ -201,7 +296,7 @@ def asegurar_page_token():
         if page_info.get("type") == "PAGE" and page_info.get("is_valid"):
             FB_TOKEN = page_token
             logging.info("[auth] Page Access Token derivado y validado para esta corrida.")
-            return True
+            return verificar_scopes_page_token(page_info)
 
     logging.error("[auth] Token invalido para endpoints de pagina: type=%s valid=%s", token_type, info.get("is_valid"))
     return False
@@ -247,6 +342,87 @@ def convertir_dng_a_jpeg(dng_path, jpeg_path):
     return False
 
 
+def crear_jpeg_seguro(origen):
+    from PIL import Image, ImageCms, ImageFile, ImageOps
+
+    ImageFile.LOAD_TRUNCATED_IMAGES = True
+    Image.MAX_IMAGE_PIXELS = None
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+    destino = Path(tmp.name)
+    tmp.close()
+
+    try:
+        with Image.open(origen) as image:
+            image = ImageOps.exif_transpose(image)
+            dimensiones_originales = image.size
+            icc_profile = image.info.get("icc_profile")
+            if icc_profile:
+                try:
+                    origen_color = ImageCms.ImageCmsProfile(BytesIO(icc_profile))
+                    srgb = ImageCms.createProfile("sRGB")
+                    image = ImageCms.profileToProfile(image, origen_color, srgb, outputMode="RGB")
+                except Exception:
+                    image = image.convert("RGB")
+            else:
+                image = image.convert("RGB")
+            resampling = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
+            image.thumbnail((MAX_UPLOAD_EDGE, MAX_UPLOAD_EDGE), resampling)
+            dimensiones_finales = image.size
+            image.save(destino, "JPEG", quality=JPEG_UPLOAD_QUALITY, optimize=True, progressive=True)
+
+        if not destino.exists() or destino.stat().st_size < 1024:
+            raise RuntimeError("JPEG seguro invalido")
+
+        logging.info(
+            "[prep] %s %sx%s -> JPEG seguro %sx%s %.1f MB",
+            origen.name,
+            dimensiones_originales[0],
+            dimensiones_originales[1],
+            dimensiones_finales[0],
+            dimensiones_finales[1],
+            destino.stat().st_size / 1_000_000,
+        )
+        return destino
+    except Exception:
+        if destino.exists():
+            os.unlink(destino)
+        raise
+
+
+def preparar_foto_upload(foto):
+    temporales = []
+    origen = foto
+
+    if foto.suffix.lower() in RAW_EXTS:
+        tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+        jpeg_temp = Path(tmp.name)
+        tmp.close()
+        if not convertir_dng_a_jpeg(foto, jpeg_temp):
+            if jpeg_temp.exists():
+                os.unlink(jpeg_temp)
+            return None, temporales
+        temporales.append(jpeg_temp)
+        origen = jpeg_temp
+
+    try:
+        jpeg_seguro = crear_jpeg_seguro(origen)
+        temporales.append(jpeg_seguro)
+        return jpeg_seguro, temporales
+    except Exception as e:
+        logging.warning("[prep] No se pudo preparar %s: %s", foto.name, e)
+        return None, temporales
+
+
+def limpiar_temporales(paths):
+    for path in paths:
+        try:
+            if path and path.exists():
+                os.unlink(path)
+        except OSError:
+            pass
+
+
 def crear_album(nombre):
     logging.info("[album] Creando '%s' ...", nombre)
     url = f"{GRAPH_URL}/{FB_PAGE_ID}/albums"
@@ -260,31 +436,110 @@ def crear_album(nombre):
                 return data["id"]
             if "error" in data:
                 err = data["error"]
+                if es_bloqueo_capability(err):
+                    logging.error("[album.capability] Meta bloqueo la creacion de albumes para esta App/Page: %s",
+                                  resumir_error_meta(err))
+                    logging.error("[album.capability] El token puede leer albumes y subir fotos, pero el App no tiene capability para POST /%s/albums.",
+                                  FB_PAGE_ID)
+                    logging.error("[album.capability] Soluciones: habilitar/aprobar esa capability en Meta o crear manualmente el album '%s' en Facebook antes de correr.",
+                                  nombre)
+                    raise MetaAlbumCapabilityError(err.get("message", "Meta album capability missing"))
                 if "duplicate" in str(err).lower():
                     albumes = listar_albumes()
                     if nombre in albumes:
                         return albumes[nombre]
-                logging.warning("[album] Error (intento %s/3): %s", i + 1, err.get("message"))
+                logging.warning("[album] Error (intento %s/3): %s", i + 1, resumir_error_meta(err))
         except Exception as e:
+            if isinstance(e, MetaAlbumCapabilityError):
+                raise
             logging.warning("[album] Exception (intento %s/3): %s", i + 1, e)
         time.sleep(3 * (i + 1))
     return None
 
 
 def listar_albumes():
-    albumes = {}
-    url = f"{GRAPH_URL}/{FB_PAGE_ID}/albums"
-    params = {"access_token": FB_TOKEN, "limit": "100", "fields": "id,name"}
-    while url:
+    for intento in range(1, 4):
+        albumes = {}
+        url = f"{GRAPH_URL}/{FB_PAGE_ID}/albums"
+        params = {"access_token": FB_TOKEN, "limit": "100", "fields": "id,name"}
         try:
-            r = requests.get(url, params=params if "?" not in url else {}, timeout=30)
-            data = r.json()
-            for a in data.get("data", []):
-                albumes[a["name"]] = a["id"]
-            url = data.get("paging", {}).get("next", "")
-        except Exception:
-            break
-    return albumes
+            while url:
+                r = requests.get(url, params=params if "?" not in url else {}, timeout=30)
+                data = r.json()
+                if "error" in data:
+                    raise RuntimeError(resumir_error_meta(data["error"]))
+                for a in data.get("data", []):
+                    if a.get("name") and a.get("id"):
+                        albumes[a["name"]] = a["id"]
+                url = data.get("paging", {}).get("next", "")
+                params = {}
+
+            if albumes:
+                logging.info("[album] Albumes remotos detectados: %s", len(albumes))
+                return albumes
+            logging.warning("[album] Lectura de albumes vacia (intento %s/3).", intento)
+        except Exception as e:
+            logging.warning("[album] No se pudieron listar albumes (intento %s/3): %s",
+                            intento, e)
+        time.sleep(3 * intento)
+    return {}
+
+
+def obtener_info_album(album_id):
+    data = graph_get(album_id, {"fields": "id,name,link"})
+    if data.get("id") == album_id:
+        return data
+    if "error" in data:
+        logging.error("[album.fallback] No se pudo validar album fallback %s: %s",
+                      album_id, resumir_error_meta(data["error"]))
+    return {}
+
+
+def resolver_album_fallback(albumes):
+    if FB_FALLBACK_ALBUM_ID:
+        info = obtener_info_album(FB_FALLBACK_ALBUM_ID)
+        if info:
+            return info["id"], info.get("name") or FB_FALLBACK_ALBUM_ID
+        return None, None
+
+    if FB_FALLBACK_ALBUM_NAME:
+        album_id = albumes.get(FB_FALLBACK_ALBUM_NAME)
+        if album_id:
+            return album_id, FB_FALLBACK_ALBUM_NAME
+        logging.error("[album.fallback] META_FB_FALLBACK_ALBUM_NAME no existe en Facebook: %s",
+                      FB_FALLBACK_ALBUM_NAME)
+
+    return None, None
+
+
+def obtener_album_para_fecha(nombre_album, albumes):
+    album_id = albumes.get(nombre_album)
+    if album_id:
+        logging.info("[album] Ya existe: '%s'", nombre_album)
+        return album_id, nombre_album
+
+    albumes_actualizados = listar_albumes()
+    albumes.update(albumes_actualizados)
+    album_id = albumes.get(nombre_album)
+    if album_id:
+        logging.info("[album] Ya existe tras refrescar: '%s'", nombre_album)
+        return album_id, nombre_album
+
+    try:
+        album_id = crear_album(nombre_album)
+    except MetaAlbumCapabilityError:
+        fallback_id, fallback_nombre = resolver_album_fallback(albumes)
+        if fallback_id:
+            logging.warning("[album.fallback] Usando album existente '%s' para la fecha '%s' porque Meta no permite crear albumes por API.",
+                            fallback_nombre, nombre_album)
+            return fallback_id, fallback_nombre
+        raise
+
+    if album_id:
+        albumes[nombre_album] = album_id
+        return album_id, nombre_album
+
+    return None, None
 
 
 def graph_get(path, params=None, timeout=30):
@@ -316,6 +571,37 @@ def confirmar_ids_remotos(ids, fields, album_id=None):
     return True
 
 
+def listar_fotos_album_por_stem(album_id):
+    existentes = {}
+    url = f"{GRAPH_URL}/{album_id}/photos"
+    params = {"access_token": FB_TOKEN, "limit": "100", "fields": "id,name,album"}
+    while url:
+        try:
+            r = requests.get(url, params=params if "?" not in url else {}, timeout=30)
+            data = r.json()
+        except requests.RequestException as e:
+            logging.warning("[recover] No se pudieron listar fotos existentes en %s: %s",
+                            album_id, e.__class__.__name__)
+            return existentes
+
+        if "error" in data:
+            logging.warning("[recover] Error listando fotos existentes en %s: %s",
+                            album_id, resumir_error_meta(data["error"]))
+            return existentes
+
+        for item in data.get("data", []):
+            stem = extraer_stem_caption(item.get("name"))
+            if stem and item.get("id"):
+                existentes[stem] = item["id"]
+
+        url = data.get("paging", {}).get("next")
+        params = {}
+
+    if existentes:
+        logging.info("[recover] Fotos ya presentes en album %s: %s", album_id, len(existentes))
+    return existentes
+
+
 def confirmar_album_remoto(album_id, nombre_album):
     data = graph_get(album_id, {"fields": "id,name,count,link"})
     if data.get("id") != album_id:
@@ -331,14 +617,42 @@ def confirmar_teaser_remoto(post_id):
     if not post_id:
         logging.warning("[confirm] No hay ID de teaser para confirmar.")
         return False
-    data = graph_get(post_id, {"fields": "id,is_published,created_time,permalink_url"})
+    data = graph_get(post_id, {"fields": "id,is_published,created_time,permalink_url,link"})
     if data.get("id") != post_id:
+        if buscar_post_publicado(post_id):
+            logging.info("[confirm] Teaser confirmado via published_posts: %s", post_id)
+            return True
         logging.warning("[confirm] Teaser no accesible todavia: %s", post_id)
         return False
-    if data.get("is_published") is not True:
+    if "is_published" in data and data.get("is_published") is not True:
         logging.warning("[confirm] Teaser existe pero no figura publicado todavia: %s", post_id)
         return False
     return True
+
+
+def buscar_post_publicado(post_id):
+    if not post_id:
+        return False
+    data = graph_get(
+        f"{FB_PAGE_ID}/published_posts",
+        {"fields": "id,created_time,permalink_url", "limit": "50"},
+    )
+    for item in data.get("data", []):
+        if item.get("id") == post_id:
+            return True
+    return False
+
+
+def buscar_teaser_existente(album_url):
+    data = graph_get(
+        f"{FB_PAGE_ID}/published_posts",
+        {"fields": "id,message,created_time,permalink_url", "limit": "50"},
+    )
+    for item in data.get("data", []):
+        if album_url in (item.get("message") or ""):
+            logging.info("[teaser] Teaser existente detectado (id=%s)", item.get("id"))
+            return item.get("id")
+    return None
 
 
 def confirmar_album_publicado(album_id, nombre_album, foto_ids, teaser_post_id):
@@ -365,13 +679,14 @@ def confirmar_album_publicado(album_id, nombre_album, foto_ids, teaser_post_id):
     return False
 
 
-def subir_foto_a_album(album_id, foto_path, mensaje):
-    logging.info("[album.foto] Subiendo %s ...", foto_path.name)
+def subir_foto_a_album(album_id, foto_path, mensaje, nombre_archivo=None):
+    nombre_remoto = nombre_archivo or foto_path.name
+    logging.info("[album.foto] Subiendo %s ...", nombre_remoto)
     url = f"{GRAPH_URL}/{album_id}/photos"
     for i in range(3):
         try:
             with open(foto_path, "rb") as f:
-                files = {"source": (foto_path.name, f, "image/jpeg")}
+                files = {"source": (nombre_remoto, f, "image/jpeg")}
                 data = {"message": mensaje, "access_token": FB_TOKEN}
                 r = requests.post(url, files=files, data=data, timeout=120)
                 resp = r.json()
@@ -386,12 +701,13 @@ def subir_foto_a_album(album_id, foto_path, mensaje):
     return None
 
 
-def subir_foto_temp(foto_path):
+def subir_foto_temp(foto_path, nombre_archivo=None):
+    nombre_remoto = nombre_archivo or foto_path.name
     url = f"{GRAPH_URL}/{FB_PAGE_ID}/photos"
     for i in range(3):
         try:
             with open(foto_path, "rb") as f:
-                files = {"source": (foto_path.name, f, "image/jpeg")}
+                files = {"source": (nombre_remoto, f, "image/jpeg")}
                 data = {"published": "false", "access_token": FB_TOKEN}
                 r = requests.post(url, files=files, data=data, timeout=120)
                 resp = r.json()
@@ -424,6 +740,31 @@ def publicar_post_carrusel(media_ids, mensaje):
                                 i + 1, data["error"].get("message"))
         except Exception as e:
             logging.warning("[teaser] Exception (intento %s/3): %s", i + 1, e)
+        time.sleep(5 * (i + 1))
+    return None
+
+
+def publicar_teaser_foto_directa(foto_path, mensaje, nombre_archivo=None):
+    nombre_remoto = nombre_archivo or foto_path.name
+    url = f"{GRAPH_URL}/{FB_PAGE_ID}/photos"
+    for i in range(3):
+        try:
+            with open(foto_path, "rb") as f:
+                files = {"source": (nombre_remoto, f, "image/jpeg")}
+                data = {"message": mensaje, "published": "true", "access_token": FB_TOKEN}
+                r = requests.post(url, files=files, data=data, timeout=120)
+                resp = r.json()
+                if "post_id" in resp:
+                    logging.info("[teaser] Foto-teaser publicada inmediatamente (post_id=%s)", resp["post_id"])
+                    return resp["post_id"]
+                if "id" in resp:
+                    logging.info("[teaser] Foto-teaser publicada inmediatamente (photo_id=%s)", resp["id"])
+                    return resp["id"]
+                if "error" in resp:
+                    logging.warning("[teaser] Foto directa error (intento %s/3): %s",
+                                    i + 1, resp["error"].get("message"))
+        except Exception as e:
+            logging.warning("[teaser] Foto directa exception (intento %s/3): %s", i + 1, e)
         time.sleep(5 * (i + 1))
     return None
 
@@ -462,42 +803,48 @@ def procesar():
 
     albumes = listar_albumes()
 
-    for fecha in sorted(por_fecha.keys()):
-        nombre_album = f"Fotos {fecha}"
-        album_id = albumes.get(nombre_album)
-        if not album_id:
-            album_id = crear_album(nombre_album)
-            if not album_id:
-                continue
-            albumes[nombre_album] = album_id
-        else:
-            logging.info("[album] Ya existe: '%s'", nombre_album)
+    for grupo in crear_grupos_album(por_fecha):
+        fecha = grupo["fecha"]
+        etiqueta = grupo["etiqueta"]
+        nombre_album = grupo["nombre_album"]
+        fotos = grupo["fotos"]
 
-        fotos = por_fecha[fecha]
-        logging.info("[fecha] %s: %s foto(s)", fecha, len(fotos))
+        try:
+            album_id, nombre_album_remoto = obtener_album_para_fecha(nombre_album, albumes)
+        except MetaAlbumCapabilityError:
+            logging.error("[stop] Se detiene la corrida: sin capability para crear albumes y sin fallback configurado.")
+            logging.error("[stop] Si creas manualmente '%s' en Facebook, vuelve a correr y el script lo detectara.", nombre_album)
+            return
+
+        if not album_id:
+            logging.error("[album] No se pudo obtener album para %s; se salta este grupo.", etiqueta)
+            continue
+
+        logging.info("[grupo] %s: %s foto(s)", etiqueta, len(fotos))
 
         foto_paths_subidas = []
         foto_ids_subidas = []
         inicio_album = time.monotonic()
         total_fotos_album = len(fotos)
+        fotos_existentes = listar_fotos_album_por_stem(album_id)
 
         for indice, foto in enumerate(fotos, start=1):
-            ext = foto.suffix.lower()
-            if ext in RAW_EXTS:
-                tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
-                jpeg_temp = Path(tmp.name)
-                tmp.close()
-                if not convertir_dng_a_jpeg(foto, jpeg_temp):
-                    continue
-                foto_a_subir = jpeg_temp
-            else:
-                foto_a_subir = foto
+            if foto.stem in fotos_existentes:
+                fb_id = fotos_existentes[foto.stem]
+                foto_paths_subidas.append(foto)
+                foto_ids_subidas.append(fb_id)
+                logging.info("[skip] %s ya estaba subida al album (id=%s)", foto.name, fb_id)
+                registrar_progreso_album(etiqueta, indice, total_fotos_album, inicio_album)
+                continue
 
+            foto_a_subir, temporales = preparar_foto_upload(foto)
+            if not foto_a_subir:
+                limpiar_temporales(temporales)
+                registrar_progreso_album(etiqueta, indice, total_fotos_album, inicio_album)
+                continue
             mensaje = crear_caption_foto(foto.stem)
-            fb_id = subir_foto_a_album(album_id, foto_a_subir, mensaje)
-
-            if ext in RAW_EXTS:
-                os.unlink(foto_a_subir)
+            fb_id = subir_foto_a_album(album_id, foto_a_subir, mensaje, nombre_archivo=foto.name)
+            limpiar_temporales(temporales)
 
             if fb_id:
                 foto_paths_subidas.append(foto)
@@ -506,7 +853,7 @@ def procesar():
             else:
                 logging.error("[fail] No se pudo subir %s", foto.name)
 
-            registrar_progreso_album(fecha, indice, total_fotos_album, inicio_album)
+            registrar_progreso_album(etiqueta, indice, total_fotos_album, inicio_album)
             time.sleep(2)
 
         if not foto_paths_subidas:
@@ -517,31 +864,47 @@ def procesar():
         teaser_paths = seleccionar_fotos_teaser(foto_paths_subidas, TEASER_COUNT)
         total = len(foto_paths_subidas)
 
-        # Subir como no-publicadas para el carrusel
+        mensaje_teaser = crear_caption_teaser(fecha, album_url, nombre_album=nombre_album_remoto, total_fotos=total)
+        teaser_post_id = buscar_teaser_existente(album_url)
         teaser_temp_ids = []
-        for fp in teaser_paths[:TEASER_COUNT]:
-            ext = fp.suffix.lower()
-            if ext in RAW_EXTS:
-                tmp2 = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
-                jpeg_t = Path(tmp2.name)
-                tmp2.close()
-                if convertir_dng_a_jpeg(fp, jpeg_t):
-                    tid = subir_foto_temp(jpeg_t)
-                    os.unlink(jpeg_t)
+        if teaser_post_id:
+            logging.info("[teaser] No se publica duplicado para %s.", nombre_album_remoto)
+        elif len(teaser_paths) == 1:
+            teaser_path, temporales = preparar_foto_upload(teaser_paths[0])
+            if teaser_path:
+                teaser_post_id = publicar_teaser_foto_directa(
+                    teaser_path,
+                    mensaje_teaser,
+                    nombre_archivo=teaser_paths[0].name,
+                )
+            limpiar_temporales(temporales)
+        else:
+            # Subir como no-publicadas para el carrusel
+            for fp in teaser_paths[:TEASER_COUNT]:
+                teaser_path, temporales = preparar_foto_upload(fp)
+                if teaser_path:
+                    tid = subir_foto_temp(teaser_path, nombre_archivo=fp.name)
+                    limpiar_temporales(temporales)
                 else:
+                    limpiar_temporales(temporales)
                     tid = None
-            else:
-                tid = subir_foto_temp(fp)
-            if tid:
-                teaser_temp_ids.append(tid)
-            time.sleep(2)
+                if tid:
+                    teaser_temp_ids.append(tid)
+                time.sleep(2)
 
-        teaser_post_id = None
-        if teaser_temp_ids:
-            mensaje_teaser = crear_caption_teaser(fecha, album_url)
+        if len(teaser_temp_ids) >= 2:
             teaser_post_id = publicar_post_carrusel(teaser_temp_ids, mensaje_teaser)
+        elif len(teaser_temp_ids) == 1 and total < TEASER_COUNT:
+            teaser_path, temporales = preparar_foto_upload(teaser_paths[0])
+            if teaser_path:
+                teaser_post_id = publicar_teaser_foto_directa(
+                    teaser_path,
+                    mensaje_teaser,
+                    nombre_archivo=teaser_paths[0].name,
+                )
+            limpiar_temporales(temporales)
 
-        if not confirmar_album_publicado(album_id, nombre_album, foto_ids_subidas, teaser_post_id):
+        if not confirmar_album_publicado(album_id, nombre_album_remoto, foto_ids_subidas, teaser_post_id):
             logging.error("[archive] No se mueven fotos locales de %s hasta confirmar Facebook.", nombre_album)
             continue
 
@@ -568,7 +931,7 @@ def procesar():
         guardar_json(HISTORIAL_FILE, historial)
 
         logging.info("[fecha] %s completada: %s fotos al album, teaser inmediato con %s fotos",
-                     fecha, total, len(teaser_temp_ids))
+                     etiqueta, total, len(teaser_paths[:TEASER_COUNT]) if teaser_post_id else 0)
 
     total_f = sum(len(por_fecha[f]) for f in por_fecha)
     logging.info("=== COMPLETADO: %s foto(s) en %s fecha(s) ===", total_f, len(por_fecha))
@@ -576,7 +939,7 @@ def procesar():
 
 def main():
     print("=" * 60)
-    print("  ANTIGRAVITY - ALBUM DIARIO + TEASER INMEDIATO")
+    print("  FACEBOOK - ALBUM DIARIO + TEASER INMEDIATO")
     print("=" * 60)
     print(f"  Linktree : {LINKTREE_URL}")
     print(f"  Teaser   : {TEASER_COUNT} fotos")

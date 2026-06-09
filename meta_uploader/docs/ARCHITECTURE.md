@@ -80,6 +80,16 @@ con una capa de automatizacion separada del repo contenedor.
   (`meta_uploader_facebook.log`, `meta_uploader_instagram.log`) para separar
   mejor las trazas de transfer/polling de Facebook de los eventos de
   contenedores/publicacion en Instagram.
+- **Album Diario de fotos**: `photo_uploader/subir_album_diario.sh` es el
+  entrypoint Linux. Primero ejecuta `photo_uploader/facebook_album_web_auto.py`
+  para verificar fechas locales, listar álbumes remotos y crear por Microsoft
+  Edge los álbumes faltantes, porque Graph API bloquea `POST /{page-id}/albums`
+  con capability `#3`. Después ejecuta `photo_uploader/album_diario.py`, que
+  sube por Graph API a álbumes existentes, publica teaser inmediato y archiva
+  localmente solo tras confirmación remota. Fechas con una sola foto se agrupan
+  en `Fotos sueltas`; fechas con `2+` fotos usan `Fotos YYYY-MM-DD`.
+  La subida transforma cada imagen a JPEG seguro `2048px`/`sRGB`/EXIF aplicado
+  para evitar `Invalid parameter` en panorámicas gigantes.
 
 ## Reglas
 

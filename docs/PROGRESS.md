@@ -163,3 +163,5 @@
 - Carpeta local por álbum en `fotos_subidas_album/Fotos YYYY-MM-DD/` con `copy2`; solo se usa tras confirmar Facebook.
 - Token operativo corregido: `META_FB_PAGE_TOKEN` debe ser token `PAGE`; si entra `USER`, el script deriva token de página en memoria.
 - Teaser en inglés con headline fuerte, pregunta final y carrusel distribuido por segmentos, priorizando fotos más pesadas.
+- Prueba viva posterior confirmó que el token `PAGE` y los permisos son correctos, y que subir fotos a página/álbum existente funciona; la creación de álbumes nuevos por API queda bloqueada por capability del App (`#3`) hasta resolverlo en Meta o usar álbumes existentes.
+- Solución operativa final: preflight por Edge crea álbumes faltantes automáticamente, `Fotos sueltas` agrupa fechas de una sola foto, y el uploader sube JPEG seguro `2048px` con recuperación sin duplicados.
