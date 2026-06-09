@@ -31,6 +31,17 @@
 - Decision: El agente migrador se creo como herramienta exclusiva de Linux. Se dividio el proceso de descarga `yt-dlp` en 2 tracks asíncronos (video puro + audio puro) con clientes independientes (`ios`, `tv`, `web`, `mweb`).
 - Consecuencia: Requerimos empaquetar de vuelta con `ffmpeg` local. Los reintentos por fragmento se redujeron para forzar rotacion rapida de clientes y evadir soft-bans de IP por parte de YouTube.
 
+## 2026-06-09: Album diario Facebook — album por fecha, teaser inmediato y confirmacion remota
+- Contexto: se creó `meta_uploader/photo_uploader/album_diario.py` para publicar álbumes de Facebook agrupados por fecha de archivo (`Fotos YYYY-MM-DD`) y mantener el archivo local ordenado.
+- Decisiones:
+  1. DNG→JPEG con `-quality 100` en ImageMagick para minimizar pérdida antes de la recompresión de Facebook.
+  2. El teaser ya no se programa a las 20:00 COL; se publica inmediatamente después de subir todas las fotos del álbum.
+  3. Antes de archivar, el script confirma por Graph API que el álbum existe, las fotos pertenecen al álbum y el teaser figura publicado.
+  4. La carpeta local se mantiene como `fotos_subidas_album/Fotos YYYY-MM-DD/`; solo se copia/mueve allí cuando Facebook confirma todo.
+  5. `META_FB_PAGE_TOKEN` debe ser token `PAGE`; si entra un token `USER`, el script deriva un Page Access Token en memoria.
+  6. El teaser usa caption en inglés y carrusel distribuido: divide el álbum en segmentos y elige la foto más pesada de cada segmento como proxy de calidad.
+- Consecuencia: la carpeta local representa contenido confirmado en Facebook, no intentos parciales ni publicaciones no verificadas.
+
 ## Estrategia YouTube Teaser Uploader (2026-04-21)
 
 - **Aislamiento Total:** Se decidio que el Agente de Teasers sea un script 100% independiente (`teaser_uploader.py`) en lugar de añadir flags a `uploader.py`. Esto garantiza que los teasers/shorts jamas contaminen el sistema de playlists de los crudos largos.

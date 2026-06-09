@@ -269,6 +269,30 @@
 - **Decision:** Asignar etiquetas `#teaser` y `#full` a cada publicación y realizar búsquedas remotas específicas por tipo de asset antes de subir. Además, abortar la ejecución si la sincronización del catálogo de Meta falla.
 - **Razon:** Evitar que el sistema actúe "a ciegas" cuando la API de Meta falla en darnos el catálogo remoto. La falta de este blindaje causaba que el sistema subiera duplicados al no encontrar el registro previo por errores transitorios.
 
+## D36: Calidad máxima en conversión DNG→JPEG
+- **Decisión:** usar `-quality 100` en ImageMagick al convertir DNG a JPEG para subir a Facebook.
+- **Razón:** el usuario pidió "calidad máxima". Facebook ya re-comprime al recibir, así que partir del JPEG de máxima calidad minimiza la pérdida por generación.
+
+## D37: Carpeta local por álbum después de publicar
+- **Decisión:** al completar la subida de un álbum, crear `fotos_subidas_album/{nombre_album}/` y copiar (`shutil.copy2`) las fotos allí como archivo local, además del movimiento legacy a la carpeta plana.
+- **Razón:** el usuario requiere un archivo local organizado por álbum para tener respaldo de lo que se publicó.
+
+## D38: Teaser de álbum inmediato
+- **Decisión:** `album_diario.py` ya no programa el teaser a las 20:00; publica el carrusel inmediatamente cuando terminan las subidas del álbum y se crean los IDs no-publicados del teaser.
+- **Razón:** el usuario confirmó que todo debe publicarse inmediatamente, después de que el álbum esté completo.
+
+## D39: `META_FB_PAGE_TOKEN` debe ser Page Access Token
+- **Decisión:** el flujo de álbum valida que `META_FB_PAGE_TOKEN` sea token `PAGE`. Si detecta un token `USER` válido, deriva un Page Access Token en memoria para la corrida.
+- **Razón:** el error `(#3) Application does not have the capability to make this API call` apareció aunque el token tenía `pages_manage_metadata`; la causa real era usar un token `USER` en endpoints de página.
+
+## D40: Archivar álbum solo tras confirmación remota
+- **Decisión:** `album_diario.py` mantiene la carpeta local `fotos_subidas_album/Fotos YYYY-MM-DD`, pero solo copia/mueve las fotos después de confirmar por Graph API el álbum, los IDs de fotos y el teaser publicado.
+- **Razón:** el operador necesita que la carpeta local represente contenido ya confirmado en Facebook, no solo intentos de subida.
+
+## D41: Teaser en inglés y carrusel distribuido
+- **Decisión:** el teaser del álbum usa caption en inglés con primera línea fuerte y pregunta final; el carrusel elige hasta 5 fotos distribuidas por segmentos del álbum, priorizando la foto más pesada de cada segmento como proxy de calidad.
+- **Razón:** mejora presentación y conversación sin recurrir a hashtags genéricos o señales de spam.
+
 ## D35: Delegación de IG al Vigía y Resilio-Management
 - **Decisión:** 
     1. Eliminar todas las subidas de Instagram del runner principal y delegar la publicación al vigía (`fb_to_ig_vigia.py`).

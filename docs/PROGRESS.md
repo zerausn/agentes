@@ -154,3 +154,12 @@
   - `fb_to_ig_vigia.py --help` responde
   - dry-run del watcher movil con `AGENTES_SYNC_SEARCH_LIMIT=20`: `20`
     videos pendientes y primera muestra `2026-02-19 - 20251108 182940`
+
+## Album Diario Facebook (album_diario.py)
+- `meta_uploader/photo_uploader/album_diario.py` creado: álbum por fecha (`Fotos YYYY-MM-DD`), sube fotos y publica teaser carrusel inmediato.
+- Calidad DNG→JPEG en `100` para máxima calidad antes de la recompresión de Facebook.
+- Progreso visible por álbum: foto actual, porcentaje, fotos restantes, tiempo transcurrido y ETA.
+- Confirmación remota antes de archivar: Graph API verifica álbum, IDs de fotos y teaser publicado.
+- Carpeta local por álbum en `fotos_subidas_album/Fotos YYYY-MM-DD/` con `copy2`; solo se usa tras confirmar Facebook.
+- Token operativo corregido: `META_FB_PAGE_TOKEN` debe ser token `PAGE`; si entra `USER`, el script deriva token de página en memoria.
+- Teaser en inglés con headline fuerte, pregunta final y carrusel distribuido por segmentos, priorizando fotos más pesadas.

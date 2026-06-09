@@ -60,6 +60,7 @@ generadas ni videos transcodificados.
 - `check_page_v2.py`: valida acceso basico a la pagina y al edge `/videos`
 - `debug_token.py`: imprime el diagnostico del token actual
 - `get_page_token.py`: intenta derivar `META_FB_PAGE_TOKEN` a partir de `META_PAGE_TOKEN`
+- `photo_uploader/album_diario.py`: crea álbumes de Facebook por fecha (`Fotos YYYY-MM-DD`), sube fotos, publica teaser inmediato en inglés y archiva localmente solo tras confirmar álbum/fotos/teaser por Graph API.
 - `diag_sizes.py`: lista los videos mas pesados de una carpeta
 - `transcode_batch.py`: prepara una cola de videos optimizados para IG
 - `test_batch_upload.py` y `test_batch_upload_v2.py`: scripts manuales con opt-in explicito

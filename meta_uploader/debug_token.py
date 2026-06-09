@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 
 import requests
+from requests import RequestException
 
 try:
     from dotenv import load_dotenv
@@ -49,18 +50,26 @@ def debug_meta_token():
         return
 
     print("Depurando token actual con Meta...")
-    debug_response = requests.get(
-        "https://graph.facebook.com/debug_token",
-        params={"input_token": token, "access_token": token},
-        timeout=60,
-    ).json()
+    try:
+        debug_response = requests.get(
+            "https://graph.facebook.com/debug_token",
+            params={"input_token": token, "access_token": token},
+            timeout=60,
+        ).json()
+    except RequestException as exc:
+        print(f"No se pudo consultar debug_token sin exponer el token: {exc.__class__.__name__}")
+        return
     print(json.dumps(debug_response, indent=2, ensure_ascii=False))
 
-    permissions_response = requests.get(
-        f"https://graph.facebook.com/{api_version}/me/permissions",
-        params={"access_token": token},
-        timeout=60,
-    ).json()
+    try:
+        permissions_response = requests.get(
+            f"https://graph.facebook.com/{api_version}/me/permissions",
+            params={"access_token": token},
+            timeout=60,
+        ).json()
+    except RequestException as exc:
+        print(f"No se pudo consultar /me/permissions sin exponer el token: {exc.__class__.__name__}")
+        return
     print("\nPermisos visibles para el token:")
     print(json.dumps(permissions_response, indent=2, ensure_ascii=False))
 
