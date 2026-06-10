@@ -53,7 +53,6 @@ echo ""
 echo "[1/2] Creando albumes faltantes en Facebook por Edge..."
 "$WEB_PYTHON" "$ALBUM_CREATOR" \
   --browser edge \
-  --restart-edge \
   --placeholder \
   --continue-on-error
 
