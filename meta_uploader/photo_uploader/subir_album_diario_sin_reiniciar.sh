@@ -24,10 +24,10 @@ finish() {
 trap finish EXIT
 
 echo "============================================================"
-echo "FACEBOOK - ALBUMES + SUBIDA AUTOMATICA"
+echo "FACEBOOK - ALBUMES + SUBIDA AUTOMATICA (sin reiniciar Edge)"
 echo "============================================================"
 echo "Carpeta unica : $PHOTO_DIR"
-echo "Navegador     : Microsoft Edge Flatpak"
+echo "Navegador     : Microsoft Edge Flatpak (ya abierto)"
 echo "Modo          : crea albumes por web y luego sube fotos"
 echo "============================================================"
 
@@ -53,7 +53,6 @@ echo ""
 echo "[1/2] Creando albumes faltantes en Facebook por Edge..."
 "$WEB_PYTHON" "$ALBUM_CREATOR" \
   --browser edge \
-  --restart-edge \
   --placeholder \
   --continue-on-error
 
