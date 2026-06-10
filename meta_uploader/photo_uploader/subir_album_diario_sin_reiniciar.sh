@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BASE_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# Apunta siempre al repo, sin importar desde donde se ejecute este .sh
+REPO_DIR="/home/zerausn/Documents/Antigravity/agentes/meta_uploader/photo_uploader"
 PHOTO_DIR="/media/zerausn/D69493CF9493B08B/Users/ZN-/Documents/ADM/Carpeta 1/Fotos"
-ALBUM_CREATOR="$SCRIPT_DIR/facebook_album_web_auto.py"
-UPLOADER_DIR="$SCRIPT_DIR"
-UPLOADER="$UPLOADER_DIR/album_diario.py"
-UPLOADER_PYTHON="python3"
-WEB_PYTHON="python3"
+ALBUM_CREATOR="$REPO_DIR/facebook_album_web_auto.py"
+UPLOADER="$REPO_DIR/album_diario.py"
 
 finish() {
   local exit_code=$?
@@ -26,9 +23,9 @@ trap finish EXIT
 echo "============================================================"
 echo "FACEBOOK - ALBUMES + SUBIDA AUTOMATICA (sin reiniciar Edge)"
 echo "============================================================"
-echo "Carpeta unica : $PHOTO_DIR"
+echo "Carpeta fotos : $PHOTO_DIR"
 echo "Navegador     : Microsoft Edge Flatpak (ya abierto)"
-echo "Modo          : crea albumes por web y luego sube fotos"
+echo "Modo          : detecta albumes faltantes y sube fotos"
 echo "============================================================"
 
 if [[ ! -d "$PHOTO_DIR" ]]; then
@@ -38,25 +35,33 @@ if [[ ! -d "$PHOTO_DIR" ]]; then
 fi
 
 if [[ ! -f "$ALBUM_CREATOR" ]]; then
-  echo "ERROR: no existe el creador web:"
+  echo "ERROR: no existe el creador web en el repo:"
   echo "$ALBUM_CREATOR"
   exit 1
 fi
 
 if [[ ! -f "$UPLOADER" ]]; then
-  echo "ERROR: no existe el uploader:"
+  echo "ERROR: no existe el uploader en el repo:"
   echo "$UPLOADER"
   exit 1
 fi
 
+# Verificar si hay albumes faltantes antes de abrir Edge
 echo ""
-echo "[1/2] Creando albumes faltantes en Facebook por Edge..."
-"$WEB_PYTHON" "$ALBUM_CREATOR" \
-  --browser edge \
-  --placeholder \
-  --continue-on-error
+echo "[1/2] Verificando albumes faltantes..."
+FALTANTES=$(python3 "$ALBUM_CREATOR" --dry-run 2>&1 | grep "Albumes faltantes:" | awk '{print $NF}')
+
+if [[ "$FALTANTES" == "0" || -z "$FALTANTES" ]]; then
+  echo "Todos los albumes ya existen en Facebook. No es necesario abrir Edge."
+else
+  echo "Faltan $FALTANTES albumes. Abriendo Edge para crearlos..."
+  python3 "$ALBUM_CREATOR" \
+    --browser edge \
+    --placeholder \
+    --continue-on-error
+fi
 
 echo ""
 echo "[2/2] Subiendo fotos a los albumes confirmados..."
-cd "$UPLOADER_DIR"
-"$UPLOADER_PYTHON" "$UPLOADER"
+cd "$REPO_DIR"
+python3 "$UPLOADER"
