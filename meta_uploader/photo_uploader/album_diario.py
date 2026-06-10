@@ -126,20 +126,20 @@ def crear_caption_teaser(fecha, album_url, nombre_album=None, total_fotos=None):
         return (
             f"New gallery: selected one-shot moments from the performative archive in Cali.\n\n"
             f"{total_fotos or 'These'} standalone photo(s) are now live in one place.\n"
-            f"Full album: {album_url}\n"
-            f"{LINKTREE_URL}\n\n"
+            f"Full album: {album_url}\n\n"
             f"Which one should become the cover?\n\n"
-            f"{HASHTAGS}"
+            f"{HASHTAGS}\n\n"
+            f"{LINKTREE_URL}"
         )
 
     fecha_legible = datetime.strptime(fecha, "%Y-%m-%d").strftime("%b %d, %Y")
     return (
         f"New gallery: a night from the performative archive in Cali.\n\n"
         f"Photos from {fecha_legible} are now live.\n"
-        f"Full album: {album_url}\n"
-        f"{LINKTREE_URL}\n\n"
+        f"Full album: {album_url}\n\n"
         f"Which photo should become the cover?\n\n"
-        f"{HASHTAGS}"
+        f"{HASHTAGS}\n\n"
+        f"{LINKTREE_URL}"
     )
 
 
