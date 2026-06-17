@@ -92,26 +92,32 @@ def graph_get(path, token, params=None):
 
 
 def list_remote_albums(page_id, token):
-    url = f"{GRAPH}/{page_id}/albums"
-    params = {"access_token": token, "limit": "100", "fields": "id,name,count,created_time,link"}
-    albums = {}
-    while url:
+    url_base = f"{GRAPH}/{page_id}/albums"
+    for intento in range(1, 4):
+        url = url_base
+        params = {"access_token": token, "limit": "100", "fields": "id,name,count,created_time,link"}
+        albums = {}
         try:
-            response = requests.get(url, params=params if "?" not in url else {}, timeout=60)
-            body = response.json()
+            while url:
+                response = requests.get(url, params=params if "?" not in url else {}, timeout=60)
+                body = response.json()
+                if "error" in body:
+                    print(f"ERROR leyendo albumes remotos (intento {intento}/3): {safe_error(body['error'])}", file=sys.stderr)
+                    break
+                for album in body.get("data", []):
+                    name = album.get("name", "")
+                    if name:
+                        albums[name] = album
+                url = body.get("paging", {}).get("next")
+                params = {}
+            if albums:
+                return albums
+            else:
+                print(f"ADVERTENCIA: Lectura de albumes vacia (intento {intento}/3).", file=sys.stderr)
         except requests.RequestException as exc:
-            print(f"ERROR leyendo albumes remotos: network_error:{exc.__class__.__name__}", file=sys.stderr)
-            return {}
-        if "error" in body:
-            print(f"ERROR leyendo albumes remotos: {safe_error(body['error'])}", file=sys.stderr)
-            return {}
-        for album in body.get("data", []):
-            name = album.get("name", "")
-            if name:
-                albums[name] = album
-        url = body.get("paging", {}).get("next")
-        params = {}
-    return albums
+            print(f"ERROR leyendo albumes remotos (intento {intento}/3): network_error:{exc.__class__.__name__}", file=sys.stderr)
+        time.sleep(3 * intento)
+    return {}
 
 
 def safe_error(error):
