@@ -912,12 +912,17 @@ def procesar():
         album_dir = DIR_PROCESADAS / nombre_album
         album_dir.mkdir(parents=True, exist_ok=True)
         for foto in foto_paths_subidas:
+            if not foto.exists():
+                logging.warning("[archive] Omitiendo copia de %s porque el archivo original ya no existe localmente.", foto.name)
+                continue
             destino = album_dir / foto.name
             shutil.copy2(str(foto), str(destino))
             logging.info("[archive] %s -> %s", foto.name, destino)
 
         # Mover originales a carpeta plana (legacy)
         for foto in foto_paths_subidas:
+            if not foto.exists():
+                continue
             destino_legacy = DIR_PROCESADAS / foto.name
             if not destino_legacy.exists():
                 shutil.move(str(foto), str(destino_legacy))
