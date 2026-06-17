@@ -7,17 +7,14 @@ El flujo quedó automatizado con dos fases:
 1. `facebook_album_web_auto.py` verifica fechas locales, lista álbumes remotos y crea por navegador los álbumes faltantes.
 2. `album_diario.py` sube las fotos por Graph API, publica teaser inmediato y archiva localmente solo cuando Facebook confirma.
 
-El lanzador versionado es:
+Existen tres lanzadores versionados en el repositorio y sus equivalentes en el escritorio (`/home/zerausn/Desktop/subir fotos/`):
 
-```bash
-meta_uploader/photo_uploader/subir_album_diario.sh
-```
-
-En el escritorio puede existir un acceso directo equivalente:
-
-```bash
-/home/zerausn/Desktop/subir_album_diario.sh
-```
+1. **`subir_album_diario.sh`**:
+   - **Flujo completo:** Ejecuta el preflight de creación de álbumes en Edge (reiniciando el navegador con depuración remota habilitada en el puerto `9222` si es necesario) y luego sube las fotos por la API Graph.
+2. **`subir_album_diario_sin_reiniciar.sh`**:
+   - **Flujo optimizado:** Realiza una comprobación rápida (`--dry-run`) para contar álbumes faltantes. Si todos existen, omite Edge por completo y sube las fotos directamente. Si faltan, abre Edge (sin reiniciar forzosamente si ya está depurando) para crearlos.
+3. **`crear_albumes_facebook_edge_auto.sh`**:
+   - **Solo creación:** Lanza únicamente la fase web preflight en Edge para crear los álbumes faltantes en Facebook, sin ejecutar la subida posterior de fotos.
 
 ## Fuente única de fotos
 
