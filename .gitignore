@@ -1,0 +1,17 @@
+# Entornos virtuales de Python
+.venv/
+.venv_photos/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs y archivos de runtime
+*.log
+*.json.bak
+/tmp/
+
+# Archivos de IDE y sistema
+.DS_Store
+*.swp
+.idea/
