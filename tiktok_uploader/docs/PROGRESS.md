@@ -22,7 +22,15 @@ Publicar videos en TikTok via Content Posting API y configurar cuenta creador co
 2. **App icon**: Reviewer claims icon not visible on Privacy Policy / Terms pages (may have checked old version before latest gh-pages update).
 3. **Insufficient Review Description**: Need detailed explanation of scopes and data usage.
 
-### Previously Resolved
+#### Infrastructure Changes
+- Note9 (SM-X210) configured as 24/7 host for TikTok stack
+- ngrok installed on Note9 with authtoken, URL: `https://gravy-diaper-refrain.ngrok-free.dev`
+- tmux sessions set up on Note9 for Flask + ngrok persistence
+- Termux:Boot script created (`~/.termux/boot/start_tiktok.sh`) for auto-start on reboot
+- Shortcut created (`Iniciar_TikTok.sh`) for manual restart
+- PC processes (localhost.run tunnel, local Flask) killed — now using Note9 exclusively for 24/7 operation
+
+## Previously Resolved
 - App icon + favicon + header icon added to all website pages
 - Website URL verification with TikTok (meta tag + TXT file + redirect URL)
 - Products added to portal: Login Kit, Content Posting API, Share Kit

@@ -10,9 +10,26 @@ App review resubmission #2 was **rejected** with 3 issues:
 ## Critical Context
 
 ### Running Services
-- **Flask**: Running on `http://127.0.0.1:8080` (PID in `/tmp/flask.log`)
-- **Tunnel**: `https://87a5f16efde353.lhr.life` (or check `/tmp/tunnel_url.txt`)
+- **Flask**: Running on Note9 (192.168.1.7:8080) in tmux session `tiktok`
+- **Tunnel**: `https://gravy-diaper-refrain.ngrok-free.dev` (via ngrok on Note9, stable URL)
 - **Website**: `https://zerausn.github.io/agentes/`
+- **PC services**: Stopped (localhost.run tunnel and local Flask killed)
+
+### Note9 Access
+```bash
+ssh -p 8022 u0_a289@192.168.1.7
+# Inside Termux:
+tmux attach -t tiktok          # see Flask + ngrok status
+proot-distro login debian       # enter Debian proot
+```
+
+### On the Note9
+- Flask runs inside Debian proot at `/root/agentes/tiktok_uploader/`
+- ngrok runs in Debian proot with authtoken
+- Both managed by tmux session `tiktok` (windows: `flask`, `ngrok`)
+- Auto-start on boot: `~/.termux/boot/start_tiktok.sh`
+- Manual restart: `~/.shortcuts/Iniciar_TikTok.sh`
+- ngrok API: `http://127.0.0.1:4040` (on Note9)
 
 ### Branch Structure
 - `tiktok` — current documentation branch (from `main`)

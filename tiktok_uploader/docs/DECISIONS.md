@@ -10,6 +10,11 @@
 - Decision: Fall back to localhost.run (SSH reverse tunnel) which is free and reliable.
 - Consequence: Each tunnel restart generates a new random `.lhr.life` subdomain, requiring redirect URI updates in TikTok portal.
 
+## 2026-06-18: Note9 (SM-X210) como host 24/7 con ngrok + tmux
+- Context: localhost.run cambia URL cada reinicio; inestable para revisión de TikTok que requiere URL fija. PC no está siempre encendido.
+- Decision: Migrar Flask + ngrok al Note9 (arm64) que está encendido 24/7. ngrok con authtoken da URL persistente (`gravy-diaper-refrain.ngrok-free.dev`). tmux en Termux mantiene procesos vivos entre sesiones SSH.
+- Consequence: URL fija para Redirect URI. PC ya no necesita procesos en segundo plano. Note9 se auto-arranca con Termux:Boot.
+
 ## 2026-05-26: Dynamic redirect URI from request headers
 - Context: Tunnel URL changes every restart; hardcoding `REDIRECT_URI` in config.py required manual updates.
 - Decision: Use `ProxyFix` middleware and resolve `redirect_uri` dynamically from `X-Forwarded-Proto` and `X-Forwarded-Host` headers at request time.
