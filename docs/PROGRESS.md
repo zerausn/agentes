@@ -163,3 +163,16 @@
 - Carpeta local por álbum en `fotos_subidas_album/Fotos YYYY-MM-DD/` con `copy2`; solo se usa tras confirmar Facebook.
 - Token operativo corregido: `META_FB_PAGE_TOKEN` debe ser token `PAGE`; si entra `USER`, el script deriva token de página en memoria.
 - Teaser en inglés con headline fuerte, pregunta final y carrusel distribuido por segmentos, priorizando fotos más pesadas.
+
+## TikTok Uploader (tiktok_uploader/)
+- `tiktok_uploader/` creado como subproyecto para publicar videos en TikTok via Content Posting API.
+- App Flask con OAuth login (scopes: user.info.basic, video.upload, video.publish), subida y publicación de videos.
+- App "Uploaderbot" registrada en TikTok Developers (client_key: `awhfxd65i4i468x8`).
+- Website desplegado en GitHub Pages (`zerausn.github.io/agentes/`) con páginas legales, app icon y favicon.
+- Verificación URL prefix completada (meta tag + TXT + redirect URL).
+- Productos añadidos en portal: Login Kit, Content Posting API, Share Kit.
+- Cuenta sandbox `performaticwritingscali` agregada como Target User.
+- PR #3 mergeado a main con cambios de verificación TikTok.
+- **App review rechazada 2 veces** (2026-06-18): 3 issues — login entry point, app icon, review description.
+- Tunnel localhost.run activo como alternativa a trapdoor.sh (caído con 429/502).
+- Rama `tiktok` creada con documentación completa del subproyecto.

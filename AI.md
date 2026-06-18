@@ -23,6 +23,7 @@ como `youtube_uploader` y `meta_uploader`.
 
 - `youtube_uploader/`: automatizacion de YouTube con contexto propio
 - `meta_uploader/`: automatizacion de Meta en desarrollo
+- `tiktok_uploader/`: publicacion de videos en TikTok via Content Posting API
 - `configs/`: configuraciones de agentes
 - `scripts/`: automatizaciones y bootstrap
 - `nemoclaw/`: contexto operativo y documentacion separada
