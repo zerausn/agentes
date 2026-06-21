@@ -74,7 +74,7 @@ def get_youtube_service():
         except Exception as e:
             log.warning("Token %s no válido: %s", token_file.name, e)
 
-    log.error("No se pudo autenticar con ningún token. Reautenticar manualmente.")
+    log.error("No se pudo autenticar con ningún token. Ejecuta el widget 0_RENOVAR_TOKEN_YT para generar nuevos tokens.")
     return None
 
 
