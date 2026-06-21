@@ -125,6 +125,11 @@ Diseñado para vaciar discos duros masivos (ej: 152+ videos) sin violar las pol�
 - **Concentración de Oro**: Solo usa los slots de **07:00 AM** (Global) y **18:30 PM** (Local Prime).
 - **Lógica de Laps (Vueltas)**: Si hay más videos que días disponibles, el bot vuelve a empezar en el Día 1 pero con un desfase de 1 minuto (07:01, 18:31, etc.), permitiendo "apilar" capas infinitas de contenido en las mejores horas.
 
+### 4. Evacuador Lento (Anti-Spam 368)
+Mecanismo de protección activo (`4_VIGIA_FACEBOOK720`) diseñado para purgar colas inmensas de videos represados sin desencadenar el **Error 368 (Bloqueo de Spam)** de la Graph API.
+- **Flujo Directo**: Lee directamente los videos aprobados sin pasar por una staging de bash ("cola") innecesaria, haciéndolo robusto contra interrupciones.
+- **Pausa Nativa en Python**: Después de cada subida exitosa, el hilo se congela de forma nativa por 12 minutos (`sleep 720`) simulando comportamiento orgánico antes de avanzar al siguiente video.
+
 ## Documentacion publica para App Review
 
 - [`docs/PRIVACY_POLICY.md`](./docs/PRIVACY_POLICY.md)
