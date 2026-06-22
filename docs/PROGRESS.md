@@ -164,6 +164,15 @@
 - Token operativo corregido: `META_FB_PAGE_TOKEN` debe ser token `PAGE`; si entra `USER`, el script deriva token de página en memoria.
 - Teaser en inglés con headline fuerte, pregunta final y carrusel distribuido por segmentos, priorizando fotos más pesadas.
 
+## Vivo V2058 — Widgets Vigía Facebook (4_VIGIA_FACEBOOK)
+- **Problema:** `run-as com.termux` no puede acceder a `/sdcard/` en Vivo V2058 (restricción FUSE de Vivo). El staging en `$PR_ROOT/sdcard/` falla porque ese directorio tiene permisos `000`.
+- **Solución:** Cambiar staging a `$PR_ROOT/root/antigravity_staging/` (escribible) y usar `AGENTES_STORAGE_ROOT=/root/antigravity_staging` dentro del proot.
+- **Scripts corregidos:**
+  - `4_VIGIA_FACEBOOK.sh` — copia todos los videos, ejecuta evacuador batch, copia resultados de vuelta.
+  - `4_VIGIA_FACEBOOK720.sh` — procesa 1 video por vez con espera de 720s entre cada uno.
+- **Prueba funcional exitosa (via ADB pipe):** video 180MB subido a Facebook desde proot con `AGENTES_STORAGE_ROOT=/root/antigravity_staging` — 1 éxito, 0 fallos.
+- **Pendiente:** Probar desde el widget drawer de Termux (no se puede disparar desde ADB por FUSE). Los logs quedan en `~/antigravity_vigia.log` y `~/antigravity_vigia_720.log`.
+
 ## TikTok Uploader (tiktok_uploader/)
 - `tiktok_uploader/` creado como subproyecto para publicar videos en TikTok via Content Posting API.
 - App Flask con OAuth login (scopes: user.info.basic, video.upload, video.publish), subida y publicación de videos.
@@ -176,3 +185,23 @@
 - **App review rechazada 2 veces** (2026-06-18): 3 issues — login entry point, app icon, review description.
 - Tunnel localhost.run activo como alternativa a trapdoor.sh (caído con 429/502).
 - Rama `tiktok` creada con documentación completa del subproyecto.
+
+## Fix Android Doze Mode — VIGIA_FACEBOOK720 (2026-06-21)
+- **Problema diagnosticado:** `time.sleep(720)` en Python dentro de proot-distro
+  se congelaba por Android Doze Mode. Ciclos reales: 62-90 min en vez de 12 min.
+  Confirmado en logs del Note9.
+- **Solución implementada:**
+  1. `subir_fb_evacuador_720.py` — refactorizado para subir **1 video y retornar**
+     (exit 0=ok, 2=vacío, 1=error). Sin `time.sleep` interno.
+  2. `vigia_facebook720_termux.sh` — loop bash con `termux-wake-lock` +
+     `wait_until(epoch)` basado en `date +%s` chequeando cada 15s.
+     Si Doze pausa el proceso, al despertar ve que ya pasaron 720s y actúa
+     inmediatamente.
+- **Certificado con test real 720s en Note9:**
+  - Tiempo planeado: 720s / Tiempo real: 723s / Diferencia: **3s** ✅
+- **Archivos nuevos en repo:**
+  - `meta_uploader/subir_fb_evacuador_720.py`
+  - `scripts/linux/vigia_facebook720_termux.sh`
+  - `scripts/linux/shortcut_4_VIGIA_FACEBOOK720.sh`
+  - `docs/VIGIA_FACEBOOK720_DOZE_FIX.md`
+- **Pendiente:** Implementar en S24 Ultra y Vivo (conectar vivo para deploy).

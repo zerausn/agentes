@@ -44,3 +44,10 @@
 - Context: Config had hardcoded values, making it inflexible for different tunnel URLs.
 - Decision: Extract `PUBLIC_BASE_URL`, `REDIRECT_URI`, `PORT`, `DEBUG`, `SECRET_KEY` into environment variables with sensible defaults. Use a helper `_env_list()` for scopes.
 - Consequence: Deployment config is now environment-driven; code works across environments without edits.
+
+## 2026-06-18: Termux Widget — SELinux context entre usuarios Android
+- Context: `Iniciar_TikTok.sh` creado via SSH/scp (`u0_a289`) no aparecía en el Termux Widget. El widget (ejecutándose como `u0_a291`) lo ignoraba silenciosamente.
+- Causa raíz: Android aisla apps por UID. El widget corre como `u0_a291` (UID de `com.termux`), pero el archivo fue creado por `u0_a289` (UID del usuario SSH). Aunque los permisos Unix (`chmod 755`) permitían lectura, el contexto SELinux del archivo (`u0_a289`) impedía que `u0_a291` lo viera. El widget no muestra error — simplemente omite los archivos que no puede leer.
+- Decisión: Usar `adb shell run-as com.termux cp` para crear/copiar shortcuts. `cp` desde `run-as` preserva el contexto SELinux correcto del usuario `u0_a291`, haciendo el archivo visible para el widget.
+- Forma correcta documentada en HANDOVER.md
+- Consecuencia: Los shortcuts siempre deben crearse desde `run-as com.termux`, no desde SSH. Alternativamente, existe otro directorio (`/data/data/com.termux/.shortcuts/`) que el widget también lee, pero es menos conocido y no siempre accesible.

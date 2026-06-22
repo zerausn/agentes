@@ -87,6 +87,47 @@ Uploaderbot es una aplicación web que permite a creadores de contenido autentic
 Creadores de contenido que desean automatizar o simplificar la publicación de videos en TikTok desde una interfaz web.
 ```
 
+## Termux Widget (cómo agregar shortcuts correctamente)
+
+El widget de Termux lee shortcuts de `~/.shortcuts/` (`/data/data/com.termux/files/home/.shortcuts/`).
+
+### Problema: SELinux entre UIDs
+- SSH/scp como `u0_a289` crea archivos con contexto SELinux de ese usuario.
+- El widget corre como `u0_a291` (UID interno de `com.termux`).
+- `u0_a291` NO puede leer archivos creados por `u0_a289` aunque tengan `chmod 755`.
+- El widget silenciosamente omite los archivos ilegibles (sin error visible).
+
+### Forma correcta de agregar un shortcut
+```bash
+# 1. Leer contenido del archivo a añadir
+CONTENT=$(cat ~/.shortcuts/mi_script.sh)
+
+# 2. Crear el archivo desde run-as com.termux (contexto SELinux correcto)
+adb shell "run-as com.termux sh -c 'cat > /data/data/com.termux/files/home/.shortcuts/mi_script.sh' << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+echo "Hello from widget"
+EOF
+chmod 755 /data/data/com.termux/files/home/.shortcuts/mi_script.sh"
+
+# 3. Si el archivo ya existe (creado por otro usuario), copiarlo preservando contexto:
+adb shell run-as com.termux cp <origen> /data/data/com.termux/files/home/.shortcuts/
+
+# 4. Hacer scroll en el widget para verlo (no necesita re-agregarse)
+```
+
+### Refresh del widget
+- Botón de refresh (↻) actualiza la vista pero NO reescanea el directorio.
+- Para re-escaneo completo: remover el widget de la pantalla y agregarlo de nuevo:
+  ```bash
+  adb shell pm clear com.termux.widget
+  # Luego re-agregar manualmente desde Widgets → Termux Widget
+  ```
+
+### Directorios alternativos que el widget puede leer
+- `/data/data/com.termux/.shortcuts/` (legado, no siempre accesible desde `run-as`)
+- `/data/user/0/com.termux/.shortcuts/` (equivalente al anterior, no recomendado)
+- El widget prioriza `~/.shortcuts/` del home de Termux.
+
 ## Useful Commands
 ```bash
 # Start Flask

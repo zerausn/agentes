@@ -1,13 +1,30 @@
 import secrets
+import base64
+import hashlib
 import requests
 from urllib.parse import urlencode
 from flask import Flask, redirect, request, session, render_template, jsonify
+from werkzeug.middleware.proxy_fix import ProxyFix
 from config import *
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 TOKENS = {}
+
+PROD_CLIENT_KEY = "awhfxd65i4i468x8"
+PROD_CLIENT_SECRET = "QwlYmiutMspEQF266RnFoYFOtB6JaLAB"
+SANDBOX_CLIENT_KEY = "sbawgooshw60ceibf2"
+SANDBOX_CLIENT_SECRET = "cabF93Nh2eIgiafuqXzOsqZiZSEXwS55"
+
+
+def _creds():
+    return SANDBOX_CLIENT_KEY, SANDBOX_CLIENT_SECRET
+
+
+def dynamic_redirect_uri():
+    return request.url_root.rstrip("/") + "/callback"
 
 
 @app.route("/")
@@ -16,16 +33,29 @@ def index():
     return render_template("index.html", user=user)
 
 
+def _pkce_pair():
+    verifier = secrets.token_urlsafe(64)[:128]
+    digest = hashlib.sha256(verifier.encode()).digest()
+    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+    return verifier, challenge
+
+
 @app.route("/login")
 def login():
     csrf_state = secrets.token_urlsafe(16)
     session["csrf_state"] = csrf_state
+    code_verifier, code_challenge = _pkce_pair()
+    session["code_verifier"] = code_verifier
+    ck, cs = _creds()
+    redirect_uri = dynamic_redirect_uri()
     params = {
-        "client_key": CLIENT_KEY,
+        "client_key": ck,
         "response_type": "code",
         "scope": ",".join(SCOPES),
-        "redirect_uri": REDIRECT_URI,
+        "redirect_uri": redirect_uri,
         "state": csrf_state,
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
     }
     url = TIKTOK_AUTH_URL + "?" + urlencode(params)
     return redirect(url)
@@ -37,12 +67,16 @@ def callback():
     state = request.args.get("state")
     if state != session.pop("csrf_state", None):
         return "Error: state mismatch", 400
+    ck, cs = _creds()
+    redirect_uri = dynamic_redirect_uri()
+    code_verifier = session.pop("code_verifier", None)
     resp = requests.post(TIKTOK_TOKEN_URL, data={
-        "client_key": CLIENT_KEY,
-        "client_secret": CLIENT_SECRET,
+        "client_key": ck,
+        "client_secret": cs,
         "code": code,
         "grant_type": "authorization_code",
-        "redirect_uri": REDIRECT_URI,
+        "redirect_uri": redirect_uri,
+        "code_verifier": code_verifier or "",
     }, headers={"Content-Type": "application/x-www-form-urlencoded"})
     data = resp.json()
     if "access_token" not in data:
@@ -58,12 +92,17 @@ def callback():
 def upload_page():
     if "user" not in session:
         return redirect("/")
-    info = requests.post(TIKTOK_QUERY_CREATOR, headers={
-        "Authorization": f"Bearer {session['user']['token']}",
-        "Content-Type": "application/json",
-    }, json={}).json()
-    max_duration = info.get("data", {}).get("max_video_post_duration_sec", 600)
-    return render_template("upload.html", max_duration=max_duration)
+    max_duration = 600
+    try:
+        info = requests.post(TIKTOK_QUERY_CREATOR, headers={
+            "Authorization": f"Bearer {session['user']['token']}",
+            "Content-Type": "application/json",
+        }, json={}).json()
+        if "data" in info:
+            max_duration = info["data"].get("max_video_post_duration_sec", 600)
+    except Exception:
+        pass
+    return render_template("upload.html", max_duration=max_duration, sandbox=True)
 
 
 @app.route("/api/init-upload", methods=["POST"])

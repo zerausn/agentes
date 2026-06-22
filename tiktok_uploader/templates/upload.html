@@ -98,6 +98,11 @@
     <div class="card">
         <a href="/" class="back">&larr; Volver</a>
         <h1>Subir video a TikTok</h1>
+        {% if sandbox %}
+        <div style="background:#2a1a1a;border:1px solid #fe2c55;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;color:#ff6b6b;">
+            ⚡ Sandbox activo — la subida requiere aprobación de Content Posting API
+        </div>
+        {% endif %}
         <p class="note">Duración máxima: {{ max_duration }}s &middot; MP4, MOV o WebM &middot; Máx 4GB</p>
 
         <div class="drop-zone" id="dropZone">

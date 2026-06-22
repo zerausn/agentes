@@ -1,7 +1,7 @@
-CLIENT_KEY = "awhfxd65i4i468x8"
-CLIENT_SECRET = "QwlYmiutMspEQF266RnFoYFOtB6JaLAB"
-REDIRECT_URI = "https://uploaderbot.trapdoor.sh/callback"
-SCOPES = ["user.info.basic", "video.upload", "video.publish"]
+CLIENT_KEY = "sbawgooshw60ceibf2"
+CLIENT_SECRET = "cabF93Nh2eIgiafuqXzOsqZiZSEXwS55"
+REDIRECT_URI = "https://gravy-diaper-refrain.ngrok-free.dev/callback"
+SCOPES = ["user.info.basic", "user.info.profile", "user.info.stats", "video.list"]
 TIKTOK_AUTH_URL = "https://www.tiktok.com/v2/auth/authorize/"
 TIKTOK_TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/"
 TIKTOK_VIDEO_INIT = "https://open.tiktokapis.com/v2/post/publish/video/init/"
