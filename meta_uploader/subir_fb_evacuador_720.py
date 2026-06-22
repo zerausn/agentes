@@ -1,8 +1,11 @@
 """
-subir_fb_evacuador.py
-Evacuador de Facebook: Lee videos de 'videos subidos exitosamente',
-los sube a Facebook como reels (si son teasers) o videos normales (si son crudos),
-y los mueve a 'subidos a facebbok' al finalizar con exito.
+subir_fb_evacuador_720.py  (VERSION BASH-LOOP — sin time.sleep interno)
+Evacua UN SOLO VIDEO de 'videos subidos exitosamente' a Facebook y retorna.
+El loop/pausa de 720s lo gestiona el script bash (con termux-wake-lock).
+Exit codes:
+  0  — video subido y movido OK
+  2  — no habia videos pendientes (carpeta vacía)
+  1  — error durante la subida
 """
 import json
 import logging
@@ -13,7 +16,6 @@ import sys
 import time
 from pathlib import Path
 
-# Asegurar que Python encuentre meta_uploader en el mismo directorio
 BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
@@ -24,8 +26,6 @@ from meta_uploader import (
 )
 
 # --- Rutas ---
-# Detectar almacenamiento operativo. Dentro de Debian/proot el PREFIX ya no
-# delata Termux, asi que preferimos una variable explicita o el path movil real.
 ROOT = Path(os.environ.get("AGENTES_STORAGE_ROOT", ""))
 if not str(ROOT):
     mobile_root = Path("/sdcard/Antigravity")
@@ -35,16 +35,16 @@ if not str(ROOT):
         ROOT = Path("/home/zerausn/Documents/Antigravity")
 
 SOURCE_DIR = ROOT / "videos subidos exitosamente"
-DONE_DIR = ROOT / "subidos a facebbok"
-LOG_FILE = BASE_DIR / "fb_evacuador.log"
+DONE_DIR   = ROOT / "subidos a facebbok"
+LOG_FILE   = BASE_DIR / "fb_evacuador.log"
 
-TEASER_RE = re.compile(r"(?i)_teaser_\d+")
+TEASER_RE     = re.compile(r"(?i)_teaser_\d+")
 SUPPORTED_EXTS = {".mp4", ".mov", ".mkv"}
 
 # --- Logging ---
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - [FB-EVACUA] - %(levelname)s - %(message)s",
+    format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
         logging.FileHandler(LOG_FILE, encoding="utf-8"),
         logging.StreamHandler(),
@@ -54,7 +54,11 @@ logging.basicConfig(
 
 def build_caption(video_path: Path) -> str:
     stem = video_path.stem
-    return f"#PW | {stem}\n\nSíguenos también en Instagram linktr.ee/performaticwritingscali\n\n#teatro #performance #escriturasperformaticas"
+    return (
+        f"#PW | {stem}\n\n"
+        "Síguenos también en Instagram linktr.ee/performaticwritingscali\n\n"
+        "#teatro #performance #escriturasperformaticas"
+    )
 
 
 def move_to_done(video_path: Path) -> None:
@@ -69,7 +73,7 @@ def move_to_done(video_path: Path) -> None:
 
 
 def upload_video(video_path: Path) -> bool:
-    caption = build_caption(video_path)
+    caption  = build_caption(video_path)
     is_teaser = bool(TEASER_RE.search(video_path.stem))
 
     if is_teaser:
@@ -89,65 +93,51 @@ def upload_video(video_path: Path) -> bool:
 
 def main():
     logging.info("=" * 60)
-    logging.info("  FB EVACUADOR - Leyendo carpeta: %s", SOURCE_DIR)
+    logging.info("  FB EVACUADOR (1 video/ciclo) — carpeta: %s", SOURCE_DIR)
     logging.info("=" * 60)
 
     if not SOURCE_DIR.exists():
         logging.error("La carpeta fuente no existe: %s", SOURCE_DIR)
-        return
+        sys.exit(1)
 
     videos = sorted(
         f for f in SOURCE_DIR.iterdir()
-        if f.is_file() and f.suffix.lower() in SUPPORTED_EXTS and not f.name.endswith('.part')
+        if f.is_file()
+        and f.suffix.lower() in SUPPORTED_EXTS
+        and not f.name.endswith(".part")
     )
 
     if not videos:
-        logging.info("No hay videos pendientes en 'videos subidos exitosamente'. Nada que hacer.")
-        return
+        logging.info("No hay videos pendientes. Nada que hacer.")
+        sys.exit(2)   # <-- código especial: 'vacío'
 
-    logging.info("Encontrados %s video(s) para evacuar a Facebook.", len(videos))
+    logging.info("Pendientes: %s video(s). Procesando el primero.", len(videos))
 
-    exitos = 0
-    fallos = 0
-    for video in videos:
+    video = videos[0]
+
+    # Verificar estabilidad del archivo (no se esté copiando)
+    last_size = video.stat().st_size
+    for _ in range(3):
+        time.sleep(1)
         try:
-            # Evitar procesar archivos parciales en curso (.part)
-            if video.name.endswith('.part'):
-                logging.info('Saltando archivo parcial: %s', video.name)
-                continue
+            sz = video.stat().st_size
+        except Exception:
+            sz = last_size
+        if sz == last_size:
+            break
+        last_size = sz
+    else:
+        logging.info("Archivo en cambio activo, saltando: %s", video.name)
+        sys.exit(2)
 
-            # Esperar brevemente a que el archivo deje de crecer (estabilidad)
-            stable = False
-            last_size = video.stat().st_size
-            for _ in range(3):
-                time.sleep(1)
-                try:
-                    sz = video.stat().st_size
-                except Exception:
-                    sz = last_size
-                if sz == last_size:
-                    stable = True
-                    break
-                last_size = sz
-            if not stable:
-                logging.info('Archivo en cambio activo, saltando por ahora: %s', video.name)
-                continue
-            ok = upload_video(video)
-            if ok:
-                move_to_done(video)
-                exitos += 1
-                if video != videos[-1]:
-                    logging.info("Pausa anti-spam de 720s (12 minutos) activada...")
-                    time.sleep(720)
-            else:
-                fallos += 1
-        except Exception as e:
-            logging.error("Error inesperado procesando %s: %s", video.name, e)
-            fallos += 1
-
-    logging.info("=" * 60)
-    logging.info("  Evacuacion completada. Exitos: %s | Fallos: %s", exitos, fallos)
-    logging.info("=" * 60)
+    ok = upload_video(video)
+    if ok:
+        move_to_done(video)
+        logging.info("CICLO OK — bash hara pausa de 720s antes del proximo.")
+        sys.exit(0)
+    else:
+        logging.error("CICLO FALLO — bash hara pausa de 720s antes del reintento.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

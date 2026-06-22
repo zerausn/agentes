@@ -155,79 +155,53 @@
   - dry-run del watcher movil con `AGENTES_SYNC_SEARCH_LIMIT=20`: `20`
     videos pendientes y primera muestra `2026-02-19 - 20251108 182940`
 
-## Pipeline Completo S24: `0_PIPELINE_COMPLETO.sh`
-- Creado el `2026-05-18` en el S24 como copia mejorada de `1_CORTAR_TEASERS.sh`.
-- **v6 actual (2026-05-18):** Pipeline reescrito. Flujo:
-  1. `video_scanner.py` → escanea DB (foreground)
-  2. `teaser_generator.py` → corta teasers de TODOS los crudos (foreground, ves logs)
-  3. Por cada crudo: lanza TODOS sus teasers en PARALELO (`--single-file`, un proceso por teaser)
-  4. Espera markers `.uploaded` de todos los teasers → 2s → arranca `uploader.py` del crudo
-  5. Facebook sweep al final
-- **Bug fixes v1→v6:**
-  - Loop infinito: se eliminó la llamada redundante a `teaser_generator` dentro del while loop
-  - Subida de teasers paralela: `--single-file` + background process por teaser
-  - Crudo arranca 2s DESPUÉS del ÚLTIMO teaser subido (no después del primero)
-  - `teaser_generator.py` escribe `.part` y renombra atómicamente (evita uploads prematuros)
-  - Markers `.state/<crudo>.done` y `.state/<teaser>.uploaded` para sincronización
-- Ubicación: `~/.shortcuts/0_PIPELINE_COMPLETO.sh` (widget #0).
+## Album Diario Facebook (album_diario.py)
+- `meta_uploader/photo_uploader/album_diario.py` creado: álbum por fecha (`Fotos YYYY-MM-DD`), sube fotos y publica teaser carrusel inmediato.
+- Calidad DNG→JPEG en `100` para máxima calidad antes de la recompresión de Facebook.
+- Progreso visible por álbum: foto actual, porcentaje, fotos restantes, tiempo transcurrido y ETA.
+- Confirmación remota antes de archivar: Graph API verifica álbum, IDs de fotos y teaser publicado.
+- Carpeta local por álbum en `fotos_subidas_album/Fotos YYYY-MM-DD/` con `copy2`; solo se usa tras confirmar Facebook.
+- Token operativo corregido: `META_FB_PAGE_TOKEN` debe ser token `PAGE`; si entra `USER`, el script deriva token de página en memoria.
+- Teaser en inglés con headline fuerte, pregunta final y carrusel distribuido por segmentos, priorizando fotos más pesadas.
 
-## Teaser Generator: bitrate incrementado a 70 Mbps
-- `2026-05-18`: se aumentó `-b:v` de `6000k` a `70000k` en
-  `teaser_generator.py:85` para el pipeline `hw_transcode` (HEVC → H.264 vía
-  mediacodec). El bitrate anterior (6 Mbps) producía pixelación notable en 4K.
-- El encoder HW del S24 procesa cualquier bitrate hasta ~100 Mbps a la misma
-  velocidad; no hay impacto en tiempo de corte.
+## Vivo V2058 — Widgets Vigía Facebook (4_VIGIA_FACEBOOK)
+- **Problema:** `run-as com.termux` no puede acceder a `/sdcard/` en Vivo V2058 (restricción FUSE de Vivo). El staging en `$PR_ROOT/sdcard/` falla porque ese directorio tiene permisos `000`.
+- **Solución:** Cambiar staging a `$PR_ROOT/root/antigravity_staging/` (escribible) y usar `AGENTES_STORAGE_ROOT=/root/antigravity_staging` dentro del proot.
+- **Scripts corregidos:**
+  - `4_VIGIA_FACEBOOK.sh` — copia todos los videos, ejecuta evacuador batch, copia resultados de vuelta.
+  - `4_VIGIA_FACEBOOK720.sh` — procesa 1 video por vez con espera de 720s entre cada uno.
+- **Prueba funcional exitosa (via ADB pipe):** video 180MB subido a Facebook desde proot con `AGENTES_STORAGE_ROOT=/root/antigravity_staging` — 1 éxito, 0 fallos.
+- **Pendiente:** Probar desde el widget drawer de Termux (no se puede disparar desde ADB por FUSE). Los logs quedan en `~/antigravity_vigia.log` y `~/antigravity_vigia_720.log`.
 
-## Facebook Evacuador: modo paralelo con confirmación
-- `2026-05-18`: `subir_fb_evacuador.py` modificado para usar `threading`.
-  Cada video se sube+verifica en su propio hilo. Todos corren simultáneamente.
-  El archivo se mueve a "subidos a facebbok" SOLO cuando su hilo confirma el
-  procesamiento en Facebook.
+## TikTok Uploader (tiktok_uploader/)
+- `tiktok_uploader/` creado como subproyecto para publicar videos en TikTok via Content Posting API.
+- App Flask con OAuth login (scopes: user.info.basic, video.upload, video.publish), subida y publicación de videos.
+- App "Uploaderbot" registrada en TikTok Developers (client_key: `awhfxd65i4i468x8`).
+- Website desplegado en GitHub Pages (`zerausn.github.io/agentes/`) con páginas legales, app icon y favicon.
+- Verificación URL prefix completada (meta tag + TXT + redirect URL).
+- Productos añadidos en portal: Login Kit, Content Posting API, Share Kit.
+- Cuenta sandbox `performaticwritingscali` agregada como Target User.
+- PR #3 mergeado a main con cambios de verificación TikTok.
+- **App review rechazada 2 veces** (2026-06-18): 3 issues — login entry point, app icon, review description.
+- Tunnel localhost.run activo como alternativa a trapdoor.sh (caído con 429/502).
+- Rama `tiktok` creada con documentación completa del subproyecto.
 
-## Note 9 (SM-N9600): VNC + SSH
-- `2026-05-17`: Se configuró el Note 9 (Android 10, SDM845) como dispositivo
-  controlable remotamente desde la tablet SM-X210.
-- **droidVNC-NG 2.19.0** instalado y funcionando como servidor VNC en puerto
-  `5900`, también HTTP (noVNC) en puerto `5800`. Contraseña: `antigravity`.
-- **OpenSSH** en Termux, puerto `8022`, usuario `u0_a309`, contraseña
-  `antigravity`. SSH funcional desde la tablet.
-- **ADB WiFi:** Se intentó autorizar desde la tablet al Note 9 sin éxito
-  (permanecía "unauthorized" a pesar de `alwaysAllow=true` en el Note 9).
-  Abandonado en favor de VNC+SSH.
-
-## Tablet SM-X210: Control remoto del Note 9 por VNC
-- `2026-05-17`: Se estableció túnel SSH desde la tablet al Note 9:
-  `ssh -L 5900:localhost:5900 -p 8022 u0_a309@10.31.120.236`
-- **freebVNC** (`com.iiordanov.freebVNC`) instalado en la tablet con conexión
-  "Note9" apuntando a `localhost:5900`, contraseña `antigravity`.
-- La conexión VNC se confirmó operativa: `RemoteCanvasActivity` activa mostrando
-  la pantalla del Note 9.
-- Scripts en la tablet:
-  - `~/tunel_vnc.sh` — túnel SSH simple
-  - `~/vnc_control.sh` — túnel + lanzar freebVNC
-  - `~/.shortcuts/6_VNC_NOTE9.sh` — shortcut para Termux Widget (un toque)
-- **noVNC** también probado: `http://10.31.120.236:5800/vnc.html` cargó en
-  Chrome de la tablet (sin túnel necesario), requiere clickear "Connect".
-
-## Note 9 SM-N9600: Mismo fix — scanner antes del uploader
-- `2026-05-22`: El widget `2_SUBIR_CRUDOS_YT` del Note 9 tenía el mismo problema
-  que el Vivo: corría solo `uploader.py` sin `video_scanner.py` previo.
-- **Fix:** Se añadió `video_scanner.py` antes del uploader en
-  `scripts/linux/subir_crudos_yt_termux.sh`. El widget ahora escanea
-  `crudos_pendientes/` y luego sube.
-- El Note 9 tiene **8 crudos** (12 GB) pendientes y **101 teasers** ya generados.
-
-## Vivo V2058: Conexión ADB y widget unificado
-- `2026-05-22`: Se conectó un Vivo V2058 por USB al Parrot OS. Autorizada la
-  depuración USB y verificado el stack Termux (`com.termux`) con Python, FFmpeg
-  y scripts de agentes.
-- **Problema:** `2_SUBIR_CRUDOS_YT.sh` no encontraba los 4 crudos (20 GB total)
-  en `crudos_pendientes/` porque `video_scanner.py` no se había ejecutado desde
-  que se copiaron. El uploader reportaba "Videos pendientes: 0".
-- **Solución:** Se fusionó `video_scanner.py` + `uploader.py` en el widget
-  `2_SUBIR_CRUDOS_YT.sh`. Ahora ejecuta escaneo antes de subir, garantizando
-  que cualquier video nuevo en `crudos_pendientes/` sea detectado y subido.
-- **Script instalado:** `~/.shortcuts/2_SUBIR_CRUDOS_YT.sh` en el Vivo.
-  Fuente en repo: `scripts/linux/subir_crudos_yt_widget.sh`.
-- **Logging:** El widget ahora escribe a `widget_logs/2_SUBIR_CRUDOS_YT.log`
-  además de mostrar en terminal.
+## Fix Android Doze Mode — VIGIA_FACEBOOK720 (2026-06-21)
+- **Problema diagnosticado:** `time.sleep(720)` en Python dentro de proot-distro
+  se congelaba por Android Doze Mode. Ciclos reales: 62-90 min en vez de 12 min.
+  Confirmado en logs del Note9.
+- **Solución implementada:**
+  1. `subir_fb_evacuador_720.py` — refactorizado para subir **1 video y retornar**
+     (exit 0=ok, 2=vacío, 1=error). Sin `time.sleep` interno.
+  2. `vigia_facebook720_termux.sh` — loop bash con `termux-wake-lock` +
+     `wait_until(epoch)` basado en `date +%s` chequeando cada 15s.
+     Si Doze pausa el proceso, al despertar ve que ya pasaron 720s y actúa
+     inmediatamente.
+- **Certificado con test real 720s en Note9:**
+  - Tiempo planeado: 720s / Tiempo real: 723s / Diferencia: **3s** ✅
+- **Archivos nuevos en repo:**
+  - `meta_uploader/subir_fb_evacuador_720.py`
+  - `scripts/linux/vigia_facebook720_termux.sh`
+  - `scripts/linux/shortcut_4_VIGIA_FACEBOOK720.sh`
+  - `docs/VIGIA_FACEBOOK720_DOZE_FIX.md`
+- **Pendiente:** Implementar en S24 Ultra y Vivo (conectar vivo para deploy).
