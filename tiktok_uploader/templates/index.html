@@ -38,6 +38,11 @@
             transition: background 0.2s;
         }
         .btn:hover { background: #e0244a; }
+        .btn-secondary {
+            background: #252525;
+            border: 1px solid #3a3a3a;
+        }
+        .btn-secondary:hover { background: #2f2f2f; }
         .user-info {
             background: #252525;
             padding: 16px;
@@ -48,6 +53,31 @@
             color: #aaa;
         }
         .actions { display: flex; flex-direction: column; gap: 12px; }
+        .hint {
+            margin-top: 12px;
+            color: #7f7f7f;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        .redirect-uri {
+            margin-top: 24px;
+            padding: 12px;
+            border-radius: 8px;
+            background: #141414;
+            border: 1px solid #262626;
+            text-align: left;
+        }
+        .redirect-uri p {
+            color: #777;
+            font-size: 12px;
+            margin-bottom: 6px;
+        }
+        .redirect-uri code {
+            display: block;
+            color: #8fe7ff;
+            word-break: break-all;
+            font-size: 12px;
+        }
     </style>
 </head>
 <body>
@@ -55,14 +85,30 @@
         <div class="logo">Uploaderbot</div>
         <p class="subtitle">Sube videos a TikTok desde tu escritorio</p>
         {% if user %}
-            <div class="user-info">✅ Conectado: {{ user.open_id[:16] }}...</div>
+            <div class="user-info">
+                ✅ Conectado: {{ user.open_id[:16] }}...<br>
+                Scopes: {{ user.granted_scopes or 'desconocidos' }}<br>
+                Modo: {{ user.scope_mode }}
+            </div>
             <div class="actions">
-                <a href="/upload" class="btn">Subir video</a>
+                {% if user.scope_mode == "full" %}
+                    <a href="/upload" class="btn">Subir video</a>
+                {% else %}
+                    <a href="/login" class="btn">Pedir scopes completos</a>
+                {% endif %}
                 <a href="/logout" style="color:#666;font-size:13px;">Cerrar sesión</a>
             </div>
         {% else %}
-            <a href="/login" class="btn">Iniciar sesión con TikTok</a>
+            <div class="actions">
+                <a href="/login" class="btn">Login completo</a>
+                <a href="/login/basic" class="btn btn-secondary">Probar OAuth básico</a>
+            </div>
+            <p class="hint">Si el login básico funciona y el completo no, el bloqueo está en los scopes de publicación o su aprobación en TikTok.</p>
         {% endif %}
+        <div class="redirect-uri">
+            <p>Redirect URI que debe estar en TikTok Developers</p>
+            <code>{{ redirect_uri }}</code>
+        </div>
     </div>
 </body>
 </html>

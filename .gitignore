@@ -55,3 +55,8 @@ video_enhancer_4k/bin/
 *.zip
 *.exe
 *.dll
+
+# Generated histories & APKs
+meta_uploader/photo_uploader/album_diario_historial.json
+Magisk-v25.2.apk
+tiktok_uploader/.run/

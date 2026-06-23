@@ -40,4 +40,21 @@
     - Preflight agregado en `album_diario.py` para derivar token de página en memoria si vuelve a aparecer un token `USER`.
     - Confirmación remota agregada: no mueve fotos a `fotos_subidas_album/Fotos YYYY-MM-DD` hasta confirmar álbum, fotos y teaser en Facebook.
     - Teaser optimizado en inglés: headline fuerte, pregunta final y carrusel distribuido priorizando fotos más pesadas.
-- **Estado**: Listo para prueba controlada; no se lanzó la subida masiva completa.
+    - Prueba viva posterior: token `PAGE` válido y con permisos correctos; lectura de página/álbumes OK; subida/borrado de foto no publicada OK; subida/borrado a álbum existente OK.
+    - Fallo real reproducido: `POST /{page-id}/albums` devuelve `(#3) Application does not have the capability to make this API call` en versiones `v19.0`–`v24.0`, por capability faltante del App y no por token.
+    - `album_diario.py` corregido para detenerse con diagnóstico explícito ante ese bloqueo y aceptar fallback opcional a un álbum existente mediante `META_FB_FALLBACK_ALBUM_ID` o `META_FB_FALLBACK_ALBUM_NAME`.
+- **Estado**: El flujo de crear álbumes nuevos por API está bloqueado por Meta hasta habilitar/aprobar capability del App; subir a álbumes existentes sí funciona.
+
+## Sesión: 2026-06-09 — Automatización web de álbumes y recuperación
+- **Objetivo**: Dejar el flujo de álbumes diario completamente automático sin depender de crear álbumes manualmente.
+- **Logros**:
+    - Se agregó `photo_uploader/facebook_album_web_auto.py`: detecta fechas locales, compara con álbumes remotos y crea los faltantes por Microsoft Edge usando Chrome DevTools Protocol.
+    - Se agregó `photo_uploader/subir_album_diario.sh`: lanzador Linux que primero crea álbumes faltantes por web y luego ejecuta `album_diario.py`.
+    - Se confirmó en vivo que la creación por web funciona y queda confirmada por Graph API (`count >= 1`).
+    - Se creó `Fotos sueltas` para agrupar fechas con una sola foto. Los álbumes individuales de una sola foto que ya se habían creado se dejaron intactos como reserva.
+    - Se cambió la regla de agrupación: `1` foto -> `Fotos sueltas`; `2+` fotos -> `Fotos YYYY-MM-DD`.
+    - Se corrigió el rechazo `Invalid parameter` al subir panorámicas gigantes con un pipeline JPEG seguro: `2048px` lado largo, `LANCZOS`, `sRGB`, EXIF aplicado y `quality=88`.
+    - Se agregó recuperación contra interrupciones: el script lista fotos remotas por caption `Archive frame`, salta ya subidas, detecta teaser existente por `published_posts` y evita duplicados.
+    - Se confirmó en vivo `Fotos sueltas` con 21 fotos, teaser de 5 fotos y archivado local tras confirmación.
+    - Se confirmó en vivo que álbumes pequeños de `2-3` fotos publican teaser con las disponibles, quedan confirmados y se archivan.
+- **Estado**: El flujo ya verifica listado de fechas y crea álbumes automáticamente. La corrida quedó detenida a pedido del usuario durante `Fotos 2025-10-24`; se puede continuar ejecutando `photo_uploader/subir_album_diario.sh` y reanudará sin duplicar.

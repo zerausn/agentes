@@ -283,7 +283,7 @@
 
 ## D39: `META_FB_PAGE_TOKEN` debe ser Page Access Token
 - **Decisión:** el flujo de álbum valida que `META_FB_PAGE_TOKEN` sea token `PAGE`. Si detecta un token `USER` válido, deriva un Page Access Token en memoria para la corrida.
-- **Razón:** el error `(#3) Application does not have the capability to make this API call` apareció aunque el token tenía `pages_manage_metadata`; la causa real era usar un token `USER` en endpoints de página.
+- **Razón:** usar token `USER` en endpoints de página es incorrecto y fue el primer bloqueo a corregir. La prueba viva posterior confirmó que, aun con token `PAGE` válido, la creación de álbumes puede seguir fallando si el App no tiene la capability específica para `POST /{page-id}/albums`.
 
 ## D40: Archivar álbum solo tras confirmación remota
 - **Decisión:** `album_diario.py` mantiene la carpeta local `fotos_subidas_album/Fotos YYYY-MM-DD`, pero solo copia/mueve las fotos después de confirmar por Graph API el álbum, los IDs de fotos y el teaser publicado.
@@ -292,6 +292,26 @@
 ## D41: Teaser en inglés y carrusel distribuido
 - **Decisión:** el teaser del álbum usa caption en inglés con primera línea fuerte y pregunta final; el carrusel elige hasta 5 fotos distribuidas por segmentos del álbum, priorizando la foto más pesada de cada segmento como proxy de calidad.
 - **Razón:** mejora presentación y conversación sin recurrir a hashtags genéricos o señales de spam.
+
+## D42: Creación de álbum bloqueada por capability del App
+- **Decisión:** `album_diario.py` trata `(#3) Application does not have the capability to make this API call` en `POST /{page-id}/albums` como error fatal y no transitorio. Si Meta bloquea crear álbumes, el script se detiene con diagnóstico explícito; solo usa un álbum existente como fallback cuando `META_FB_FALLBACK_ALBUM_ID` o `META_FB_FALLBACK_ALBUM_NAME` está configurado.
+- **Razón:** la prueba viva del `2026-06-09` confirmó que el Page token es válido, tiene `pages_manage_posts`, puede leer álbumes y puede subir/borrar fotos no publicadas, incluso a álbumes existentes. Lo que falla es exclusivamente la capability del App para crear álbumes por API, así que reintentar o culpar `pages_manage_metadata` era incorrecto.
+
+## D43: Preflight web para crear álbumes faltantes
+- **Decisión:** el lanzador `photo_uploader/subir_album_diario.sh` ejecuta primero `photo_uploader/facebook_album_web_auto.py`, que lista fechas locales, lista álbumes remotos y crea por Microsoft Edge los álbumes faltantes antes de invocar `album_diario.py`.
+- **Razón:** Graph API permite leer y subir a álbumes existentes, pero no crear álbumes por API en esta App. El navegador sí permite crear álbumes con sesión humana activa, y el script espera confirmación Graph (`count >= 1`) antes de iniciar la subida masiva.
+
+## D44: `Fotos sueltas` para fechas de una sola foto
+- **Decisión:** fechas con una sola foto se agrupan en un álbum común `Fotos sueltas`; fechas con `2+` fotos conservan el álbum `Fotos YYYY-MM-DD`.
+- **Razón:** evita crear/publicar microálbumes con una sola foto como flujo principal. Los álbumes individuales de una foto que ya fueron creados se mantienen como reserva y no se borran.
+
+## D45: JPEG seguro para Graph API de fotos
+- **Decisión:** antes de subir a Graph API, cada imagen se convierte a JPEG seguro con lado largo `2048px`, remuestreo `LANCZOS`, color `sRGB`, orientación EXIF aplicada físicamente y `quality=88`.
+- **Razón:** las panorámicas gigantes (`16320x7532`) pueden fallar como `Invalid parameter` por dimensiones, memoria descomprimida, aspecto extremo o metadata. La versión `2048px` mantiene la máxima calidad visible razonable y evita rechazos genéricos.
+
+## D46: Recuperación remota antes de reanudar
+- **Decisión:** al reanudar, `album_diario.py` lista fotos existentes del álbum, extrae el stem desde el caption `Archive frame: ...`, omite fotos ya subidas y detecta teasers existentes por link del álbum en `published_posts`.
+- **Razón:** permite cortar y reanudar corridas largas sin duplicar fotos ni publicar teasers repetidos. El archivado local sigue condicionado a confirmación de álbum, fotos y teaser.
 
 ## D35: Delegación de IG al Vigía y Resilio-Management
 - **Decisión:** 

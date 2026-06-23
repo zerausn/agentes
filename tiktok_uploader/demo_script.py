@@ -3,6 +3,7 @@ Demo script for TikTok Uploaderbot - muestra el flujo completo de API
 Ejecutar: python3 demo_script.py
 """
 import json
+from config import CLIENT_KEY, REDIRECT_URI, SCOPES
 
 print("=" * 60)
 print("  UPLOADERBOT - TikTok API Demo")
@@ -13,9 +14,9 @@ print("=" * 60)
 print("\n[Paso 1] Configuracion de la app")
 print("-" * 40)
 config = {
-    "client_key": "awhfxd65i4i468x8",
-    "redirect_uri": "https://9893afc3b3b9f6.lhr.life/callback",
-    "scopes": ["user.info.basic", "video.upload", "video.publish"],
+    "client_key": CLIENT_KEY,
+    "redirect_uri": REDIRECT_URI,
+    "scopes": SCOPES,
 }
 print(json.dumps(config, indent=2))
 
@@ -24,10 +25,10 @@ print("\n[Paso 2] URL de autorizacion OAuth")
 print("-" * 40)
 auth_url = (
     "https://www.tiktok.com/v2/auth/authorize/"
-    "?client_key=awhfxd65i4i468x8"
+    f"?client_key={CLIENT_KEY}"
     "&response_type=code"
-    "&scope=user.info.basic,video.upload,video.publish"
-    "&redirect_uri=https://9893afc3b3b9f6.lhr.life/callback"
+    f"&scope={','.join(SCOPES)}"
+    f"&redirect_uri={REDIRECT_URI}"
     "&state=CSRF_TOKEN_UNICO"
 )
 print(f"URL: {auth_url[:80]}...")
@@ -41,11 +42,11 @@ token_request = {
     "method": "POST",
     "url": "https://open.tiktokapis.com/v2/oauth/token/",
     "body": {
-        "client_key": "awhfxd65i4i468x8",
+        "client_key": CLIENT_KEY,
         "client_secret": "***",
         "code": "AUTHORIZATION_CODE",
         "grant_type": "authorization_code",
-        "redirect_uri": "https://9893afc3b3b9f6.lhr.life/callback",
+        "redirect_uri": REDIRECT_URI,
     },
 }
 print(json.dumps(token_request, indent=2))

@@ -40,6 +40,10 @@
   4. La carpeta local se mantiene como `fotos_subidas_album/Fotos YYYY-MM-DD/`; solo se copia/mueve allí cuando Facebook confirma todo.
   5. `META_FB_PAGE_TOKEN` debe ser token `PAGE`; si entra un token `USER`, el script deriva un Page Access Token en memoria.
   6. El teaser usa caption en inglés y carrusel distribuido: divide el álbum en segmentos y elige la foto más pesada de cada segmento como proxy de calidad.
+  7. Tras prueba viva, `POST /{page-id}/albums` se trata como capability externa de Meta: si falla con `(#3) Application does not have the capability to make this API call`, el script aborta con diagnóstico claro y solo usa fallback si se configuró un álbum existente.
+  8. El flujo Linux usa `facebook_album_web_auto.py` como preflight por Edge para crear álbumes faltantes automáticamente antes de subir fotos por Graph API.
+  9. Fechas con una sola foto se agrupan en `Fotos sueltas`; fechas con `2+` fotos conservan `Fotos YYYY-MM-DD`.
+  10. Las fotos se suben como JPEG seguro `2048px`/`sRGB`/EXIF aplicado/`quality=88` para evitar rechazos `Invalid parameter` en panorámicas gigantes.
 - Consecuencia: la carpeta local representa contenido confirmado en Facebook, no intentos parciales ni publicaciones no verificadas.
 
 ## Estrategia YouTube Teaser Uploader (2026-04-21)

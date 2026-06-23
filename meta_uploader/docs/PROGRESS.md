@@ -73,6 +73,17 @@
 - [x] Progreso visible por álbum: foto actual, porcentaje, fotos restantes, tiempo transcurrido y ETA aproximada
 - [x] Confirmación remota antes de archivar: verifica álbum, IDs de fotos y teaser publicado en Facebook antes de mover originales
 - [x] Teaser en inglés con primera línea fuerte, pregunta final y selección de carrusel por segmentos priorizando fotos más pesadas
+- [x] Prueba viva del `2026-06-09`: `META_FB_PAGE_TOKEN` validó como `PAGE`, con `pages_manage_posts`, `pages_read_engagement`, `pages_manage_metadata` y `pages_read_user_content`.
+- [x] Confirmado por Graph API: lectura de página y álbumes funciona; subida de foto no publicada a la página funciona y se borró correctamente; subida de foto a álbum existente funciona y se borró correctamente.
+- [x] Confirmado bloqueo externo: `POST /{page-id}/albums` falla con `(#3) Application does not have the capability to make this API call` en Graph `v19.0` a `v24.0`.
+- [x] `album_diario.py` corregido para no reintentar ciegamente ni saltar fechas cuando Meta bloquea crear álbumes; ahora detiene la corrida con diagnóstico claro o usa fallback explícito a álbum existente si está configurado.
+- [x] `facebook_album_web_auto.py` agregado como preflight por Edge: verifica fechas locales, lista álbumes remotos, crea los álbumes faltantes por web, pulsa `Publicar` y espera confirmación Graph.
+- [x] `subir_album_diario.sh` agregado como lanzador Linux completo: crea álbumes faltantes y luego ejecuta `album_diario.py`.
+- [x] Regla final de álbumes: fechas con una sola foto van a `Fotos sueltas`; fechas con `2+` fotos van a `Fotos YYYY-MM-DD`.
+- [x] Pipeline de imagen seguro para Graph: `2048px` lado largo, `sRGB`, EXIF aplicado, `LANCZOS`, `JPEG quality=88`.
+- [x] Recuperación sin duplicados: al reanudar se saltan fotos ya presentes por caption `Archive frame`, se detecta teaser existente por `published_posts` y solo se archiva tras confirmación.
+- [x] Operación viva parcial: `Fotos sueltas` quedó confirmado con 21 fotos y teaser de 5; varios álbumes pequeños quedaron confirmados/archivados; `Fotos 2025-10-24` se dejó reanudable al pedir parada manual.
+- [ ] Continuar ejecución humana con `photo_uploader/subir_album_diario.sh` hasta vaciar la carpeta de entrada.
 
 ### 2026-04-14: Reparación Motor Supervisor (Cascada Infinita)
 - [x] Eliminado el bloqueo de fechas futuras (\ locked_by_future_day\) en \un_jornada1_supervisor.py\ que impedía que el script encolara masivamente en la programación remota de Meta (Límite 28 días) y se pasmara en esperas de 10 segundos.
