@@ -523,14 +523,14 @@ def procesar():
                 ImageFile.LOAD_TRUNCATED_IMAGES = True
                 Image.MAX_IMAGE_PIXELS = None
                 with Image.open(foto_a_subir) as img:
-                    if img.width * img.height > 40000000 or max(img.width, img.height) > 8192:
+                    if img.width * img.height > 40000000 or max(img.width, img.height) > 2048:
                         logging.info("[img] Redimensionando imagen gigante (%sx%s): %s", img.width, img.height, foto.name)
                         img = ImageOps.exif_transpose(img)
-                        img.thumbnail((8192, 8192), getattr(getattr(Image, "Resampling", Image), "LANCZOS", 1))
+                        img.thumbnail((2048, 2048), getattr(getattr(Image, "Resampling", Image), "LANCZOS", 1))
                         tmp_res = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
                         tmp_res.close()
                         img_path = Path(tmp_res.name)
-                        img.convert("RGB").save(img_path, "JPEG", quality=88)
+                        img.convert("RGB").save(img_path, "JPEG", quality=95)
                         
                         if es_temporal:
                             os.unlink(foto_a_subir)
