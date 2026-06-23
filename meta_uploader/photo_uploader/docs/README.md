@@ -16,6 +16,7 @@ En 2025, el algoritmo de Facebook da **2–3x más alcance orgánico** a los Ree
 ```
 photo_uploader/
 ├── photo_uploader.py        ← Agente principal (ciclos de subida)
+├── album_diario.py          ← Crea álbumes de Facebook por fecha + teaser inmediato
 ├── photo_to_reel.py         ← Convierte foto JPG/PNG → MP4 5s con FFmpeg
 ├── fotos_subidas.json       ← Historial (evita re-subidas)
 ├── photo_uploader.log       ← Log de actividad
@@ -40,6 +41,50 @@ photo_uploader/
 2. Haz doble clic en **`EJECUTAR_SUBIDAFacebook_Fotos.bat`** en tu escritorio.
 3. El agente comenzará a procesar en ciclos de **10 fotos cada 15 minutos**.
 4. Las fotos procesadas se moverán automáticamente a `fotos_subidas_fb/`.
+
+---
+
+## Álbum Diario de Facebook
+
+`album_diario.py` es un flujo separado para publicar fotos como álbumes nativos
+de Facebook, no como Reels.
+
+### Lógica
+
+1. Agrupa las fotos por fecha detectada en el nombre del archivo (`YYYYMMDD`).
+2. Crea o reutiliza un álbum llamado `Fotos YYYY-MM-DD`.
+3. Sube todas las fotos de esa fecha al álbum.
+4. Muestra progreso del álbum activo: foto actual, porcentaje, faltantes,
+   tiempo transcurrido y ETA aproximada.
+5. Selecciona hasta 5 fotos para el teaser distribuyendo el álbum por segmentos
+   y tomando la foto más pesada de cada segmento como proxy de calidad.
+6. Publica un teaser inmediato en inglés con link al álbum y pregunta final.
+7. Confirma por Graph API que el álbum, las fotos y el teaser existen y están
+   publicados.
+8. Solo después de confirmar Facebook, copia/mueve los archivos locales a
+   `fotos_subidas_album/Fotos YYYY-MM-DD/`.
+
+### Caption del teaser
+
+```text
+New gallery: a night from the performative archive in Cali.
+
+Photos from [date] are now live.
+Full album: [album link]
+[linktree]
+
+Which photo should become the cover?
+
+#PW #HQ #P
+```
+
+### Seguridad operativa
+
+- `META_FB_PAGE_TOKEN` debe ser un Page Access Token (`type=PAGE`).
+- Si el token configurado es `USER`, el script intenta derivar un token de
+  página en memoria antes de publicar.
+- Si Facebook no confirma el álbum completo, el script no mueve las fotos
+  locales para evitar marcar como archivado algo no verificado.
 
 ---
 

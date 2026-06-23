@@ -254,8 +254,8 @@ def browser_command(preferred):
 def launch_browser(command, kind, port, page_url, restart_edge):
     try:
         wait_debugger(port, timeout=1)
-        if not (kind == "edge-flatpak" and restart_edge and edge_flatpak_running()):
-            return None
+        # Si DevTools responde, el navegador ya esta listo. No lo matamos.
+        return None
     except RuntimeError:
         pass
 

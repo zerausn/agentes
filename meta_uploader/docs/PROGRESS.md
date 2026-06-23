@@ -61,6 +61,19 @@
 - [x] **Estado**: Sistema blindado contra duplicados; listo para evacuación masiva estable.
 - [ ] Revalidar en vivo `Facebook Post` después del enfriamiento de la cuenta de Meta.
 
+## 2026-06-09: album_diario.py — Daily Facebook Album + Teaser
+- [x] Script `album_diario.py` creado: crea álbum por fecha, sube fotos y publica teaser carrusel inmediato
+- [x] Cambio de calidad DNG→JPEG de 92 a 100
+- [x] Carpeta local por álbum en `fotos_subidas_album/{nombre_album}/` con `copy2`
+- [x] Descripción de foto en inglés con referencia al archivo + Linktree en teaser
+- [x] DNG convertido a JPEG via `dcraw + convert` antes de subir
+- [x] Teaser cambiado de programado a inmediato: se publica cuando terminan las subidas del álbum y se generan los IDs del carrusel
+- [x] Desbloqueo de token: `META_FB_PAGE_TOKEN` contenía un token `USER`; se derivó y guardó un token `PAGE` válido con backup local
+- [x] Preflight de autenticación en `album_diario.py`: si vuelve a entrar un token `USER`, deriva Page Access Token en memoria antes de publicar
+- [x] Progreso visible por álbum: foto actual, porcentaje, fotos restantes, tiempo transcurrido y ETA aproximada
+- [x] Confirmación remota antes de archivar: verifica álbum, IDs de fotos y teaser publicado en Facebook antes de mover originales
+- [x] Teaser en inglés con primera línea fuerte, pregunta final y selección de carrusel por segmentos priorizando fotos más pesadas
+
 ### 2026-04-14: Reparación Motor Supervisor (Cascada Infinita)
 - [x] Eliminado el bloqueo de fechas futuras (\ locked_by_future_day\) en \un_jornada1_supervisor.py\ que impedía que el script encolara masivamente en la programación remota de Meta (Límite 28 días) y se pasmara en esperas de 10 segundos.
 - [x] Mejorada la lógica del contador de reinicios (\\estart_attempt\\) para no penalizar ni auto-cortar el script si las subidas individuales se completan con éxito y código 0.

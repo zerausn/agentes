@@ -714,3 +714,17 @@ con ruido tipo "sal y pimienta" y manchas de fotocopia. Extraer texto y exportar
   - motivo: hoy ofrece mejor upside de alcance/monetizacion para video corto y existe API oficial de publicacion (`Content Posting API`) compatible con un flujo parecido al carril de clips/verticales
   - condicion importante: la monetizacion fuerte depende del `Creator Rewards Program`, que exige cuenta personal elegible, contenido original de mas de `1 minuto` y disponibilidad por pais/region soportada por TikTok
   - fallback mas simple por API pero con menor upside: `Dailymotion`
+
+## Sesion 38 - Album diario Facebook: calidad máxima y carpeta local por álbum (opencode, 2026-06-09)
+
+- Objetivo: crear y endurecer `meta_uploader/photo_uploader/album_diario.py` para subir álbumes de Facebook por fecha.
+- Implementado:
+  1. **Álbum por fecha**: agrupa por prefijo `YYYYMMDD` y publica en `Fotos YYYY-MM-DD`.
+  2. **Calidad máxima**: DNG→JPEG con `-quality 100`.
+  3. **Teaser inmediato**: no se programa a las 20:00; se publica tras completar las fotos del álbum.
+  4. **Progreso visible**: foto actual, porcentaje, faltantes, transcurrido y ETA del álbum activo.
+  5. **Confirmación remota**: antes de mover archivos, confirma álbum, fotos y teaser publicado por Graph API.
+  6. **Archivo local ordenado**: mueve solo contenido confirmado a `fotos_subidas_album/Fotos YYYY-MM-DD/`.
+  7. **Token correcto**: el bloqueo real no era falta de `pages_manage_metadata`; `META_FB_PAGE_TOKEN` tenía un token `USER`. Se derivó token `PAGE` y el script ahora valida/deriva en memoria si hace falta.
+  8. **Teaser más viral**: caption en inglés con headline fuerte, pregunta final y carrusel distribuido por segmentos priorizando fotos más pesadas.
+- Estado: listo para prueba controlada; no se lanzó la subida masiva completa.

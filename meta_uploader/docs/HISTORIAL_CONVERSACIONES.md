@@ -27,3 +27,17 @@
     - **Auto-Move y Limpieza**: Los videos originales se mueven a `ya_subidos_fb_ig/` y los temporales a `ya_subidos_ig_temp/` tras confirmarse la subida (paridad con uploader de YouTube).
     - **Ahorro de CPU**: Se elimina el deep clean (transcoding) de IG del flujo principal (~2 min/video).
 - **Estado**: Runner enfocado exclusivamente en Facebook; Instagram a cargo del Vigía. Área de trabajo despejada automáticamente.
+
+## Sesión: 2026-06-09
+- **Objetivo**: Mejorar `album_diario.py` con calidad máxima y carpeta local por álbum.
+- **Logros**:
+    - Cambio de `-quality 92` a `-quality 100` en conversión DNG→JPEG para mínima pérdida.
+    - Creación de carpeta `fotos_subidas_album/{nombre_album}/` con copia de fotos (`shutil.copy2`) al publicar álbum.
+    - Confirmación de lógica: un álbum por fecha detectada en el nombre del archivo.
+    - Teaser de álbum cambiado a publicación inmediata; no se agenda a las 20:00.
+    - Diagnóstico de token corregido: `META_FB_PAGE_TOKEN` tenía token `USER`, no `PAGE`.
+    - Page Access Token derivado y guardado en `.env`; backup local creado como `.env.bak_page_token`.
+    - Preflight agregado en `album_diario.py` para derivar token de página en memoria si vuelve a aparecer un token `USER`.
+    - Confirmación remota agregada: no mueve fotos a `fotos_subidas_album/Fotos YYYY-MM-DD` hasta confirmar álbum, fotos y teaser en Facebook.
+    - Teaser optimizado en inglés: headline fuerte, pregunta final y carrusel distribuido priorizando fotos más pesadas.
+- **Estado**: Listo para prueba controlada; no se lanzó la subida masiva completa.
