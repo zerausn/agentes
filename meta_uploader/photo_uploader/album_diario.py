@@ -273,18 +273,41 @@ def crear_album(nombre):
 
 def listar_albumes():
     albumes = {}
-    url = f"{GRAPH_URL}/{FB_PAGE_ID}/albums"
-    params = {"access_token": FB_TOKEN, "limit": "100", "fields": "id,name"}
-    while url:
+    url_base = f"{GRAPH_URL}/{FB_PAGE_ID}/albums"
+    
+    for intento in range(1, 4):
+        url = url_base
+        params = {"access_token": FB_TOKEN, "limit": "100", "fields": "id,name"}
+        temp_albumes = {}
+        exito = True
+        
         try:
-            r = requests.get(url, params=params if "?" not in url else {}, timeout=30)
-            data = r.json()
-            for a in data.get("data", []):
-                albumes[a["name"]] = a["id"]
-            url = data.get("paging", {}).get("next", "")
-        except Exception:
-            break
-    return albumes
+            while url:
+                r = requests.get(url, params=params if "?" not in url else {}, timeout=30)
+                data = r.json()
+                
+                if "error" in data:
+                    logging.warning("[album] Error listando álbumes remotos (intento %s/3): %s", 
+                                    intento, data["error"].get("message"))
+                    exito = False
+                    break
+                    
+                for a in data.get("data", []):
+                    temp_albumes[a["name"]] = a["id"]
+                    
+                url = data.get("paging", {}).get("next", "")
+                
+        except Exception as e:
+            logging.warning("[album] Exception listando álbumes (intento %s/3): %s", intento, e)
+            exito = False
+            
+        if exito:
+            return temp_albumes
+            
+        time.sleep(3 * intento)
+        
+    logging.error("[album] Imposible listar álbumes después de 3 intentos. Abortando para evitar duplicados.")
+    raise RuntimeError("No se pudo obtener la lista de álbumes remotos de Facebook.")
 
 
 def graph_get(path, params=None, timeout=30):
@@ -483,6 +506,9 @@ def procesar():
 
         for indice, foto in enumerate(fotos, start=1):
             ext = foto.suffix.lower()
+            foto_a_subir = foto
+            es_temporal = False
+
             if ext in RAW_EXTS:
                 tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
                 jpeg_temp = Path(tmp.name)
@@ -490,14 +516,37 @@ def procesar():
                 if not convertir_dng_a_jpeg(foto, jpeg_temp):
                     continue
                 foto_a_subir = jpeg_temp
-            else:
-                foto_a_subir = foto
+                es_temporal = True
+
+            try:
+                from PIL import Image, ImageFile, ImageOps
+                ImageFile.LOAD_TRUNCATED_IMAGES = True
+                Image.MAX_IMAGE_PIXELS = None
+                with Image.open(foto_a_subir) as img:
+                    if img.width * img.height > 40000000 or max(img.width, img.height) > 8192:
+                        logging.info("[img] Redimensionando imagen gigante (%sx%s): %s", img.width, img.height, foto.name)
+                        img = ImageOps.exif_transpose(img)
+                        img.thumbnail((8192, 8192), getattr(getattr(Image, "Resampling", Image), "LANCZOS", 1))
+                        tmp_res = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+                        tmp_res.close()
+                        img_path = Path(tmp_res.name)
+                        img.convert("RGB").save(img_path, "JPEG", quality=88)
+                        
+                        if es_temporal:
+                            os.unlink(foto_a_subir)
+                        foto_a_subir = img_path
+                        es_temporal = True
+            except Exception as e:
+                logging.warning("[img] No se pudo verificar/redimensionar %s: %s", foto.name, e)
 
             mensaje = crear_caption_foto(foto.stem)
             fb_id = subir_foto_a_album(album_id, foto_a_subir, mensaje)
 
-            if ext in RAW_EXTS:
-                os.unlink(foto_a_subir)
+            if es_temporal:
+                try:
+                    os.unlink(foto_a_subir)
+                except OSError:
+                    pass
 
             if fb_id:
                 foto_paths_subidas.append(foto)
