@@ -101,6 +101,41 @@ canal.
   `meta_uploader_facebook.log`, `meta_uploader_instagram.log` o `uploader.log`,
   tambien debe actualizarse el monitor para no romper la observabilidad.
 
+## 2026-05-26: TikTok Uploader como subproyecto independiente
+- Contexto: El usuario necesita publicar videos en TikTok desde una interfaz web automatizada. No existe integración previa con TikTok en el repo.
+- Decision: Crear `tiktok_uploader/` como subproyecto independiente con su propio contexto (AI.md, AGENTS.md, docs/), siguiendo el patrón de `youtube_uploader`.
+- Consecuencia: El subproyecto tiene su propio ciclo de vida, documentación y configuración, aislado de YouTube y Meta.
+
+## 2026-05-26: OAuth login via 302 redirect en vez de JS redirect
+- Contexto: Cloudflare proxy en el túnel corrompía redirecciones JS.
+- Decision: Usar `Flask.redirect()` (HTTP 302) para `/login`, sin JS client-side.
+- Consecuencia: Flujo OAuth funcional detrás de cualquier proxy.
+
+## 2026-05-26: localhost.run como túnel primario, trapdoor.sh como fallback
+- Contexto: trapdoor.sh devolvía 429 (rate limit) y 502 (bad gateway) persistentemente en Parrot OS.
+- Decision: Usar localhost.run (SSH reverse tunnel) como túnel principal por su estabilidad y cero configuración.
+- Consecuencia: Cada reinicio del túnel genera un nuevo subdominio `.lhr.life`, obligando a actualizar manualmente la Redirect URI en el portal de TikTok.
+
+## 2026-05-26: Redirect URI dinámica resuelta desde headers del proxy
+- Contexto: La URL del túnel cambia constantemente; hardcodear REDIRECT_URI era insostenible.
+- Decision: Implementar `ProxyFix` middleware y resolver `redirect_uri` dinámicamente desde `X-Forwarded-Proto` y `X-Forwarded-Host` en cada request.
+- Consecuencia: La app funciona con cualquier URL de túnel sin cambios de configuración; la Redirect URI en el portal de TikTok aún debe coincidir.
+
+## 2026-05-26: Static site en GitHub Pages + app dinámica detrás de túnel
+- Contexto: TikTok requiere website público con páginas legales y punto de entrada de login.
+- Decision: Hostear sitio estático (index, privacy, terms, data-deletion) en GitHub Pages. La app Flask corre detrás de túnel SSH con URL dinámica.
+- Consecuencia: Dos dominios separados. El reviewer debe seguir el enlace de login desde el sitio estático hacia el túnel.
+
+## 2026-05-26: terms.html convertido a directorio para verificación TikTok
+- Contexto: TikTok requiere archivo verificador en `.../terms.html/tiktok...txt`.
+- Decision: Convertir `terms.html` de archivo a directorio (`terms.html/index.html`).
+- Consecuencia: URL de términos es `https://zerausn.github.io/agentes/terms.html/` (con slash final).
+
+## 2026-05-26: Config.py refactorizado con env vars
+- Contexto: Config tenía valores hardcodeados que requerían edición manual al cambiar de túnel.
+- Decision: Extraer `PUBLIC_BASE_URL`, `REDIRECT_URI`, `PORT`, `DEBUG`, `SECRET_KEY` a variables de entorno, con defaults funcionales. Helper `_env_list()` para scopes.
+- Consecuencia: Deployment configurado por entorno; mismo código funciona en desarrollo y producción.
+
 ## 2026-04-10: Unificar la convención de Meta
 - Contexto: el usuario decidio que "sube videos a Meta" debe apuntar al flujo
   programado vigente, y que el carril previo de Meta pase a llamarse
