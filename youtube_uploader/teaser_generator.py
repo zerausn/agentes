@@ -1,3 +1,5 @@
+import functools
+import json
 import logging
 import os
 import subprocess
@@ -25,36 +27,120 @@ def configure_logging() -> None:
     )
 
 
+@functools.lru_cache(maxsize=1)
+def detect_available_encoders() -> set[str]:
+    """Return set of available encoder names from this ffmpeg build (cached)."""
+    try:
+        result = subprocess.run(
+            [FFMPEG_BIN, "-encoders"],
+            capture_output=True, text=True, check=False,
+        )
+    except FileNotFoundError:
+        return set()
+    encoders: set[str] = set()
+    for line in (result.stdout or "").splitlines():
+        parts = line.strip().split()
+        if len(parts) >= 2 and parts[0].startswith("V"):
+            encoders.add(parts[1])
+    return encoders
+
+
+def probe_video_stream_info(input_file: Path) -> dict | None:
+    """Return codec_name, pix_fmt, width, height of the first video stream."""
+    command = [
+        FFPROBE_BIN,
+        "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries",
+        "stream=codec_name,pix_fmt,width,height",
+        "-of", "json",
+        str(input_file),
+    ]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+    except FileNotFoundError:
+        return None
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+    streams = data.get("streams", [])
+    if not streams:
+        return None
+    s = streams[0]
+    codec = s.get("codec_name", "")
+    pix_fmt = s.get("pix_fmt", "")
+    width = s.get("width", 0)
+    height = s.get("height", 0)
+    if not codec or not width or not height:
+        return None
+    return {"codec": codec, "pix_fmt": pix_fmt, "width": width, "height": height}
+
+
 def build_ffmpeg_teaser_cmd(input_file: Path, start_sec: float, output_path: Path) -> list[str]:
-    return [
+    stream_info = probe_video_stream_info(input_file)
+    can_copy = (
+        stream_info
+        and stream_info["codec"] == "h264"
+        and stream_info["pix_fmt"] == "yuv420p"
+        and stream_info["width"] % 2 == 0
+        and stream_info["height"] % 2 == 0
+    )
+    encoders = detect_available_encoders()
+    has_mediacodec = "h264_mediacodec" in encoders
+
+    if can_copy:
+        logging.info(
+            "  Estrategia: stream copy (source ya es h264 yuv420p) -> %s",
+            output_path.name,
+        )
+    elif has_mediacodec:
+        logging.info(
+            "  Estrategia: HW h264_mediacodec -> %s",
+            output_path.name,
+        )
+    else:
+        logging.info(
+            "  Estrategia: SW libx264 (fallback) -> %s",
+            output_path.name,
+        )
+
+    cmd = [
         FFMPEG_BIN,
         "-y",
-        "-ss",
-        str(round(start_sec, 3)),
-        "-t",
-        str(TEASER_DURATION_SEC),
-        "-i",
-        str(input_file),
-        "-vf",
-        "scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p",
-        "-pix_fmt",
-        "yuv420p",
-        "-c:v",
-        "libx264",
-        "-crf",
-        "18",
-        "-preset",
-        "ultrafast",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "128k",
-        "-movflags",
-        "+faststart",
-        "-f",
-        "mp4",
-        str(output_path),
+        "-ss", str(round(start_sec, 3)),
+        "-t", str(TEASER_DURATION_SEC),
+        "-i", str(input_file),
     ]
+
+    if can_copy:
+        cmd.extend(["-c:v", "copy"])
+    elif has_mediacodec:
+        cmd.extend([
+            "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p",
+            "-pix_fmt", "yuv420p",
+            "-c:v", "h264_mediacodec",
+            "-b:v", "20M",
+        ])
+    else:
+        cmd.extend([
+            "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p",
+            "-pix_fmt", "yuv420p",
+            "-c:v", "libx264",
+            "-crf", "18",
+            "-preset", "ultrafast",
+        ])
+
+    cmd.extend([
+        "-c:a", "aac",
+        "-b:a", "128k",
+        "-movflags", "+faststart",
+        "-f", "mp4",
+        str(output_path),
+    ])
+    return cmd
 
 
 def probe_duration_seconds(input_file: Path) -> float | None:

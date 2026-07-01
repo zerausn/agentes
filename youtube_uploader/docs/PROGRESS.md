@@ -90,3 +90,11 @@ Estado actual del proyecto al **15 de Abril de 2026**.
 - [x] Estandarización de descripción a texto único de redes sociales (clínico).
 - [x] Inclusión de etiqueta obligatoria `performatic writings`.
 - [x] Solución al problema de visibilidad de playlist (fuerza estado Público).
+
+### 2026-07-01: Teaser generator con HW encoding y stream copy
+- [x] `teaser_generator.py` ahora detecta automáticamente el códec del source con `probe_video_stream_info()`.
+- [x] Si el source ya es h264+yuv420p con dimensiones pares → stream copy (`-c:v copy`), instantáneo.
+- [x] Si hay que re-codificar y `h264_mediacodec` está disponible → HW encoding con `-b:v 20M`.
+- [x] Si no hay HW → fallback a `libx264` (como antes).
+- [x] `detect_available_encoders()` con `@lru_cache` para no llamar `ffmpeg -encoders` repetido.
+- [x] Desplegado vía ADB al Note 9 y verificado en producción: teasers de videos de YouTube se cortan en segundos.

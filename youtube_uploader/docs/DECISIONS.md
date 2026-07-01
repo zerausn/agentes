@@ -158,3 +158,8 @@ proyecto.
 - **Contexto:** El usuario solicitó eliminar la fecha redundante del título y asegurar que las redes sociales sean el único contenido de la descripción.
 - **Decision:** Modificar `video_helpers.py` para usar f-strings simplificados y `manage_playlist.py` para forzar el estado `public` de la lista de reproducción.
 - **Motivo:** Mejorar la estética del canal para SEO y asegurar que la playlist sea visible para espectadores externos sin intervención manual.
+
+## 2026-07-01: Detección automática de HW encoding y stream copy en teaser_generator
+- **Contexto:** El Note 9 (Exynos 9810) se ahogaba generando teasers porque `teaser_generator.py` forzaba `libx264` (software) para recortar videos que ya venían en h264+yuv420p (descargados de YouTube). Velocidad de 0.01x-0.17x, la mayoría de segmentos fallaban por thermal throttling.
+- **Decision:** Modificar `build_ffmpeg_teaser_cmd()` para que: (1) si el source ya es h264+yuv420p con dimensiones pares, use `-c:v copy` (stream copy, instantáneo); (2) si no, y `h264_mediacodec` está disponible, lo use con `-b:v 20M`; (3) si no, caiga a `libx264` como antes. Se añadieron `detect_available_encoders()` y `probe_video_stream_info()` con caching.
+- **Motivo:** Evitar re-codificar videos ya compatibles (pérdida de calidad + tiempo + thermal throttle). Aprovechar HW encoder MediaCodec en ARM64 cuando hay que re-codificar.
