@@ -112,7 +112,7 @@ while true; do
 
     # Lanzar evacuador: sube 1 video y retorna
     "$PROOT" login debian -- /bin/bash -lc \
-        "cd /root/agentes/meta_uploader && \
+        "set -o pipefail; cd /root/agentes/meta_uploader && \
          AGENTES_STORAGE_ROOT=/sdcard/Antigravity \
          python3 subir_fb_evacuador_720.py 2>&1 | tee -a '${LOG_FILE}'"
     EXIT_CODE=$?
@@ -120,12 +120,16 @@ while true; do
     T_FIN=$(date +%s)
     DURACION=$((T_FIN - T_INICIO))
 
+    # Contar cuántos videos quedan en la carpeta fuente (visible desde Termux)
+    SOURCE_DIR="/sdcard/Antigravity/videos subidos exitosamente"
+    PENDIENTES=$(find "$SOURCE_DIR" -maxdepth 1 -type f \( -iname '*.mp4' -o -iname '*.mov' -o -iname '*.mkv' \) 2>/dev/null | wc -l)
+
     case "$EXIT_CODE" in
-        0)  echo "[CICLO #${CICLO}] OK — subida exitosa en ${DURACION}s."
+        0)  echo "[CICLO #${CICLO}] OK — subida exitosa en ${DURACION}s. | Pendientes: ${PENDIENTES}"
             ;;
-        2)  echo "[CICLO #${CICLO}] Sin videos pendientes (${DURACION}s)."
+        2)  echo "[CICLO #${CICLO}] Sin videos pendientes (${DURACION}s). | Pendientes: 0"
             ;;
-        *)  echo "[CICLO #${CICLO}] Error exit=$EXIT_CODE (${DURACION}s)."
+        *)  echo "[CICLO #${CICLO}] Error exit=$EXIT_CODE (${DURACION}s). | Pendientes: ${PENDIENTES}"
             ;;
     esac
 
