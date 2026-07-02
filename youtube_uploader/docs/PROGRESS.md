@@ -97,4 +97,8 @@ Estado actual del proyecto al **15 de Abril de 2026**.
 - [x] Si hay que re-codificar y `h264_mediacodec` está disponible → HW encoding con `-b:v 20M`.
 - [x] Si no hay HW → fallback a `libx264` (como antes).
 - [x] `detect_available_encoders()` con `@lru_cache` para no llamar `ffmpeg -encoders` repetido.
-- [x] Desplegado vía ADB al Note 9 y verificado en producción: teasers de videos de YouTube se cortan en segundos.
+- [x] Desplegado vía ADB en los 3 dispositivos ARM64 y verificado en producción:
+  - Note 9 (SM-N9600): stream copy redujo teasers de minutos a segundos
+  - S24 Ultra (SM-S928B): funcionando sin errores
+  - Vivo V2058: funcionando sin errores
+- [x] Commit `651080d2` en `linux-arm64` de GitHub.
