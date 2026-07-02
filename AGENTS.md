@@ -47,12 +47,20 @@ Antes de cambiar archivos:
    python3 auth_manager.py 1  # prueba una llave
    ```
 
-2. **Ejecutar subida** (usa el widget o ejecuta directamente):
+2. **Ejecutar subida continua** (1 teaser cada 12 min — widget recomendado):
    ```bash
-   # Opción 1: Widget (recomendado en dispositivo)
-   # Ejecutar 3_SUBIR_TEASERS_YT.sh desde widget de Termux
+   # Widget anti-Doze: 3_SUBIR_TEASERS_YT720 (NUEVO)
+   # - Sube 1 teaser cada 720s (12 min)
+   # - No se congela por Doze (reloj del sistema)
+   # - Detecta límite diario de YouTube y espera 1h
+   # - Muestra teasers restantes por ciclo
+   # Ejecutar desde widget de Termux
    
-   # Opción 2: Ejecución manual
+   # Widget legacy: 3_SUBIR_TEASERS_YT (sube todos y termina)
+   ```
+
+3. **Ejecución manual** (una sola vez):
+   ```bash
    cd /sdcard/Antigravity/agentes/youtube_uploader
    /data/data/com.termux/files/usr/bin/python3 teaser_uploader.py \
        > /sdcard/Antigravity/bench/yt_upload.log 2>&1 &
@@ -64,6 +72,11 @@ Antes de cambiar archivos:
    ```
    - Busca líneas como `Progreso: XX%` para calcular ETA
    - Busca `quotaExceeded` o `rateLimitExceeded` para rotación automática de llaves
+
+4. **Monitoreo del widget 720** (en vivo):
+   ```bash
+   tail -f /sdcard/Antigravity/widget_logs/3_SUBIR_TEASERS_YT720.log
+   ```
 
 ### Subida a Facebook/Meta
 
@@ -89,6 +102,11 @@ Antes de cambiar archivos:
    - El sistema rota automáticamente a la siguiente llave disponible
    - Verificar `/sdcard/Antigravity/bench/quota_status.json`
    - Si todas las llaves están agotadas, esperar hasta mañana o renovar tokens
+
+2. **Límite diario de uploads (uploadLimitExceeded)**:
+   - El widget 720 cambia automáticamente a modo LIMITED (1h entre reintentos)
+   - Verificar `[LIMITE] YouTube rechazo la subida` en el log
+   - Cuando el límite se resetea, el widget vuelve solo a modo NORMAL
 
 2. **Errores de formato/HDR**:
    - Revisar logs FFmpeg en `/sdcard/Antigravity/bench/*_teaser_*.fflog`
