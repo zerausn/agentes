@@ -205,3 +205,34 @@
   - `scripts/linux/shortcut_4_VIGIA_FACEBOOK720.sh`
   - `docs/VIGIA_FACEBOOK720_DOZE_FIX.md`
 - **Pendiente:** Implementar en S24 Ultra y Vivo (conectar vivo para deploy).
+
+## Optimización teaser_generator — HW encoding y stream copy (2026-07-01)
+- **Problema:** `teaser_generator.py` forzaba `libx264` software encoding en Note 9, resultando en 0.01x–0.17x speed. Thermal throttling mataba la mayoría de los segmentos antes de completarlos.
+- **Solución:** 3-path strategy:
+  1. Stream copy si el source ya es h264+yuv420p (tarda segundos en vez de minutos).
+  2. HW `h264_mediacodec` si el encoder está disponible.
+  3. Fallback `libx264`.
+- `detect_available_encoders()` con cache (`~/.cache/agentes/encoders.json`) para no escanear FFmpeg cada vez.
+- `probe_video_stream_info()` para analizar el stream de video del crudo.
+- **Deploy verificado** en Note 9 (SM-N9600), S24 Ultra (SM-S928B) y Vivo V2058.
+
+## 3_SUBIR_TEASERS_YT720 — Widget anti-Doze para YouTube (2026-07-01)
+- **Problema:** El widget `3_SUBIR_TEASERS_YT` subía TODOS los teasers de una sola vez y terminaba. Sin loop, sin wake-lock, sin anti-Doze.
+- **Solución:**
+  1. `vigia_teasers_yt720_termux.sh` — loop bash con `termux-wake-lock`, `wait_until(epoch)` con 15s checks (mismo patrón probado de VIGIA_FACEBOOK720).
+  2. Reutiliza `teaser_uploader.py --single-file --from-orchestrator` — sube 1 teaser por ciclo, espera processing de YouTube + `move_file_to_success()`.
+  3. Dos modos: NORMAL (720s) y LIMITED (3600s cuando YouTube rechaza por uploadLimitExceeded).
+  4. Output del uploader en vivo (sin captura en variable).
+  5. Cada ciclo reporta `[PENDIENTES] N teasers restantes`.
+- **Archivos nuevos:**
+  - `scripts/linux/vigia_teasers_yt720_termux.sh`
+  - `scripts/linux/shortcut_3_SUBIR_TEASERS_YT720.sh`
+  - `termux_widgets/3_SUBIR_TEASERS_YT720.sh`
+  - `docs/VIGIA_TEASERS_YT720_DOZE_FIX.md`
+- **Deploy:** Note 9 (widget instalado en `~/.shortcuts/`).
+
+## Fix: Evacuador Facebook Reels Aspect Ratio (2026-07-01)
+- **Problema:** El evacuador de Facebook subía todos los videos nombrados como `_teaser_` al endpoint `video_reels` de Meta, ignorando su formato real. Si el video era horizontal (ej. 3840x1644 / 2.33:1), la API de Meta lo rechazaba.
+- **Solución:** Se integró `ffprobe` en `subir_fb_evacuador_720.py` para medir el `aspect ratio` real en tiempo de ejecución. Si es un `teaser` y es horizontal, ahora el script hace fallback y lo sube como un video estándar de Facebook para evitar el rechazo de la API.
+- **Solución adicional:** Los videos que fallen por cualquier otra razón ahora se mueven a `fallidos_facebook/` para no congelar la cola. Se agregó un contador de videos pendientes al final de cada ciclo del Vigía en Bash.
+- **Deploy verificado:** Note 9 (SM-N9600).

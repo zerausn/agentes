@@ -204,6 +204,22 @@ canal.
 - Consecuencia: Deployment configurado por entorno; mismo código funciona en desarrollo y producción.
 
 
+## 2026-07-01: Vigía Teasers YT720 — bash loop anti-Doze con upload individual
+- Contexto: El widget `3_SUBIR_TEASERS_YT` original subía TODOS los teasers pendientes de una sola vez y terminaba. No había loop, no había wake-lock, no había resiliencia contra Doze. El Note 9 necesita un flujo constante de contenido en YouTube (1 teaser cada 12 minutos) sin ser congelado por Doze.
+- Decisiones:
+  1. **Patrón idéntico a VIGIA_FACEBOOK720:** loop bash con `termux-wake-lock`, `date +%s` para reloj, `wait_until(epoch)` con chequeos de 15s — probado y certificado con 3s de latencia real en Note 9.
+  2. **Reutilizar `teaser_uploader.py --single-file --from-orchestrator`** en vez de crear un nuevo script Python. El flag `--single-file` ya existía; `--from-orchestrator` saltea el lock de instancia.
+  3. **Sin timeout:** El uploader hace faststart + upload + verificación de processing de YouTube (puede tardar 10+ min). Timeout de 180s hubiera matado el verifier antes de mover el archivo a `videos subidos exitosamente/`.
+  4. **Detección de límite diario via log file:** Cuando YouTube responde `uploadLimitExceeded`, el uploader logea `LIMIT_EXCEEDED` en su archivo de log. El bash loop lee las últimas líneas del log después de cada subida fallida. Si detecta el límite, cambia a modo LIMITED (1h entre reintentos).
+  5. **Output en vivo:** El stdout/stderr del uploader fluye directamente al session log (no se captura en variable como en la primera versión).
+  6. **Conteo de pendientes:** Cada ciclo muestra `[PENDIENTES] N teasers restantes` para que el usuario sepa cuántos faltan.
+- Consecuencia: 4 archivos nuevos (widget, bash loop, shortcut, docs). Ningún archivo existente fue modificado.
+
+## 2026-07-01: Detección estricta de Aspect Ratio para Facebook Reels
+- Contexto: El endpoint `video_reels` de Facebook falla categóricamente si recibe un video horizontal, pero el script `subir_fb_evacuador_720.py` forzaba la subida de todo archivo que contuviera la palabra `_teaser_`, asumiendo que siempre eran verticales.
+- Decision: Replicar la política de `classify_meta_videos.py`: usar `ffprobe` en tiempo de subida para verificar la relación de aspecto exacta (tolerancia de 9:16 ±8%). Si es horizontal, se degrada a una subida estándar de post de Facebook.
+- Consecuencia: Mayor tolerancia a inconsistencias en la fase de render. Los teasers horizontales ya no bloquearán la cola ni generarán errores terminales de API, publicándose exitosamente como videos normales.
+
 ## 2026-04-10: Unificar la convención de Meta
 - Contexto: el usuario decidio que "sube videos a Meta" debe apuntar al flujo
   programado vigente, y que el carril previo de Meta pase a llamarse
