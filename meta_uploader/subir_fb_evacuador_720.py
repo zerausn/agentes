@@ -12,6 +12,7 @@ import logging
 import os
 import re
 import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -36,10 +37,14 @@ if not str(ROOT):
 
 SOURCE_DIR = ROOT / "videos subidos exitosamente"
 DONE_DIR   = ROOT / "subidos a facebbok"
+FAILED_DIR = ROOT / "fallidos_facebook"
 LOG_FILE   = BASE_DIR / "fb_evacuador.log"
 
-TEASER_RE     = re.compile(r"(?i)_teaser_\d+")
+TEASER_RE      = re.compile(r"(?i)_teaser_\d+")
 SUPPORTED_EXTS = {".mp4", ".mov", ".mkv"}
+
+# Margen de tolerancia al comparar con la relacion 9:16 exacta (igual al clasificador)
+REEL_ASPECT_TOLERANCE = 0.08
 
 # --- Logging ---
 logging.basicConfig(
@@ -50,6 +55,44 @@ logging.basicConfig(
         logging.StreamHandler(),
     ],
 )
+
+
+def probe_video_dimensions(video_path: Path):
+    """Usa ffprobe para obtener width y height del primer stream de video."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "stream=width,height",
+                "-of", "json",
+                str(video_path),
+            ],
+            capture_output=True, text=True, timeout=30,
+        )
+        data = json.loads(result.stdout)
+        streams = data.get("streams", [])
+        if not streams:
+            return None, None
+        stream = streams[0]
+        return int(stream.get("width", 0)), int(stream.get("height", 0))
+    except Exception as exc:
+        logging.warning("No se pudo inspeccionar dimensiones de %s: %s", video_path.name, exc)
+        return None, None
+
+
+def is_reel_safe(video_path: Path) -> bool:
+    """
+    Devuelve True si el video es vertical con relacion de aspecto ~9:16.
+    Reutiliza la misma politica conservadora que classify_meta_videos.py.
+    Si ffprobe falla, asume que NO es reel-safe (fallback a POST estandar).
+    """
+    width, height = probe_video_dimensions(video_path)
+    if not width or not height or height <= width:
+        # No pudimos detectar o es horizontal: no es apto para Reel
+        return False
+    ratio = width / height
+    return abs(ratio - (9 / 16)) <= REEL_ASPECT_TOLERANCE
 
 
 def build_caption(video_path: Path) -> str:
@@ -72,13 +115,32 @@ def move_to_done(video_path: Path) -> None:
         logging.info("Movido a 'subidos a facebbok': %s", video_path.name)
 
 
+def move_to_failed(video_path: Path) -> None:
+    FAILED_DIR.mkdir(parents=True, exist_ok=True)
+    dest = FAILED_DIR / video_path.name
+    if dest.exists():
+        logging.info("Ya existe en fallidos, borrando origen: %s", video_path.name)
+        video_path.unlink()
+    else:
+        shutil.move(str(video_path), str(dest))
+        logging.info("Movido a 'fallidos_facebook': %s", video_path.name)
+
+
 def upload_video(video_path: Path) -> bool:
-    caption  = build_caption(video_path)
+    caption   = build_caption(video_path)
     is_teaser = bool(TEASER_RE.search(video_path.stem))
 
-    if is_teaser:
-        logging.info("Subiendo como REEL de Facebook: %s", video_path.name)
+    if is_teaser and is_reel_safe(video_path):
+        logging.info("Subiendo como REEL de Facebook (teaser vertical 9:16): %s", video_path.name)
         result = upload_fb_reel(str(video_path), caption)
+    elif is_teaser:
+        # Teaser horizontal o sin datos de dimensiones: sube como POST estandar
+        # para evitar el rechazo del endpoint video_reels que exige 9:16.
+        logging.info(
+            "Teaser NO es vertical 9:16 — subiendo como VIDEO ESTANDAR: %s",
+            video_path.name,
+        )
+        result = upload_fb_video_standard(str(video_path), caption)
     else:
         logging.info("Subiendo como VIDEO ESTANDAR de Facebook: %s", video_path.name)
         result = upload_fb_video_standard(str(video_path), caption)
@@ -136,7 +198,8 @@ def main():
         logging.info("CICLO OK — bash hara pausa de 720s antes del proximo.")
         sys.exit(0)
     else:
-        logging.error("CICLO FALLO — bash hara pausa de 720s antes del reintento.")
+        move_to_failed(video)
+        logging.error("CICLO FALLO — video movido a fallidos_facebook para no bloquear la cola. Bash hara pausa de 720s.")
         sys.exit(1)
 
 
