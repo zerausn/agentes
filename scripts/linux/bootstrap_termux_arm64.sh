@@ -28,11 +28,26 @@ mkdir -p "$BOOT_DIR" "$SHORTCUTS_DIR"
 case "$DEVICE_PROFILE" in
   note9)
     cat > "$ENV_FILE" <<'EOF'
+export AGENTES_DEVICE_NAME="Note9"
 export AGENTES_FFMPEG_PRESET=medium
 export AGENTES_FFMPEG_CRF=20
 export AGENTES_FFMPEG_AUDIO_BITRATE=160k
 export AGENTES_SYNC_SEARCH_LIMIT=5000
 export AGENTES_SYNC_SLEEP_SECONDS=8
+export AGENTES_YTDLP_CONCURRENT_FRAGMENTS=1
+EOF
+    ;;
+  s24)
+    cat > "$ENV_FILE" <<'EOF'
+export AGENTES_DEVICE_NAME="S24"
+export AGENTES_SYNC_SEARCH_LIMIT=5000
+export AGENTES_YTDLP_CONCURRENT_FRAGMENTS=1
+EOF
+    ;;
+  vivo)
+    cat > "$ENV_FILE" <<'EOF'
+export AGENTES_DEVICE_NAME="Vivo"
+export AGENTES_SYNC_SEARCH_LIMIT=5000
 export AGENTES_YTDLP_CONCURRENT_FRAGMENTS=1
 EOF
     ;;
@@ -211,6 +226,16 @@ export PATH="/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin"
 exec bash "/data/data/com.termux/files/home/agentes/scripts/linux/vigia_facebook_termux.sh"
 EOF
 
+# --- Widget 5: BAJAR YOUTUBE SIN LÍMITE ---
+cat > "$SHORTCUTS_DIR/5_BAJAR_YOUTUBE_SIN_LIMITE.sh" << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# 5_BAJAR_YOUTUBE_SIN_LIMITE — Widget puente hacia el descargador sin límite de fecha
+# Termux Shortcut: ~/.shortcuts/5_BAJAR_YOUTUBE_SIN_LIMITE.sh
+set -euo pipefail
+export PATH="/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin"
+exec bash "/data/data/com.termux/files/home/agentes/scripts/linux/bajar_youtube_sin_limite_termux.sh"
+EOF
+
 # --- Widget: LIMPIAR CRUDOS ---
 cat > "$SHORTCUTS_DIR/LIMPIAR_CRUDOS.sh" << 'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
@@ -233,6 +258,8 @@ chmod +x \
   "$REPO_DIR/scripts/linux/subir_teasers_termux.sh" \
   "$REPO_DIR/scripts/linux/vigia_facebook_termux.sh" \
   "$REPO_DIR/scripts/linux/limpiar_crudos_incompletos_termux.sh" \
+  "$REPO_DIR/scripts/linux/5_BAJAR_YOUTUBE_SIN_LIMITE.sh" \
+  "$REPO_DIR/scripts/linux/bajar_youtube_sin_limite_termux.sh" \
   "$BOOT_DIR/start_sshd.sh" \
   "$SHORTCUTS_DIR/Arrancar_SSH.sh" \
   "$SHORTCUTS_DIR/Estado_Remoto.sh" \
@@ -246,6 +273,7 @@ chmod +x \
   "$SHORTCUTS_DIR/2_SUBIR_CRUDOS_YT.sh" \
   "$SHORTCUTS_DIR/3_SUBIR_TEASERS_YT.sh" \
   "$SHORTCUTS_DIR/4_VIGIA_FACEBOOK.sh" \
+  "$SHORTCUTS_DIR/5_BAJAR_YOUTUBE_SIN_LIMITE.sh" \
   "$SHORTCUTS_DIR/LIMPIAR_CRUDOS.sh"
 
 mkdir -p "$REPO_DIR/youtube_uploader/downloads" "$REPO_DIR/meta_uploader"
