@@ -360,8 +360,18 @@ def sanitize(title: str) -> str:
     return re.sub(r'[\\/*?"<>|]', "", str(title or "")).strip()[:80] or "video_sin_titulo"
 
 
+# Sentinel para indicar que el video ya existía y fue omitido (no recién descargado)
+_SKIPPED = "__SKIPPED__"
+
+
 def download_video(vid_id: str, title: str) -> str | None:
-    """Descarga un video en 4K y lo transcoda a MP4. Retorna la ruta final o None."""
+    """
+    Descarga un video en 4K y lo transcoda a MP4.
+    Retorna:
+      - La ruta final del .mp4 si se descargó/transcodificó en esta ejecución.
+      - _SKIPPED si el archivo ya existía y fue omitido.
+      - None si falló.
+    """
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
     DEST_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -374,7 +384,7 @@ def download_video(vid_id: str, title: str) -> str | None:
 
     if final_path.exists() and final_path.stat().st_size > 1024 * 1024:
         log.info("  Ya existe en destino, se omite: %s", final_path.name)
-        return str(final_path)
+        return _SKIPPED
 
     downloaded_path = None
 
@@ -656,14 +666,19 @@ def main():
         print(f"{'='*58}\n")
 
         ok_count = 0
+        skip_count = 0
         fail_count = 0
         for i, (vid_id, info) in enumerate(vids_to_download, start=1):
             print(f"\n[{i}/{len(vids_to_download)}] {info['title']}")
             result = download_video(vid_id, info["title"])
-            if result:
+            if result == _SKIPPED:
+                # Ya existía: marcar como descargado en el registro sin hacer push
+                mark_video(registry, month, vid_id, "descargado", None)
+                skip_count += 1
+            elif result:
+                # Recién descargado y transcodificado: marcar y sincronizar GitHub
                 mark_video(registry, month, vid_id, "descargado", result)
                 ok_count += 1
-                # Hacer push inmediatamente para no perder el progreso si se interrumpe
                 sync_push(f"sync: {DEVICE_NAME} bajó {vid_id} ({month})")
             else:
                 mark_video(registry, month, vid_id, "fallido")
@@ -672,7 +687,7 @@ def main():
 
         print()
         print(f"{'='*58}")
-        print(f"  Lote {month} terminado. ✅ {ok_count}  ❌ {fail_count}")
+        print(f"  Lote {month} terminado. ✅ {ok_count} nuevos  ⏭️  {skip_count} omitidos  ❌ {fail_count}")
         print(f"{'='*58}")
 
         input("\nPresiona Enter para volver al menú...")
