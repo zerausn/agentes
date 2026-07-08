@@ -513,6 +513,143 @@ def download_video(vid_id: str, title: str) -> str | None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# PENDIENTES DE SESIÓN ANTERIOR
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _find_vid_in_registry(vid_id: str, registry: dict) -> tuple[str, str, str] | None:
+    """Busca un vid_id en el registro. Retorna (month, title, status) o None."""
+    for month, videos in registry.items():
+        if vid_id in videos:
+            info = videos[vid_id]
+            return month, info.get("title", vid_id), info.get("status", "pendiente")
+    return None
+
+
+def finish_pending_transcodes(registry: dict) -> dict:
+    """
+    Antes de arrancar el lote seleccionado, barre la carpeta temporal en
+    busca de archivos .mkv que se descargaron completamente en una sesión
+    anterior pero cuya transcodificación fue interrumpida.
+
+    Si los encuentra:
+      - Los transcodifica a .mp4.
+      - Los marca como descargados en el registro (puede ser de otro lote).
+      - Hace git push inmediato para que los demás celulares se enteren.
+    """
+    TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    pending_mkv = sorted(TEMP_DIR.glob("dl_*.mkv"))
+    if not pending_mkv:
+        return registry
+
+    print()
+    print("═" * 58)
+    print(f"  ⚠️  Se encontraron {len(pending_mkv)} archivo(s) pendiente(s) de sesión anterior.")
+    print("  Terminando transcodificaciones antes de arrancar el lote...")
+    print("═" * 58)
+
+    for mkv_path in pending_mkv:
+        # Extraer vid_id del nombre del archivo: dl_{vid_id}.mkv
+        vid_id = mkv_path.stem.replace("dl_", "", 1)
+
+        # Validar que el mkv esté completo con ffprobe
+        try:
+            subprocess.check_output(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1", str(mkv_path)],
+                stderr=subprocess.DEVNULL, timeout=5
+            )
+        except Exception:
+            log.warning("  ⚠️  Archivo temporal corrupto o incompleto, se elimina: %s", mkv_path.name)
+            mkv_path.unlink(missing_ok=True)
+            continue
+
+        # Buscar el video en el registro para saber a qué lote pertenece
+        info = _find_vid_in_registry(vid_id, registry)
+        if info:
+            month, title, status = info
+        else:
+            # No está en el registro; usar el vid_id como título
+            month, title, status = "desconocido", vid_id, "pendiente"
+
+        # Si ya fue marcado como descargado y el .mp4 final existe, solo limpiar el mkv
+        safe_title = sanitize(title)
+        final_path = DEST_DIR / f"{safe_title}.mp4"
+        if status == "descargado" and final_path.exists() and final_path.stat().st_size > 512 * 1024:
+            log.info("  Limpiando residuo temporal ya transcodificado: %s", mkv_path.name)
+            mkv_path.unlink(missing_ok=True)
+            continue
+
+        print()
+        print(f"  ⏭️  Pendiente de lote [{month}]: {title}")
+        log.info("  Retomando transcodificación de pendiente [%s]: %s", month, title)
+
+        # Transcodificar
+        # Llamamos directamente a la lógica de transcodificación
+        prog_file = TEMP_DIR / f"ffprog_{vid_id}.txt"
+        try:
+            dur_out = subprocess.check_output(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1", str(mkv_path)],
+                stderr=subprocess.DEVNULL,
+            ).decode().strip()
+            total_dur = float(dur_out)
+        except Exception:
+            total_dur = 0
+
+        transcode_cmd = [
+            "ffmpeg", "-y", "-i", str(mkv_path),
+            "-c:v", "libx264", "-preset", FFMPEG_PRESET, "-crf", FFMPEG_CRF,
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", FFMPEG_AUDIO,
+            "-movflags", "+faststart",
+            "-progress", str(prog_file),
+            str(final_path),
+        ]
+        proc = subprocess.Popen(transcode_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        log.info("  [2/2] Transcodificando a MP4...")
+        while proc.poll() is None:
+            if prog_file.exists() and total_dur > 0:
+                try:
+                    content = prog_file.read_text()
+                    times = re.findall(r"out_time_us=(\d+)", content)
+                    speeds = re.findall(r"speed=\s*([\d.]+)x", content)
+                    if times:
+                        cur_s = int(times[-1]) / 1_000_000
+                        pct = min((cur_s / total_dur) * 100, 100)
+                        spd = float(speeds[-1]) if speeds else 0
+                        eta = f"{int((total_dur-cur_s)/spd//60)}m{int((total_dur-cur_s)/spd%60)}s" if spd > 0 else "--"
+                        print(f"\r  📊 {pct:.1f}% | ETA: {eta} | {spd:.2f}x   ", end="", flush=True)
+                except Exception:
+                    pass
+            time.sleep(2)
+        print()
+
+        # Limpiar temporales
+        for f in [mkv_path, prog_file]:
+            try:
+                f.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+        if final_path.exists() and final_path.stat().st_size > 512 * 1024:
+            log.info("  ✅ Pendiente terminado [lote %s]: %s (%.1f MB)",
+                     month, final_path.name, final_path.stat().st_size / (1024 * 1024))
+            print(f"  ✅ Guardado [lote {month}]: {final_path.name}")
+            if month != "desconocido":
+                mark_video(registry, month, vid_id, "descargado", str(final_path))
+                sync_push(f"sync: {DEVICE_NAME} completó pendiente {vid_id} ({month})")
+        else:
+            log.error("  ❌ Transcodificación fallida en pendiente: %s", title)
+            print(f"  ❌ Falló la transcodificación del pendiente: {title}")
+
+    print()
+    print("═" * 58)
+    print("  Pendientes anteriores procesados. Arrancando lote seleccionado...")
+    print("═" * 58)
+    return registry
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # MENÚ INTERACTIVO
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -656,6 +793,9 @@ def main():
         if choice == 0:
             print("\nSaliendo. ¡Hasta luego!")
             break
+
+        # ── Antes de arrancar: terminar transcodificaciones pendientes ─────────
+        registry = finish_pending_transcodes(registry)
 
         # ── Descargar el lote seleccionado ──────────────────────────────────
         month, vids_to_download = pending_months[choice - 1]
