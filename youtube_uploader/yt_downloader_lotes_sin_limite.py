@@ -830,6 +830,9 @@ def main():
         print(f"  Lote {month} terminado. ✅ {ok_count} nuevos  ⏭️  {skip_count} omitidos  ❌ {fail_count}")
         print(f"{'='*58}")
 
+        if skip_count > 0:
+            sync_push(f"sync: {DEVICE_NAME} registró {skip_count} videos ya existentes en {month}")
+
         input("\nPresiona Enter para volver al menú...")
         registry = load_registry()  # recargar por si algo cambió
 
