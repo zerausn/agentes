@@ -124,14 +124,14 @@ def sync_pull():
         print(f"[SYNC] ⚠️  git pull falló (se continúa con registro local): {out4[:120]}")
 
 
-def sync_push(month: str, count: int):
+def sync_push(commit_msg: str):
     """
-    Hace git add + commit + push del registro tras una descarga exitosa.
+    Hace git add + commit + push del registro tras una actualización.
     No interrumpe el flujo si falla.
     """
     print()
     print("[SYNC] Subiendo registro actualizado a GitHub...")
-    log.info("[SYNC] Intentando git push (después de descargar %d videos de %s).", count, month)
+    log.info("[SYNC] Intentando git push: %s", commit_msg)
 
     rel_registry = REGISTRY_FILE.relative_to(REPO_DIR)
 
@@ -149,7 +149,6 @@ def sync_push(month: str, count: int):
         log.info("[SYNC] Nada para commit (registro sin cambios).")
         return
 
-    commit_msg = f"sync: {DEVICE_NAME} descargó {count} videos ({month})"
     ok3, out3 = _git("commit", "-m", commit_msg, capture=True)
     if not ok3:
         log.warning("[SYNC] ⚠️  git commit falló: %s", out3)
@@ -645,6 +644,8 @@ def main():
             if result:
                 mark_video(registry, month, vid_id, "descargado", result)
                 ok_count += 1
+                # Hacer push inmediatamente para no perder el progreso si se interrumpe
+                sync_push(f"sync: {DEVICE_NAME} bajó {vid_id} ({month})")
             else:
                 mark_video(registry, month, vid_id, "fallido")
                 fail_count += 1
@@ -654,10 +655,6 @@ def main():
         print(f"{'='*58}")
         print(f"  Lote {month} terminado. ✅ {ok_count}  ❌ {fail_count}")
         print(f"{'='*58}")
-
-        # ── Sincronizar registro con GitHub tras el lote ─────────────────
-        if ok_count > 0:
-            sync_push(month, ok_count)
 
         input("\nPresiona Enter para volver al menú...")
         registry = load_registry()  # recargar por si algo cambió
