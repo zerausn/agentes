@@ -120,8 +120,51 @@ def sync_pull():
                  local[:7], remote[:7], meta_str)
         print(f"[SYNC] ✅ Registro actualizado (commit {remote[:7]}) — {meta_str}")
     else:
-        log.warning("[SYNC] ⚠️  git pull falló: %s", out4)
-        print(f"[SYNC] ⚠️  git pull falló (se continúa con registro local): {out4[:120]}")
+        log.warning("[SYNC] ⚠️  git pull falló (ramas divergentes): %s", out4)
+        print("[SYNC] ⚠️  Ramas desviadas. Iniciando auto-reparación de registro...")
+
+        # 1. Respaldar datos locales en memoria
+        try:
+            with open(REGISTRY_FILE, "r", encoding="utf-8") as f:
+                local_data = json.load(f)
+        except Exception:
+            local_data = {}
+
+        # 2. Forzar alineación de Git con la nube, borrando el commit local conflictivo
+        _git("reset", "--hard", "origin/linux-arm64")
+
+        # 3. Cargar datos remotos limpios
+        try:
+            with open(REGISTRY_FILE, "r", encoding="utf-8") as f:
+                remote_data = json.load(f)
+        except Exception:
+            remote_data = {}
+
+        # 4. Mezclar inteligentemente: conservar lo remoto e inyectar lo local que falte
+        merged_count = 0
+        for month, videos in local_data.items():
+            if month not in remote_data:
+                remote_data[month] = videos
+                merged_count += len(videos)
+            else:
+                for vid_id, vid_info in videos.items():
+                    if vid_id not in remote_data[month]:
+                        remote_data[month][vid_id] = vid_info
+                        merged_count += 1
+
+        # 5. Guardar la mezcla en el archivo y subirlo
+        if merged_count > 0:
+            with open(REGISTRY_FILE, "w", encoding="utf-8") as f:
+                json.dump(remote_data, f, indent=4, ensure_ascii=False)
+            
+            print(f"[SYNC] ✅ Auto-merge completado: {merged_count} registros locales rescatados.")
+            log.info("[SYNC] Auto-reparación finalizada. Subiendo mezcla a GitHub.")
+            
+            # Subir explícitamente usando sync_push
+            sync_push("sync: auto-merge de ramas divergentes")
+        else:
+            print("[SYNC] ✅ Auto-merge completado: no había diferencias locales.")
+            log.info("[SYNC] Auto-reparación: registro remoto intacto, sin pérdida local.")
 
 
 def sync_push(commit_msg: str):
