@@ -65,7 +65,8 @@ wait_until() {
 # Contar teasers pendientes (sin .uploaded)
 # ----------------------------------------------------------------
 count_pending_teasers() {
-    "$PROOT" login debian -- python3 -c "
+source "$(dirname "$0")/_proot_bind.sh"
+    "$PROOT" login debian "${PROOT_BIND_ARGS[@]}" -- python3 -c "
 from pathlib import Path
 root = Path('/sdcard/Antigravity')
 input_dir = root / 'teasers_pendientes'
@@ -83,7 +84,7 @@ print(count)
 }
 
 find_first_teaser() {
-    "$PROOT" login debian -- python3 -c "
+    "$PROOT" login debian "${PROOT_BIND_ARGS[@]}" -- python3 -c "
 from pathlib import Path
 root = Path('/sdcard/Antigravity')
 input_dir = root / 'teasers_pendientes'
@@ -183,7 +184,7 @@ while true; do
         # --------------------------------------------------------
         # Paso 2: Subir 1 teaser — SIN timeout, output en vivo
         # --------------------------------------------------------
-        "$PROOT" login debian -- /bin/bash -lc \
+        "$PROOT" login debian "${PROOT_BIND_ARGS[@]}" -- /bin/bash -lc \
             "cd /root/agentes/youtube_uploader && \
              AGENTES_STORAGE_ROOT=/sdcard/Antigravity \
              python3 teaser_uploader.py \

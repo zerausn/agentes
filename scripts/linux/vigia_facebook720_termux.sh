@@ -111,7 +111,8 @@ while true; do
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
     # Lanzar evacuador: sube 1 video y retorna
-    "$PROOT" login debian -- /bin/bash -lc \
+source "$(dirname "$0")/_proot_bind.sh"
+    "$PROOT" login debian "${PROOT_BIND_ARGS[@]}" -- /bin/bash -lc \
         "set -o pipefail; cd /root/agentes/meta_uploader && \
          AGENTES_STORAGE_ROOT=/sdcard/Antigravity \
          python3 subir_fb_evacuador_720.py 2>&1 | tee -a '${LOG_FILE}'"

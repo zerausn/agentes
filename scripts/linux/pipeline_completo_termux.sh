@@ -33,7 +33,8 @@ fi
 
 echo "Iniciando pipeline en Debian..."
 
-"$PROOT" login debian -- /bin/bash -c '
+source "$(dirname "$0")/_proot_bind.sh"
+"$PROOT" login debian "${PROOT_BIND_ARGS[@]}" -- /bin/bash -c '
 set -euo pipefail
 
 PROJECT_DIR="/root/agentes/youtube_uploader"

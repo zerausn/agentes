@@ -52,7 +52,8 @@ echo "Los videos se guardarán en: /sdcard/Antigravity/crudos/"
 echo ""
 
 # Lanzar en modo interactivo dentro del proot (sin -lc para que el stdin funcione)
-"$PROOT" login debian -- /usr/bin/python3 /root/agentes/youtube_uploader/yt_downloader_lotes.py
+source "$(dirname "$0")/_proot_bind.sh"
+"$PROOT" login debian "${PROOT_BIND_ARGS[@]}" -- /usr/bin/python3 /root/agentes/youtube_uploader/yt_downloader_lotes.py
 
 echo ""
 echo "=============================================="

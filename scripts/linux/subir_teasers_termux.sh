@@ -51,7 +51,8 @@ echo ""
 touch "$LOG_FILE"
 
 # Lanzar en Debian: corre el uploader y muestra la salida en tiempo real
-"$PROOT" login debian -- /bin/bash -lc \
+source "$(dirname "$0")/_proot_bind.sh"
+"$PROOT" login debian "${PROOT_BIND_ARGS[@]}" -- /bin/bash -lc \
     "cd /root/agentes/youtube_uploader && AGENTES_STORAGE_ROOT=/sdcard/Antigravity python3 teaser_uploader.py 2>&1 | tee -a '$LOG_FILE'"
 
 echo ""

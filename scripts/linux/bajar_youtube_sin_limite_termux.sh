@@ -93,7 +93,8 @@ if [ -n "$REAL_SDCARD" ] && [ "$REAL_SDCARD" != "/sdcard" ]; then
 fi
 
 # Lanzar en modo interactivo dentro del proot (sin -lc para que el stdin funcione)
-"$PROOT" login debian "${BIND_ARGS[@]}" "${PROOT_ENV_ARGS[@]}" -- /usr/bin/python3 /root/agentes/youtube_uploader/yt_downloader_lotes_sin_limite.py
+source "$(dirname "$0")/_proot_bind.sh"
+"$PROOT" login debian "${PROOT_BIND_ARGS[@]}" "${BIND_ARGS[@]}" "${PROOT_ENV_ARGS[@]}" -- /usr/bin/python3 /root/agentes/youtube_uploader/yt_downloader_lotes_sin_limite.py
 
 echo ""
 echo "============================================================"

@@ -27,4 +27,5 @@ if [ -f "$ENV_FILE" ]; then
   . "$ENV_FILE"
 fi
 
-"$PROOT" login debian -- /usr/bin/python3 "$WATCHER" "$@" 2>&1 | tee -a "$LOG_FILE"
+source "$(dirname "$0")/_proot_bind.sh"
+"$PROOT" login debian "${PROOT_BIND_ARGS[@]}" -- /usr/bin/python3 "$WATCHER" "$@" 2>&1 | tee -a "$LOG_FILE"

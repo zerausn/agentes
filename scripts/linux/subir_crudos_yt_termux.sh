@@ -35,14 +35,15 @@ fi
 touch "$LOG_FILE"
 
 echo "[1/2] Escaneando videos en crudos_pendientes..."
-"$PROOT" login debian -- /bin/bash -lc \
+source "$(dirname "$0")/_proot_bind.sh"
+"$PROOT" login debian "${PROOT_BIND_ARGS[@]}" -- /bin/bash -lc \
     "cd /root/agentes/youtube_uploader && python3 video_scanner.py 2>&1 | tee -a '$LOG_FILE'"
 echo ""
 
 echo "[2/2] Subiendo crudos a YouTube..."
 echo "Log: $LOG_FILE"
 echo ""
-"$PROOT" login debian -- /bin/bash -lc \
+"$PROOT" login debian "${PROOT_BIND_ARGS[@]}" -- /bin/bash -lc \
     "cd /root/agentes/youtube_uploader && python3 uploader.py 2>&1 | tee -a '$LOG_FILE'"
 
 echo ""

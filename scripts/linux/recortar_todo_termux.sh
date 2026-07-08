@@ -34,7 +34,8 @@ fi
 
 echo "Iniciando recorte completo dentro de Debian..."
 
-"$PROOT" login debian -- /bin/bash -lc '
+source "$(dirname "$0")/_proot_bind.sh"
+"$PROOT" login debian "${PROOT_BIND_ARGS[@]}" -- /bin/bash -lc '
 set -euo pipefail
 
 PROJECT_DIR="/root/agentes/youtube_uploader"

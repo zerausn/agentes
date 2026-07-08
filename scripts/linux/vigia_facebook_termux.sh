@@ -51,7 +51,8 @@ echo ""
 touch "$LOG_FILE"
 
 # Lanzar en Debian: corre el evacuador y muestra la salida en tiempo real
-"$PROOT" login debian -- /bin/bash -lc \
+source "$(dirname "$0")/_proot_bind.sh"
+"$PROOT" login debian "${PROOT_BIND_ARGS[@]}" -- /bin/bash -lc \
     "cd /root/agentes/meta_uploader && AGENTES_STORAGE_ROOT=/sdcard/Antigravity python3 subir_fb_evacuador.py 2>&1 | tee -a '$LOG_FILE'"
 
 echo ""

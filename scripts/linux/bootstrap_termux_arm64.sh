@@ -282,11 +282,12 @@ if [ ! -f "$REPO_DIR/youtube_uploader/history.json" ] && [ -f "$REPO_DIR/youtube
   cp "$REPO_DIR/youtube_uploader/sync_history.json" "$REPO_DIR/youtube_uploader/history.json"
 fi
 
-"$PROOT" login debian -- /bin/sh -lc \
+source "$(dirname "$0")/_proot_bind.sh"
+"$PROOT" login debian "${PROOT_BIND_ARGS[@]}" -- /bin/sh -lc \
   "mkdir -p /root && ln -sfn /data/data/com.termux/files/home/agentes /root/agentes"
 
 if [ "$INSTALL_DEBIAN_DEPS" = "1" ]; then
-  "$PROOT" login debian -- /bin/bash -lc '
+  "$PROOT" login debian "${PROOT_BIND_ARGS[@]}" -- /bin/bash -lc '
 set -euo pipefail
 
 if ! command -v python3 >/dev/null 2>&1; then

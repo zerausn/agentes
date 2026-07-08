@@ -25,4 +25,5 @@ export XDG_RUNTIME_DIR=/tmp/runtime-tablet
 exec su - tablet -c 'export DISPLAY=:1 PULSE_SERVER=127.0.0.1 LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 XDG_RUNTIME_DIR=/tmp/runtime-tablet; exec dbus-launch --exit-with-session xfce4-session'
 EOF
 
-exec "$PROOT" login debian-gui --shared-tmp -- /bin/bash -lc "$DEBIAN_CMD"
+source "$(dirname "$0")/_proot_bind.sh"
+exec "$PROOT" login debian "${PROOT_BIND_ARGS[@]}"-gui --shared-tmp -- /bin/bash -lc "$DEBIAN_CMD"

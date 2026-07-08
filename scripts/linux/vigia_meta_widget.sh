@@ -47,7 +47,8 @@ if [ "$#" -gt 0 ]; then
 fi
 
 # Lanzar el agente dentro de Debian en background y seguir el log
-"$PROOT" login debian -- /bin/bash -lc \
+source "$(dirname "$0")/_proot_bind.sh"
+"$PROOT" login debian "${PROOT_BIND_ARGS[@]}" -- /bin/bash -lc \
   "touch '$LOG_FILE'; $LAUNCH_CMD >> '$LOG_FILE' 2>&1 &
    sleep 2
    tail -f '$LOG_FILE'"

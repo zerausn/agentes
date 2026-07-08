@@ -31,7 +31,8 @@ if [ ! -f "$DISTRO_PLUGIN" ]; then
   printf '\n# Override local: evitar fallo del plugin oficial en dpkg-reconfigure locales\ndistro_setup() { :; }\n' >> "$DISTRO_PLUGIN"
 fi
 
-if ! "$PROOT" login debian-gui -- /bin/true >/dev/null 2>&1; then
+source "$(dirname "$0")/_proot_bind.sh"
+if ! "$PROOT" login debian "${PROOT_BIND_ARGS[@]}"-gui -- /bin/true >/dev/null 2>&1; then
   "$PROOT" install debian-gui
 fi
 
@@ -79,7 +80,7 @@ chmod +x /home/tablet/.vnc/xstartup
 chown -R tablet:tablet /home/tablet
 EOF
 
-"$PROOT" login debian-gui --shared-tmp -- /bin/bash -lc "$DEBIAN_SETUP_CMD"
+"$PROOT" login debian "${PROOT_BIND_ARGS[@]}"-gui --shared-tmp -- /bin/bash -lc "$DEBIAN_SETUP_CMD"
 
 mkdir -p "$SHORTCUTS_DIR"
 
