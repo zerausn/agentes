@@ -229,3 +229,11 @@ canal.
   como constructor/runner base y `meta_uploader.py` como capa de subida.
 - Consecuencia: los docs del repo deben usar "videos optimizados" para el
   carril `second_pass/`, aunque el folder tecnico siga existiendo por ahora.
+
+### Fix Global de SDCard en Termux/Debian (Android 11+)
+- **Problema:** En Android 11+ (ej: Vivo), Termux perdía el enlace de FUSE a `/sdcard` al entrar al proot-distro de Debian, causando fallos de "carpeta vacía" o "permisos denegados".
+- **Solución:** Se implementó un script ayudante `scripts/linux/_proot_bind.sh` que detecta la ruta real de FUSE (ej: `/storage/emulated/0`) y la expone como `/sdcard` en Debian con `--bind`. Se parchearon automáticamente todos los widgets para inyectar este ayudante antes de arrancar `"$PROOT" login debian`.
+
+### Fix de Identidad de Git en Entornos Limpios
+- **Problema:** En entornos `proot-distro` recién inicializados (ej: Vivo), el paso `git commit` fallaba silenciosamente con un error de "Author identity unknown".
+- **Solución:** Se configuró explícitamente dentro del Debian de los dispositivos de producción la identidad de Git (`zerausn@gmail.com` / `zerausn`) para que el script `sync_push()` pueda crear commits sin interrupciones.
