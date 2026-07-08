@@ -383,8 +383,19 @@ def download_video(vid_id: str, title: str) -> str | None:
     mp4_tmp = TEMP_DIR / f"dl_{vid_id}.mp4"
 
     if final_path.exists() and final_path.stat().st_size > 1024 * 1024:
-        log.info("  Ya existe en destino, se omite: %s", final_path.name)
-        return _SKIPPED
+        # Verificar con ffprobe que el archivo final no está corrupto antes de omitirlo
+        try:
+            subprocess.check_output(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1", str(final_path)],
+                stderr=subprocess.DEVNULL, timeout=5
+            )
+            log.info("  Ya existe en destino (ffprobe OK), se omite: %s", final_path.name)
+            return _SKIPPED
+        except Exception:
+            log.warning("  Archivo final corrupto o ilegible, se eliminará y re-descargará: %s", final_path.name)
+            print(f"  ⚠️  Archivo corrupto detectado, eliminando para re-descargar: {final_path.name}")
+            final_path.unlink(missing_ok=True)
 
     downloaded_path = None
 
