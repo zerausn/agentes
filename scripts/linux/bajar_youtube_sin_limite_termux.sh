@@ -72,8 +72,28 @@ if [ -n "${AGENTES_FFMPEG_AUDIO_BITRATE:-}" ]; then
     PROOT_ENV_ARGS+=(--env "AGENTES_FFMPEG_AUDIO_BITRATE=${AGENTES_FFMPEG_AUDIO_BITRATE}")
 fi
 
+# Detectar la ruta real del almacenamiento externo (varía según el dispositivo/Android version)
+# y montar dentro del proot como /sdcard para que el script Python lo vea correctamente.
+REAL_SDCARD=""
+for _candidate in \
+    "/storage/emulated/0" \
+    "/data/media/0" \
+    "/mnt/user/0/primary" \
+    "/sdcard"; do
+    if [ -d "$_candidate/Antigravity" ] || [ -d "$_candidate/DCIM" ] || [ -d "$_candidate/Download" ]; then
+        REAL_SDCARD="$_candidate"
+        break
+    fi
+done
+
+BIND_ARGS=()
+if [ -n "$REAL_SDCARD" ] && [ "$REAL_SDCARD" != "/sdcard" ]; then
+    echo "  [INFO] Montando almacenamiento real: $REAL_SDCARD → /sdcard"
+    BIND_ARGS+=(--bind "${REAL_SDCARD}:/sdcard")
+fi
+
 # Lanzar en modo interactivo dentro del proot (sin -lc para que el stdin funcione)
-"$PROOT" login debian "${PROOT_ENV_ARGS[@]}" -- /usr/bin/python3 /root/agentes/youtube_uploader/yt_downloader_lotes_sin_limite.py
+"$PROOT" login debian "${BIND_ARGS[@]}" "${PROOT_ENV_ARGS[@]}" -- /usr/bin/python3 /root/agentes/youtube_uploader/yt_downloader_lotes_sin_limite.py
 
 echo ""
 echo "============================================================"
