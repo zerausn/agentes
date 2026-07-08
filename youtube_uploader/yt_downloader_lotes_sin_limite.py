@@ -770,6 +770,81 @@ def print_menu(pending_months: list, completed_months: list) -> int:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# BARRIDO INICIAL DE CARPETA DESTINO
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def scan_and_report_existing_downloads(registry: dict, channel_videos: list) -> dict:
+    """
+    Escanea toda la carpeta destino (/sdcard/Antigravity/crudos/) al inicio.
+    Para cada .mp4 encontrado:
+      1. Lo cruza contra la lista de videos del canal para identificar su ID.
+      2. Si ya está en el registro como 'descargado', lo salta.
+      3. Si no está reportado: lo valida con ffprobe.
+         - Pasa: lo marca como 'descargado' en el registro.
+         - Falla: lo ignora (archivo corrupto, no se toca).
+    Al final, si hubo nuevos archivos confirmados, hace un único git push.
+    """
+    if not DEST_DIR.exists():
+        return registry
+
+    mp4_files = sorted(DEST_DIR.glob("*.mp4"))
+    if not mp4_files:
+        return registry
+
+    # Construir lookup: título sanitizado → info del video
+    title_to_vid = {sanitize(v["title"]): v for v in channel_videos}
+
+    print()
+    print("─" * 58)
+    print(f"  [BARRIDO] Revisando {len(mp4_files)} archivo(s) en disco...")
+
+    nuevos = 0
+    corruptos = 0
+
+    for mp4_file in mp4_files:
+        stem = mp4_file.stem
+        vid_info = title_to_vid.get(stem)
+        if not vid_info:
+            # No coincide con ningún video del canal (otro script, teaser, etc.)
+            continue
+
+        vid_id = vid_info["id"]
+        month  = vid_info["month"]
+
+        # Si ya está reportado como descargado en el registro de GitHub, saltar
+        if registry.get(month, {}).get(vid_id, {}).get("status") == "descargado":
+            continue
+
+        # Validar integridad con ffprobe
+        try:
+            subprocess.check_output(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1", str(mp4_file)],
+                stderr=subprocess.DEVNULL, timeout=5
+            )
+        except Exception:
+            log.warning("  [BARRIDO] Archivo corrupto, se omite (no se borra): %s", mp4_file.name)
+            corruptos += 1
+            continue
+
+        # Marcar como descargado
+        mark_video(registry, month, vid_id, "descargado", str(mp4_file))
+        log.info("  [BARRIDO] Confirmado y registrado: %s (%s)", mp4_file.name, month)
+        nuevos += 1
+
+    if nuevos > 0:
+        print(f"  [BARRIDO] {nuevos} archivo(s) nuevo(s) confirmados con ffprobe.")
+        if corruptos > 0:
+            print(f"  [BARRIDO] {corruptos} archivo(s) corrupto(s) encontrados (ignorados).")
+        sync_push(f"sync: {DEVICE_NAME} barrido inicial — {nuevos} archivos existentes registrados")
+    else:
+        print("  [BARRIDO] Todo ya estaba sincronizado con GitHub. Sin cambios.")
+
+    print("─" * 58)
+    return registry
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # MAIN
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -792,6 +867,9 @@ def main():
     channel_videos = fetch_all_public_videos(youtube)
     registry = load_registry()
     registry = sync_registry_with_channel(registry, channel_videos)
+
+    # ── Barrido inicial: reportar a GitHub todos los archivos ya en disco ────
+    registry = scan_and_report_existing_downloads(registry, channel_videos)
 
     # ── Menú principal ──────────────────────────────────────────────────────
     while True:
