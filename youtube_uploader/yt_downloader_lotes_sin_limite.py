@@ -135,8 +135,8 @@ def sync_push(commit_msg: str):
 
     rel_registry = REGISTRY_FILE.relative_to(REPO_DIR)
 
-    # Solo agregar el archivo de registro, no otros cambios
-    ok1, _ = _git("add", str(rel_registry), capture=True)
+    # Solo agregar el archivo de registro, forzando porque *.json suele estar en .gitignore
+    ok1, _ = _git("add", "-f", str(rel_registry), capture=True)
     if not ok1:
         log.warning("[SYNC] ⚠️  git add falló.")
         print("[SYNC] ⚠️  git add falló. Se omite el push.")
