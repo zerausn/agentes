@@ -232,14 +232,19 @@ def mark_video(registry: dict, month: str, vid_id: str, status: str, filepath: s
 def fetch_all_public_videos(youtube) -> list:
     """
     Descarga la lista COMPLETA de videos públicos del canal.
-    SIN restricción de fecha. Videos privados/ocultos/unlisted son ignorados.
+    SIN restricción de fecha.
+    - Videos privados, ocultos o unlisted son ignorados.
+    - Videos con "teaser" en el título son ignorados: son clips recortados
+      de ~16 segundos, NO son crudos.
     """
-    log.info("Escaneando canal de YouTube (TODOS los videos públicos)...")
+    log.info("Escaneando canal de YouTube (TODOS los crudos públicos, sin teasers)...")
     channels_resp = youtube.channels().list(mine=True, part="contentDetails").execute()
     uploads_id = channels_resp["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
 
     videos = []
     seen = set()
+    skipped_private = 0
+    skipped_teaser  = 0
     next_page = None
 
     while True:
@@ -260,15 +265,28 @@ def fetch_all_public_videos(youtube) -> list:
             # Solo se incluyen videos públicos. Los privados, ocultos (unlisted)
             # o no listados son ignorados completamente.
             if item.get("status", {}).get("privacyStatus") != "public":
+                skipped_private += 1
                 continue
             # ── FIN FILTRO PRIVACIDAD ────────────────────────────────────────
+
+            title = item["snippet"]["title"]
+
+            # ── FILTRO DE TEASERS ────────────────────────────────────────────
+            # Los teasers son clips recortados de ~16 segundos generados
+            # automáticamente. Se identifican porque su título contiene
+            # la palabra "teaser" (sin importar mayúsculas/minúsculas).
+            # NO son crudos y no deben descargarse aquí.
+            if "teaser" in title.lower():
+                skipped_teaser += 1
+                continue
+            # ── FIN FILTRO TEASERS ───────────────────────────────────────────
 
             pub_str = item["snippet"]["publishedAt"]
             pub = datetime.fromisoformat(pub_str.replace("Z", "+00:00"))
             month = pub.strftime("%Y-%m")
             videos.append({
                 "id":          vid_id,
-                "title":       item["snippet"]["title"],
+                "title":       title,
                 "publishedAt": pub_str,
                 "month":       month,
             })
@@ -277,7 +295,10 @@ def fetch_all_public_videos(youtube) -> list:
         if not next_page:
             break
 
-    log.info("  → %s videos públicos encontrados en total.", len(videos))
+    log.info(
+        "  → %s crudos públicos encontrados. Ignorados: %s privados/ocultos, %s teasers.",
+        len(videos), skipped_private, skipped_teaser,
+    )
     return videos
 
 

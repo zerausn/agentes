@@ -55,8 +55,25 @@ echo ""
 echo "Lanzando descargador dentro de Debian..."
 echo ""
 
+# Construir lista de variables de entorno para pasar al proot explícitamente.
+# proot-distro no hereda el entorno del shell padre por defecto,
+# por lo que hay que inyectarlas manualmente con --env.
+PROOT_ENV_ARGS=()
+if [ -n "${AGENTES_DEVICE_NAME:-}" ]; then
+    PROOT_ENV_ARGS+=(--env "AGENTES_DEVICE_NAME=${AGENTES_DEVICE_NAME}")
+fi
+if [ -n "${AGENTES_FFMPEG_PRESET:-}" ]; then
+    PROOT_ENV_ARGS+=(--env "AGENTES_FFMPEG_PRESET=${AGENTES_FFMPEG_PRESET}")
+fi
+if [ -n "${AGENTES_FFMPEG_CRF:-}" ]; then
+    PROOT_ENV_ARGS+=(--env "AGENTES_FFMPEG_CRF=${AGENTES_FFMPEG_CRF}")
+fi
+if [ -n "${AGENTES_FFMPEG_AUDIO_BITRATE:-}" ]; then
+    PROOT_ENV_ARGS+=(--env "AGENTES_FFMPEG_AUDIO_BITRATE=${AGENTES_FFMPEG_AUDIO_BITRATE}")
+fi
+
 # Lanzar en modo interactivo dentro del proot (sin -lc para que el stdin funcione)
-"$PROOT" login debian -- /usr/bin/python3 /root/agentes/youtube_uploader/yt_downloader_lotes_sin_limite.py
+"$PROOT" login debian "${PROOT_ENV_ARGS[@]}" -- /usr/bin/python3 /root/agentes/youtube_uploader/yt_downloader_lotes_sin_limite.py
 
 echo ""
 echo "============================================================"
