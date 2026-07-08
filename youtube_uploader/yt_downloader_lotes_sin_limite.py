@@ -385,6 +385,7 @@ def download_video(vid_id: str, title: str) -> str | None:
         "--force-ipv4",
         "--no-part",
         "--merge-output-format", "mkv",
+        "--newline", "--quiet", "--no-warnings", "--progress",
         "-o", str(stub) + ".%(ext)s",
     ]
 
@@ -398,7 +399,16 @@ def download_video(vid_id: str, title: str) -> str | None:
             if f.exists():
                 f.unlink(missing_ok=True)
         try:
-            subprocess.run([*ytdlp_cmd_base, "-f", selector, url], check=True)
+            cmd = [*ytdlp_cmd_base, "-f", selector, url]
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            for line in proc.stdout:
+                if "[download]" in line and "%" in line and "Destination" not in line:
+                    cleaned = line.replace("[download]", "").strip()
+                    print(f"\r  ⬇️  {cleaned}   ", end="", flush=True)
+            proc.wait()
+            print()  # Salto de línea al terminar
+            if proc.returncode != 0:
+                raise subprocess.CalledProcessError(proc.returncode, cmd)
         except subprocess.CalledProcessError:
             pass
         for candidate in [mkv_tmp, mp4_tmp]:
