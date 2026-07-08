@@ -205,16 +205,24 @@ def sync_push(commit_msg: str):
         print(f"[SYNC] ⚠️  git commit falló: {out3[:120]}")
         return
 
-
-    ok4, out4 = _git("push", "origin", "linux-arm64", capture=True)
-    if ok4:
-        ok5, sha = _git("rev-parse", "--short", "HEAD", capture=True)
-        sha_str = sha.strip() if ok5 else "?"
-        log.info("[SYNC] ✅ Registro subido a GitHub (commit %s): %s", sha_str, commit_msg)
-        print(f"[SYNC] ✅ Registro sincronizado en GitHub (commit {sha_str})")
-    else:
-        log.warning("[SYNC] ⚠️  git push falló: %s", out4)
-        print(f"[SYNC] ⚠️  git push falló (el registro local está actualizado, se intentará en la próxima sesión): {out4[:120]}")
+    # Reintentos para el push (por si hay microcortes o lentitud de red)
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        ok4, out4 = _git("push", "origin", "linux-arm64", capture=True)
+        if ok4:
+            ok5, sha = _git("rev-parse", "--short", "HEAD", capture=True)
+            sha_str = sha.strip() if ok5 else "?"
+            log.info("[SYNC] ✅ Registro subido a GitHub (commit %s) [Intento %d]: %s", sha_str, attempt, commit_msg)
+            print(f"[SYNC] ✅ Registro sincronizado en GitHub (commit {sha_str})")
+            break
+        else:
+            log.warning("[SYNC] ⚠️  git push falló (Intento %d/%d): %s", attempt, max_retries, out4)
+            if attempt < max_retries:
+                print(f"[SYNC] ⚠️  Reintentando subida ({attempt}/{max_retries})...")
+                import time
+                time.sleep(3)
+            else:
+                print(f"[SYNC] ⚠️  git push falló (el registro local está actualizado, se intentará en la próxima sesión): {out4[:120]}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
