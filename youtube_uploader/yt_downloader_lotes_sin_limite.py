@@ -303,7 +303,17 @@ def fetch_all_public_videos(youtube) -> list:
 
 
 def sync_registry_with_channel(registry: dict, channel_videos: list) -> dict:
-    """Añade al registro los videos nuevos (sin borrar los ya descargados)."""
+    """
+    Sincroniza el registro con la lista filtrada del canal:
+    1. Agrega videos nuevos que no estaban en el registro.
+    2. Elimina del registro entradas que ya no pasan los filtros
+       (teasers, privados, ocultos) — EXCEPTO los ya descargados,
+       cuyo historial se preserva.
+    """
+    # Conjunto de IDs válidos según los filtros actuales
+    valid_ids: set[str] = {v["id"] for v in channel_videos}
+
+    # ── Agregar videos nuevos ────────────────────────────────────────────────
     for v in channel_videos:
         month = v["month"]
         if month not in registry:
@@ -317,6 +327,28 @@ def sync_registry_with_channel(registry: dict, channel_videos: list) -> dict:
                 "downloaded_at": None,
                 "downloaded_by": None,
             }
+
+    # ── Limpiar entradas obsoletas (teasers / privados / ocultos) ───────────
+    # Solo se eliminan los que están pendientes o fallidos.
+    # Los ya descargados se conservan para no perder el historial.
+    pruned = 0
+    for month in list(registry.keys()):
+        for vid_id in list(registry[month].keys()):
+            if vid_id not in valid_ids:
+                if registry[month][vid_id].get("status") != "descargado":
+                    del registry[month][vid_id]
+                    pruned += 1
+        # Eliminar meses que quedaron vacíos
+        if not registry[month]:
+            del registry[month]
+
+    if pruned > 0:
+        log.info(
+            "  → %s entradas eliminadas del registro (teasers/privados que "
+            "ya no pasan los filtros).",
+            pruned,
+        )
+
     save_registry(registry)
     return registry
 
