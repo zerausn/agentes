@@ -192,11 +192,19 @@ def sync_push(commit_msg: str):
         log.info("[SYNC] Nada para commit (registro sin cambios).")
         return
 
+    # Asegurar identidad de Git antes de commitear (por si es un entorno Debian limpio)
+    _, _email = _git("config", "--global", "user.email", capture=True)
+    if not _email.strip():
+        _git("config", "--global", "user.email", "zerausn@gmail.com")
+        _git("config", "--global", "user.name", "zerausn")
+        log.info("[SYNC] Identidad de Git configurada automáticamente.")
+
     ok3, out3 = _git("commit", "-m", commit_msg, capture=True)
     if not ok3:
         log.warning("[SYNC] ⚠️  git commit falló: %s", out3)
         print(f"[SYNC] ⚠️  git commit falló: {out3[:120]}")
         return
+
 
     ok4, out4 = _git("push", "origin", "linux-arm64", capture=True)
     if ok4:
