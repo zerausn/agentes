@@ -376,48 +376,67 @@ def download_video(vid_id: str, title: str) -> str | None:
         log.info("  Ya existe en destino, se omite: %s", final_path.name)
         return str(final_path)
 
-    # ── Paso 1: Descarga con yt-dlp ──────────────────────────────────────────
-    log.info("  [1/2] Descargando en 4K: %s", title)
-    ytdlp_cmd_base = [
-        "/usr/bin/python3", YTDLP_BIN,
-        "--js-runtimes", "node",
-        "--force-ipv4",
-        "--no-part",
-        "--merge-output-format", "mkv",
-        "--newline", "--quiet", "--no-warnings", "--progress",
-        "-o", str(stub) + ".%(ext)s",
-    ]
-
     downloaded_path = None
-    for selector in [
-        "bestvideo[height>=2160]+bestaudio[ext=m4a]/bestvideo[height>=2160]+bestaudio/best[height>=2160]/bestvideo+bestaudio/best",
-        "bestvideo+bestaudio/best",
-        "best",
-    ]:
-        for f in [mkv_tmp, mp4_tmp]:
-            if f.exists():
-                f.unlink(missing_ok=True)
-        try:
-            cmd = [*ytdlp_cmd_base, "-f", selector, url]
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            for line in proc.stdout:
-                if "[download]" in line and "%" in line and "Destination" not in line:
-                    cleaned = line.replace("[download]", "").strip()
-                    print(f"\r  ⬇️  {cleaned}   ", end="", flush=True)
-            proc.wait()
-            print()  # Salto de línea al terminar
-            if proc.returncode != 0:
-                raise subprocess.CalledProcessError(proc.returncode, cmd)
-        except subprocess.CalledProcessError:
-            pass
-        for candidate in [mkv_tmp, mp4_tmp]:
-            if candidate.exists() and candidate.stat().st_size > 512 * 1024:
+
+    # ── Revisar si el archivo crudo temporal ya fue descargado previamente ──
+    for candidate in [mkv_tmp, mp4_tmp]:
+        if candidate.exists() and candidate.stat().st_size > 1024 * 1024:
+            # Comprobar rápido con ffprobe que el archivo no está corrupto
+            try:
+                subprocess.check_output(
+                    ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                     "-of", "default=noprint_wrappers=1:nokey=1", str(candidate)],
+                    stderr=subprocess.DEVNULL, timeout=2
+                )
+                log.info("  [1/2] Archivo crudo ya existe, saltando descarga yt-dlp: %s", candidate.name)
                 downloaded_path = candidate
                 break
-        if downloaded_path:
-            log.info("  Descarga OK (%.1f MB) | selector: %s",
-                     downloaded_path.stat().st_size / (1024 * 1024), selector[:40])
-            break
+            except Exception:
+                # Si está corrupto, lo borramos y descargamos de nuevo
+                candidate.unlink(missing_ok=True)
+
+    if not downloaded_path:
+        # ── Paso 1: Descarga con yt-dlp ──────────────────────────────────────────
+        log.info("  [1/2] Descargando en 4K: %s", title)
+        ytdlp_cmd_base = [
+            "/usr/bin/python3", YTDLP_BIN,
+            "--js-runtimes", "node",
+            "--force-ipv4",
+            "--no-part",
+            "--merge-output-format", "mkv",
+            "--newline", "--quiet", "--no-warnings", "--progress",
+            "-o", str(stub) + ".%(ext)s",
+        ]
+
+        for selector in [
+            "bestvideo[height>=2160]+bestaudio[ext=m4a]/bestvideo[height>=2160]+bestaudio/best[height>=2160]/bestvideo+bestaudio/best",
+            "bestvideo+bestaudio/best",
+            "best",
+        ]:
+            for f in [mkv_tmp, mp4_tmp]:
+                if f.exists():
+                    f.unlink(missing_ok=True)
+            try:
+                cmd = [*ytdlp_cmd_base, "-f", selector, url]
+                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                for line in proc.stdout:
+                    if "[download]" in line and "%" in line and "Destination" not in line:
+                        cleaned = line.replace("[download]", "").strip()
+                        print(f"\r  ⬇️  {cleaned}   ", end="", flush=True)
+                proc.wait()
+                print()  # Salto de línea al terminar
+                if proc.returncode != 0:
+                    raise subprocess.CalledProcessError(proc.returncode, cmd)
+            except subprocess.CalledProcessError:
+                pass
+            for candidate in [mkv_tmp, mp4_tmp]:
+                if candidate.exists() and candidate.stat().st_size > 512 * 1024:
+                    downloaded_path = candidate
+                    break
+            if downloaded_path:
+                log.info("  Descarga OK (%.1f MB) | selector: %s",
+                         downloaded_path.stat().st_size / (1024 * 1024), selector[:40])
+                break
 
     if not downloaded_path:
         log.error("  Falló la descarga de: %s (%s)", title, vid_id)
