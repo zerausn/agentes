@@ -205,6 +205,13 @@ def sync_push(commit_msg: str):
         print(f"[SYNC] ⚠️  git commit falló: {out3[:120]}")
         return
 
+    # Hacer pull con rebase ANTES del push para incorporar cambios de otros celulares (evita el error 'fetch first')
+    log.info("[SYNC] Sincronizando cambios remotos (pull --rebase) antes del push...")
+    ok_pull, out_pull = _git("pull", "--rebase", "origin", "linux-arm64", capture=True)
+    if not ok_pull:
+        log.warning("[SYNC] ⚠️  git pull --rebase falló antes del push: %s", out_pull)
+        print(f"[SYNC] ⚠️  git pull --rebase falló. El push podría fallar: {out_pull[:120]}")
+
     # Reintentos para el push (por si hay microcortes o lentitud de red)
     max_retries = 3
     for attempt in range(1, max_retries + 1):
