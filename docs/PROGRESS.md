@@ -236,3 +236,14 @@
 - **Solución:** Se integró `ffprobe` en `subir_fb_evacuador_720.py` para medir el `aspect ratio` real en tiempo de ejecución. Si es un `teaser` y es horizontal, ahora el script hace fallback y lo sube como un video estándar de Facebook para evitar el rechazo de la API.
 - **Solución adicional:** Los videos que fallen por cualquier otra razón ahora se mueven a `fallidos_facebook/` para no congelar la cola. Se agregó un contador de videos pendientes al final de cada ciclo del Vigía en Bash.
 - **Deploy verificado:** Note 9 (SM-N9600).
+
+## Estabilización y Rendimiento de Descargador YouTube Lotes (2026-07-11)
+- **Problema 1 (FUSE Bind):** Fallas en Termux al montar rutas en Android 11+ porque `proot-distro` no puede acceder directamente a `$PR_ROOT/sdcard/`.
+  - **Solución:** Implementación global en `scripts/linux/_proot_bind.sh` usando staging estandarizado en `/root/antigravity_staging` para todos los scripts (YouTube y Meta).
+- **Problema 2 (Autenticación y Red):** Las sesiones se rompían con `git push` pidiendo contraseñas en segundo plano o fallando por microcortes, causando bloqueos infinitos de la automatización.
+  - **Solución:** Inyección de llaves `SSH (ed25519)` individuales en S24, Vivo y Note9. Implementación de una rutina anti-caídas con 3 reintentos en el push de `yt_downloader_lotes_sin_limite.py`.
+- **Problema 3 (Branches Divergentes):** Descargas de videos de 1 hora causaban un `fetch first (rejected)` si otro equipo empujaba primero.
+  - **Solución:** Inyección de `git pull --rebase origin linux-arm64` antes del `push` asegurando que cada celular absorba las descargas de los demás sin conflictos.
+- **Problema 4 (Thermal Throttling / Note9 se apaga):** `ffmpeg` tardaba 26 horas por video 4K debido a re-encoding forzado (`libx264 fast`) agotando la batería.
+  - **Solución:** Detección de codec inteligente con `ffprobe`. Si la fuente de YouTube ya es H.264, se realiza un remux instantáneo (`-c copy`) que toma 30 segundos. Para VP9 o AV1, se realiza un fallback a `libx264 ultrafast` para reducir la carga de CPU y el recalentamiento térmico.
+- **Estado de despliegue:** Los tres equipos del escuadrón (S24, Vivo, Note9) quedaron configurados para siempre con SSH y el código sincronizado con estas optimizaciones masivas de velocidad.
