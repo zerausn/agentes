@@ -534,28 +534,47 @@ def download_video(vid_id: str, title: str) -> str | None:
         downloaded_path.rename(final_path)
         return str(final_path)
 
-    # ── Paso 2: Transcodificación a MP4 ──────────────────────────────────────
-    log.info("  [2/2] Transcodificando a MP4...")
+    # Detectar codec del video descargado — si es H.264 se copia sin re-encodar (instantáneo)
     prog_file = TEMP_DIR / f"ffprog_{vid_id}.txt"
     try:
-        dur_out = subprocess.check_output(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+        probe_out = subprocess.check_output(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=codec_name",
+             "-show_entries", "format=duration",
              "-of", "default=noprint_wrappers=1:nokey=1", str(downloaded_path)],
             stderr=subprocess.DEVNULL,
-        ).decode().strip()
-        total_dur = float(dur_out)
+        ).decode().strip().splitlines()
+        codec_out = next((l for l in probe_out if l not in ("", "N/A") and not l.replace(".","").isdigit()), "")
+        dur_vals = [l for l in probe_out if l.replace(".","").isdigit()]
+        total_dur = float(dur_vals[0]) if dur_vals else 0
     except Exception:
+        codec_out = ""
         total_dur = 0
 
-    transcode_cmd = [
-        "ffmpeg", "-y", "-i", str(downloaded_path),
-        "-c:v", "libx264", "-preset", FFMPEG_PRESET, "-crf", FFMPEG_CRF,
-        "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", FFMPEG_AUDIO,
-        "-movflags", "+faststart",
-        "-progress", str(prog_file),
-        str(final_path),
-    ]
+    if codec_out.lower() in ("h264", "avc"):
+        # ✅ Ya es H.264 → remux directo (copiar streams, sin re-encodar)
+        log.info("  [2/2] Remuxeando a MP4 (H.264 detectado, sin re-encodar)...")
+        print("  ⚡ Codec H.264 detectado — remux instantáneo, sin transcodificación.")
+        transcode_cmd = [
+            "ffmpeg", "-y", "-i", str(downloaded_path),
+            "-c:v", "copy",
+            "-c:a", "aac", "-b:a", FFMPEG_AUDIO,
+            "-movflags", "+faststart",
+            "-progress", str(prog_file),
+            str(final_path),
+        ]
+    else:
+        # ⚙️ VP9 / AV1 / otro → re-encodar con libx264
+        log.info("  [2/2] Transcodificando a MP4 (codec: %s → H.264)...", codec_out or "desconocido")
+        transcode_cmd = [
+            "ffmpeg", "-y", "-i", str(downloaded_path),
+            "-c:v", "libx264", "-preset", FFMPEG_PRESET, "-crf", FFMPEG_CRF,
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", FFMPEG_AUDIO,
+            "-movflags", "+faststart",
+            "-progress", str(prog_file),
+            str(final_path),
+        ]
     proc = subprocess.Popen(transcode_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     while proc.poll() is None:
         if prog_file.exists() and total_dur > 0:
