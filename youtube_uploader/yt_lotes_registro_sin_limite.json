@@ -67,10 +67,10 @@
     "HPW3h34m1vA": {
       "title": "PW | (20260613_211429)",
       "publishedAt": "2026-07-01T22:45:16Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/PW  (20260613_211429).mp4",
+      "downloaded_at": "2026-07-11 16:45",
+      "downloaded_by": "localhost"
     },
     "Cx5gwnrH4Qk": {
       "title": "PW | (20260611_204518)",
@@ -4204,14 +4204,6 @@
       "downloaded_at": null,
       "downloaded_by": null
     },
-    "iCf6yNnMWFg": {
-      "title": "PW | 2026-04-17 | (20250508_204539)",
-      "publishedAt": "2026-05-16T19:00:26Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
-    },
     "WiHLNbPXzGE": {
       "title": "PW | (20260515_214213)",
       "publishedAt": "2026-05-21T18:00:37Z",
@@ -4239,14 +4231,6 @@
     "3hrobgF-BFM": {
       "title": "PW | (20260517_163647)",
       "publishedAt": "2026-05-19T03:30:17Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
-    },
-    "1ibu2ZEVBBM": {
-      "title": "PW | (20260513_202645)",
-      "publishedAt": "2026-05-14T23:12:07Z",
       "status": "pendiente",
       "file": null,
       "downloaded_at": null,
@@ -4300,22 +4284,6 @@
       "downloaded_at": null,
       "downloaded_by": null
     },
-    "eUlJ26L7wSA": {
-      "title": "20260310 190454",
-      "publishedAt": "2026-05-17T22:45:02Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
-    },
-    "toi-thTbgQ0": {
-      "title": "20260310 183619",
-      "publishedAt": "2026-05-16T22:45:02Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
-    },
     "wU_rAopgiKM": {
       "title": "20260310 181709",
       "publishedAt": "2026-05-15T22:45:02Z",
@@ -4327,6 +4295,62 @@
     "XpxS7ldLFVo": {
       "title": "20260310 195009",
       "publishedAt": "2026-05-14T22:45:01Z",
+      "status": "pendiente",
+      "file": null,
+      "downloaded_at": null,
+      "downloaded_by": null
+    },
+    "FZh8Vq-PID0": {
+      "title": "PW | (20260517_163647)",
+      "publishedAt": "2026-05-19T05:03:07Z",
+      "status": "pendiente",
+      "file": null,
+      "downloaded_at": null,
+      "downloaded_by": null
+    },
+    "ho2lxnI3Wto": {
+      "title": "PW | (20260507_192447)",
+      "publishedAt": "2026-05-09T01:55:08Z",
+      "status": "pendiente",
+      "file": null,
+      "downloaded_at": null,
+      "downloaded_by": null
+    },
+    "IIDmdfxcXEA": {
+      "title": "PW | (20260328_171657)",
+      "publishedAt": "2026-05-01T19:00:14Z",
+      "status": "pendiente",
+      "file": null,
+      "downloaded_at": null,
+      "downloaded_by": null
+    },
+    "erfxNq5dY9g": {
+      "title": "PW | 2026-04-11 | (20260327_183805)",
+      "publishedAt": "2026-05-24T19:00:14Z",
+      "status": "pendiente",
+      "file": null,
+      "downloaded_at": null,
+      "downloaded_by": null
+    },
+    "CVRK-LArVXI": {
+      "title": "PW | 2026-04-02 | (20260313_180934)",
+      "publishedAt": "2026-05-13T22:45:01Z",
+      "status": "pendiente",
+      "file": null,
+      "downloaded_at": null,
+      "downloaded_by": null
+    },
+    "2Z_qrkXMkHo": {
+      "title": "20260310 190735",
+      "publishedAt": "2026-05-13T22:45:00Z",
+      "status": "pendiente",
+      "file": null,
+      "downloaded_at": null,
+      "downloaded_by": null
+    },
+    "6K61tMaGusQ": {
+      "title": "PW | 2026-04-10 | (20260409_184618)",
+      "publishedAt": "2026-05-13T19:00:07Z",
       "status": "pendiente",
       "file": null,
       "downloaded_at": null,
@@ -4754,22 +4778,6 @@
       "downloaded_at": null,
       "downloaded_by": null
     },
-    "E_49kIkx6Ek": {
-      "title": "20251121 181348",
-      "publishedAt": "2026-01-26T23:00:06Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
-    },
-    "_aFgw2iWtHQ": {
-      "title": "20251121 201521",
-      "publishedAt": "2026-01-25T23:00:45Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
-    },
     "6NGa975Df1A": {
       "title": "20251030 181347",
       "publishedAt": "2026-01-13T23:00:13Z",
@@ -5159,22 +5167,6 @@
     "X2ikVkEM--M": {
       "title": "20251024 194736",
       "publishedAt": "2025-12-07T23:00:06Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
-    },
-    "rBw9P243nu4": {
-      "title": "20251024 195557",
-      "publishedAt": "2025-12-06T23:00:06Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
-    },
-    "Iba0aJrzs1k": {
-      "title": "20251020 183207",
-      "publishedAt": "2025-12-05T23:00:06Z",
       "status": "pendiente",
       "file": null,
       "downloaded_at": null,
@@ -5685,6 +5677,14 @@
       "file": null,
       "downloaded_at": null,
       "downloaded_by": null
+    },
+    "ZxG3JIfelac": {
+      "title": "20251024 183436",
+      "publishedAt": "2025-11-23T23:00:06Z",
+      "status": "pendiente",
+      "file": null,
+      "downloaded_at": null,
+      "downloaded_by": null
     }
   },
   "2025-10": {
@@ -6095,22 +6095,6 @@
       "file": "/sdcard/Antigravity/crudos/Postales a Clara     20250516 194156.mp4",
       "downloaded_at": "2026-07-11 16:09",
       "downloaded_by": "Note9"
-    },
-    "jRS_gZbLWlE": {
-      "title": "20250926 184444",
-      "publishedAt": "2025-10-07T07:00:50Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
-    },
-    "mnA_Xu3GAvY": {
-      "title": "20250926 185516",
-      "publishedAt": "2025-10-08T07:00:06Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
     },
     "uUyesQY4qGQ": {
       "title": "20251003 190617",
@@ -6770,38 +6754,6 @@
       "downloaded_at": null,
       "downloaded_by": null
     },
-    "wDB7IPVP2OE": {
-      "title": "20250912 180810",
-      "publishedAt": "2025-09-22T12:27:18Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
-    },
-    "mPu38GffdTw": {
-      "title": "20250907 191545",
-      "publishedAt": "2025-09-22T12:27:03Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
-    },
-    "FtiJkfw0GAY": {
-      "title": "20250907 175627",
-      "publishedAt": "2025-09-22T12:26:46Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
-    },
-    "GS1EuV5IWus": {
-      "title": "20250613 211604",
-      "publishedAt": "2025-09-14T22:33:33Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
-    },
     "kvJXD-3Y-iE": {
       "title": "20250823 212443",
       "publishedAt": "2025-09-24T20:53:19Z",
@@ -6930,14 +6882,6 @@
       "downloaded_at": null,
       "downloaded_by": null
     },
-    "V0Gt8s-O_oE": {
-      "title": "20250912 190521",
-      "publishedAt": "2025-09-14T18:53:21Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
-    },
     "61tPHmGY8Mo": {
       "title": "20250912 183951",
       "publishedAt": "2025-09-27T07:00:05Z",
@@ -7005,6 +6949,54 @@
     "JTj1BG4XzJ8": {
       "title": "20250823 201118",
       "publishedAt": "2025-09-16T08:03:26Z",
+      "status": "pendiente",
+      "file": null,
+      "downloaded_at": null,
+      "downloaded_by": null
+    },
+    "pNIyN0TneEg": {
+      "title": "20250814 221720",
+      "publishedAt": "2025-09-30T07:00:06Z",
+      "status": "pendiente",
+      "file": null,
+      "downloaded_at": null,
+      "downloaded_by": null
+    },
+    "kexrF0wiwFg": {
+      "title": "20250919 183603",
+      "publishedAt": "2025-09-21T08:00:50Z",
+      "status": "pendiente",
+      "file": null,
+      "downloaded_at": null,
+      "downloaded_by": null
+    },
+    "CMOvkXdXNyE": {
+      "title": "20250919 183849",
+      "publishedAt": "2025-09-21T08:00:21Z",
+      "status": "pendiente",
+      "file": null,
+      "downloaded_at": null,
+      "downloaded_by": null
+    },
+    "6FTQun6mv9k": {
+      "title": "20250909 193526",
+      "publishedAt": "2025-09-21T06:00:06Z",
+      "status": "pendiente",
+      "file": null,
+      "downloaded_at": null,
+      "downloaded_by": null
+    },
+    "80rMUSL_vOU": {
+      "title": "20250612 213139",
+      "publishedAt": "2025-09-14T22:36:47Z",
+      "status": "pendiente",
+      "file": null,
+      "downloaded_at": null,
+      "downloaded_by": null
+    },
+    "7Zac60EY0YY": {
+      "title": "20250612 212016",
+      "publishedAt": "2025-09-14T22:36:02Z",
       "status": "pendiente",
       "file": null,
       "downloaded_at": null,
