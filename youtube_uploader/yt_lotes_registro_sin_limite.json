@@ -563,10 +563,10 @@
     "qLSVJnsQR50": {
       "title": "PW | (20260703_192604)",
       "publishedAt": "2026-07-10T22:45:28Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/PW  (20260703_192604).mp4",
+      "downloaded_at": "2026-07-11 22:44",
+      "downloaded_by": "localhost"
     },
     "LF-PFRnHhNE": {
       "title": "PW | (20260702_171010)",
