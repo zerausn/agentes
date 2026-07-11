@@ -40,9 +40,8 @@ TEMP_DIR        = BASE_DIR / "yt_temp_dl"
 SCOPES        = ["https://www.googleapis.com/auth/youtube.readonly"]
 YTDLP_BIN     = shutil.which("yt-dlp") or "/usr/local/bin/yt-dlp"
 FFMPEG_PRESET = os.getenv("AGENTES_FFMPEG_PRESET", "ultrafast")
-FFMPEG_CRF    = os.getenv("AGENTES_FFMPEG_CRF", "23")  # Aumentado a 23 para acelerar un poco
-FFMPEG_AUDIO  = os.getenv("AGENTES_FFMPEG_AUDIO_BITRATE", "128k")
-FFMPEG_THREADS= os.getenv("AGENTES_FFMPEG_THREADS", "4") # Limitar núcleos para evitar que se apague por sobrecalentamiento
+FFMPEG_CRF    = os.getenv("AGENTES_FFMPEG_CRF", "20")
+FFMPEG_AUDIO  = os.getenv("AGENTES_FFMPEG_AUDIO_BITRATE", "192k")
 
 # Nombre del dispositivo actual (para el registro de quién descargó qué).
 # Se puede configurar en ~/.agentes_termux_env como:
@@ -550,7 +549,6 @@ def download_video(vid_id: str, title: str) -> str | None:
 
     transcode_cmd = [
         "ffmpeg", "-y", "-i", str(downloaded_path),
-        "-threads", FFMPEG_THREADS,
         "-c:v", "libx264", "-preset", FFMPEG_PRESET, "-crf", FFMPEG_CRF,
         "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", FFMPEG_AUDIO,
@@ -677,7 +675,6 @@ def finish_pending_transcodes(registry: dict) -> dict:
 
         transcode_cmd = [
             "ffmpeg", "-y", "-i", str(mkv_path),
-            "-threads", FFMPEG_THREADS,
             "-c:v", "libx264", "-preset", FFMPEG_PRESET, "-crf", FFMPEG_CRF,
             "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", FFMPEG_AUDIO,
