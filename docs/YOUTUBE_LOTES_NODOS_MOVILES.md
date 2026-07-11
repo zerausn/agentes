@@ -1,0 +1,274 @@
+# Descargador YouTube por nodos moviles
+
+Fecha de revision: 2026-07-11
+Rama canonica: `linux-arm64`
+
+## Objetivo
+
+`5_BAJAR_YOUTUBE_SIN_LIMITE` permite que varios telefonos Android trabajen como nodos de descarga sobre el mismo canal de YouTube.
+
+Cada nodo:
+
+- corre Termux como host de widgets y almacenamiento;
+- corre Debian en `proot-distro` para Python, Git, FFmpeg, Node y `yt-dlp`;
+- usa el repo `~/agentes` en la rama `linux-arm64`;
+- lee y escribe el registro compartido `youtube_uploader/yt_lotes_registro_sin_limite.json`;
+- descarga videos a `/sdcard/Antigravity/crudos/`.
+
+La regla operativa es simple: ningun nodo decide trabajo con un registro viejo. Antes de mostrar pendientes debe traer GitHub, y despues de marcar un video como `descargado` debe empujar el cambio para que los demas nodos no bajen el mismo video.
+
+## Registro compartido
+
+Archivo canonico:
+
+```text
+youtube_uploader/yt_lotes_registro_sin_limite.json
+```
+
+Campos relevantes por video:
+
+- `status`: `pendiente`, `descargado` o `fallido`.
+- `file`: ruta del MP4 final cuando ya fue descargado.
+- `downloaded_at`: hora local del nodo que marco la descarga.
+- `downloaded_by`: nombre del nodo (`AGENTES_DEVICE_NAME` o hostname).
+
+Un video se considera tomado por la red cuando el registro remoto ya tiene `status: descargado`. Si un nodo conserva un temporal local de un video que otro nodo ya marco como descargado, ese temporal no debe transcodificarse salvo que se confirme manualmente que falta el MP4 final.
+
+## Flujo normal de un nodo
+
+1. El widget ejecuta:
+
+```text
+~/.shortcuts/5_BAJAR_YOUTUBE_SIN_LIMITE.sh
+```
+
+2. El wrapper llama a:
+
+```text
+~/agentes/scripts/linux/bajar_youtube_sin_limite_termux.sh
+```
+
+3. El wrapper crea un lock:
+
+```text
+~/.run/5_BAJAR_YOUTUBE_SIN_LIMITE.lock
+```
+
+4. Debian ejecuta:
+
+```text
+/root/agentes/youtube_uploader/yt_downloader_lotes_sin_limite.py
+```
+
+5. El script hace `sync_pull()`:
+
+- valida que Git este en `linux-arm64`;
+- aborta un rebase pendiente si existe;
+- hace `fetch origin linux-arm64`;
+- hace `pull --ff-only origin linux-arm64`;
+- si hay divergencia, rescata el registro local en memoria, resetea a remoto y mezcla entradas locales faltantes.
+
+6. Escanea YouTube, actualiza el registro y muestra lotes pendientes.
+
+7. Al terminar una descarga valida, marca el video como `descargado` y ejecuta `sync_push()`:
+
+- hace commit solo del registro;
+- intenta `pull --rebase origin linux-arm64`;
+- si el rebase falla, aborta el rebase y NO empuja;
+- empuja con `git push origin HEAD:linux-arm64`;
+- verifica con `ls-remote` que GitHub quedo en el mismo SHA local.
+
+## Blindajes agregados el 2026-07-11
+
+Commit de codigo:
+
+```text
+0798c040 fix: proteger descargador sin limite contra rebase y concurrencia
+```
+
+Cambios:
+
+- El wrapper impide ejecuciones simultaneas con un lock por widget.
+- El Python detecta rebases pendientes antes de sincronizar.
+- El Python evita commits/push desde `HEAD (no branch)`.
+- El push usa `HEAD:linux-arm64`, no el nombre de una rama local potencialmente atrasada.
+- El push verifica que GitHub realmente haya recibido el commit.
+- Si `pull --rebase` falla, el commit local queda conservado y no se empuja un estado ambiguo.
+
+Commit de documentacion:
+
+```text
+12f4f899 docs: documentar sincronizacion de nodos moviles
+```
+
+## Incidente S24
+
+Sintomas observados:
+
+- Varias instancias de `5_BAJAR_YOUTUBE_SIN_LIMITE` corriendo al mismo tiempo.
+- Log mezclado: una instancia en menu y otra descargando/transcodificando.
+- Git con `.git/rebase-merge` activo.
+- Repo en `HEAD (no branch)`.
+- Commits locales reportados como "subidos", pero GitHub seguia en un SHA anterior.
+
+Causa:
+
+- `git pull --rebase` entro en conflicto en el registro.
+- El script siguio creando commits en detached HEAD.
+- `git push origin linux-arm64` empujaba la rama local `linux-arm64`, no el HEAD detached que tenia los nuevos commits.
+
+Correccion aplicada:
+
+- Se respaldo el registro y el rebase en:
+
+```text
+/sdcard/Antigravity/backups/s24_git_fix_20260711_1748
+```
+
+- Se anclaron ramas de rescate:
+
+```text
+s24-rescue-20260711-1748
+s24-rescue-rebase-orig-20260711-1748
+```
+
+- Se movio `linux-arm64` al commit local valido.
+- Se empujo GitHub de `d8c0319` a `f37af50`.
+- Se aplico el fix de codigo y luego documentacion.
+
+Estado verificado:
+
+```text
+S24: HEAD == origin/linux-arm64 == 0798c040 al cierre del arreglo de codigo
+```
+
+El commit de documentacion posterior (`12f4f899`) esta en GitHub; si el S24 no esta conectado, se actualiza con `0_RENOVAR_REPO` o `git pull --ff-only origin linux-arm64`.
+
+## Incidente Note 9
+
+Dispositivo:
+
+```text
+SM-N9600
+serial: 29396e8c1e3f7ece
+```
+
+Sintomas observados:
+
+- Repo Debian en `HEAD (no branch)`.
+- Rebase viejo en `.git/rebase-merge`.
+- Commits locales `sync: Note9 bajo ...`.
+- Temporales en `youtube_uploader/yt_temp_dl/`.
+
+Revision de registro:
+
+- Se comparo el registro local del Note 9 contra el registro remoto actual.
+- No habia ningun `descargado` del Note 9 faltante en GitHub.
+- Solo habia entradas `pendiente` que el remoto actual ya no conservaba.
+
+Temporal relevante:
+
+```text
+dl_XaaLtfRD1bs.mkv
+```
+
+Ese temporal era valido por `ffprobe`, pero el video `XaaLtfRD1bs` ya estaba marcado como `descargado` en GitHub por otro nodo, asi que se movio a respaldo para evitar trabajo duplicado.
+
+Backups:
+
+```text
+/sdcard/Antigravity/backups/note9_git_fix_20260711_1815
+```
+
+Ramas de rescate:
+
+```text
+note9-rescue-20260711-1815
+note9-rescue-linux-arm64-20260711-1815
+```
+
+Estado verificado:
+
+```text
+Note 9: HEAD == origin/linux-arm64 == 12f4f899
+```
+
+Validaciones realizadas:
+
+- sin procesos vivos de `yt_downloader_lotes_sin_limite.py` ni `yt-dlp`;
+- sin `.git/rebase-merge`;
+- `python3 -m py_compile` OK;
+- `bash -n bajar_youtube_sin_limite_termux.sh` OK;
+- `git status` limpio.
+
+## Procedimiento para reparar otro nodo
+
+1. Ver dispositivos:
+
+```bash
+adb devices -l
+```
+
+2. Confirmar que no hay descargador activo:
+
+```bash
+adb -s <SERIAL> shell run-as com.termux sh -c 'ps -ef | grep -E "bajar_youtube_sin_limite|yt_downloader_lotes_sin_limite|yt-dlp" | grep -v grep'
+```
+
+3. Revisar Git dentro de Debian:
+
+```bash
+adb -s <SERIAL> shell 'run-as com.termux sh -c "files/usr/bin/proot-distro login debian -- git -C /root/agentes status --short --branch"'
+```
+
+4. Si esta en detached HEAD, crear rama de rescate antes de limpiar:
+
+```bash
+git -C /root/agentes branch -f <nodo>-rescue-<fecha> HEAD
+```
+
+5. Respaldar el registro local:
+
+```bash
+cp /root/agentes/youtube_uploader/yt_lotes_registro_sin_limite.json /sdcard/Antigravity/backups/<nodo>_git_fix_<fecha>/
+```
+
+6. Comparar el registro local contra GitHub antes de resetear. Solo hay que rescatar entradas locales con `status: descargado` que no existan en remoto.
+
+7. Alinear a GitHub:
+
+```bash
+git -C /root/agentes fetch origin linux-arm64
+git -C /root/agentes checkout linux-arm64
+git -C /root/agentes reset --hard origin/linux-arm64
+```
+
+8. Verificar:
+
+```bash
+git -C /root/agentes status --short --branch
+git -C /root/agentes rev-parse HEAD
+git -C /root/agentes rev-parse origin/linux-arm64
+python3 -m py_compile /root/agentes/youtube_uploader/yt_downloader_lotes_sin_limite.py
+```
+
+## Reglas para operar la red de nodos
+
+- No lanzar dos veces el mismo widget en el mismo telefono.
+- No usar un nodo que tenga `HEAD (no branch)` o rebase activo.
+- No borrar temporales validos sin comparar antes con el registro remoto.
+- Si el temporal corresponde a un video ya `descargado` por otro nodo, moverlo a respaldo y no transcodificarlo.
+- Siempre operar desde `linux-arm64`.
+- El UID de Termux puede cambiar por instalacion; no hardcodear `u0_a291`, `u0_a309`, etc. Para ADB usar `run-as com.termux`.
+- Si un nodo estuvo desconectado durante un arreglo, correr `0_RENOVAR_REPO` antes de usarlo.
+
+## Nodos
+
+Estado confirmado en esta revision:
+
+| Nodo | Modelo | Serial | Estado |
+|---|---|---|---|
+| S24 Ultra | SM-S928B | RFCX91HV4GD | Reparado con fix de codigo; actualizar docs si no recibio `12f4f899` |
+| Note 9 | SM-N9600 | 29396e8c1e3f7ece | Reparado y alineado en `12f4f899` |
+| Vivo | pendiente de conexion | pendiente | Debe revisarse antes de usar si corre este descargador |
+
