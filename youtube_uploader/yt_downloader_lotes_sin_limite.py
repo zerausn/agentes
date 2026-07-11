@@ -34,6 +34,7 @@ REGISTRY_FILE   = BASE_DIR / "yt_lotes_registro_sin_limite.json"
 LOG_FILE        = BASE_DIR / "yt_lotes_sin_limite.log"
 DEST_DIR        = Path("/sdcard/Antigravity/crudos")
 TEMP_DIR        = BASE_DIR / "yt_temp_dl"
+BRANCH_NAME     = "linux-arm64"
 
 # ─── Configuración ────────────────────────────────────────────────────────────
 # SIN TARGET_DATE: se descargan TODOS los videos públicos del canal.
@@ -80,6 +81,41 @@ def _git(*args, capture=False):
         return False, str(e)
 
 
+def _rebase_in_progress() -> bool:
+    git_dir = REPO_DIR / ".git"
+    return (git_dir / "rebase-merge").exists() or (git_dir / "rebase-apply").exists()
+
+
+def _ensure_git_branch(context: str) -> bool:
+    """Garantiza que Git esté en la rama esperada antes de sincronizar."""
+    if _rebase_in_progress():
+        log.warning("[SYNC] Rebase activo detectado antes de %s; abortando rebase pendiente.", context)
+        ok_abort, out_abort = _git("rebase", "--abort", capture=True)
+        if not ok_abort:
+            log.warning("[SYNC] No se pudo abortar el rebase pendiente: %s", out_abort)
+            print("[SYNC] ⚠️  Hay un rebase pendiente. Ejecuta reparación Git antes de sincronizar.")
+            return False
+        print("[SYNC] ⚠️  Rebase pendiente abortado para evitar commits en detached HEAD.")
+
+    ok_branch, branch = _git("branch", "--show-current", capture=True)
+    current_branch = branch.strip() if ok_branch else ""
+    if current_branch == BRANCH_NAME:
+        return True
+
+    if current_branch:
+        log.warning("[SYNC] Rama actual inesperada antes de %s: %s", context, current_branch)
+    else:
+        log.warning("[SYNC] HEAD detached antes de %s; intentando volver a %s.", context, BRANCH_NAME)
+
+    ok_checkout, out_checkout = _git("checkout", BRANCH_NAME, capture=True)
+    if ok_checkout:
+        return True
+
+    log.warning("[SYNC] No se pudo cambiar a %s: %s", BRANCH_NAME, out_checkout)
+    print(f"[SYNC] ⚠️  Git no está en {BRANCH_NAME}. Se omite sincronización para no perder registro.")
+    return False
+
+
 def sync_pull():
     """
     Hace git pull antes de empezar para obtener el registro más reciente
@@ -87,10 +123,13 @@ def sync_pull():
     """
     print()
     print("[SYNC] Descargando registro actualizado desde GitHub...")
-    log.info("[SYNC] git pull origin linux-arm64")
+    log.info("[SYNC] git pull origin %s", BRANCH_NAME)
+
+    if not _ensure_git_branch("sync_pull"):
+        return
 
     # Primero el fetch para ver si hay algo nuevo
-    ok, out = _git("fetch", "origin", "linux-arm64", "--quiet", capture=True)
+    ok, out = _git("fetch", "origin", BRANCH_NAME, "--quiet", capture=True)
     if not ok:
         log.warning("[SYNC] ⚠️  git fetch falló (sin conexión?): %s", out)
         print("[SYNC] ⚠️  No se pudo conectar con GitHub. Se usará el registro local.")
@@ -98,7 +137,7 @@ def sync_pull():
 
     # Verificar si el remoto tiene commits nuevos
     ok2, local  = _git("rev-parse", "HEAD", capture=True)
-    ok3, remote = _git("rev-parse", "origin/linux-arm64", capture=True)
+    ok3, remote = _git("rev-parse", f"origin/{BRANCH_NAME}", capture=True)
     local  = local.strip()
     remote = remote.strip()
 
@@ -108,7 +147,7 @@ def sync_pull():
         return
 
     # Hay cambios: hacer pull
-    ok4, out4 = _git("pull", "--ff-only", "origin", "linux-arm64", capture=True)
+    ok4, out4 = _git("pull", "--ff-only", "origin", BRANCH_NAME, capture=True)
     if ok4:
         # Obtener autor y tiempo del commit más reciente
         ok5, meta = _git(
@@ -131,7 +170,7 @@ def sync_pull():
             local_data = {}
 
         # 2. Forzar alineación de Git con la nube, borrando el commit local conflictivo
-        _git("reset", "--hard", "origin/linux-arm64")
+        _git("reset", "--hard", f"origin/{BRANCH_NAME}")
 
         # 3. Cargar datos remotos limpios
         try:
@@ -176,6 +215,9 @@ def sync_push(commit_msg: str):
     print("[SYNC] Subiendo registro actualizado a GitHub...")
     log.info("[SYNC] Intentando git push: %s", commit_msg)
 
+    if not _ensure_git_branch("sync_push"):
+        return
+
     rel_registry = REGISTRY_FILE.relative_to(REPO_DIR)
 
     # Solo agregar el archivo de registro, forzando porque *.json suele estar en .gitignore
@@ -207,16 +249,34 @@ def sync_push(commit_msg: str):
 
     # Hacer pull con rebase ANTES del push para incorporar cambios de otros celulares (evita el error 'fetch first')
     log.info("[SYNC] Sincronizando cambios remotos (pull --rebase) antes del push...")
-    ok_pull, out_pull = _git("pull", "--rebase", "origin", "linux-arm64", capture=True)
+    ok_pull, out_pull = _git("pull", "--rebase", "origin", BRANCH_NAME, capture=True)
     if not ok_pull:
         log.warning("[SYNC] ⚠️  git pull --rebase falló antes del push: %s", out_pull)
-        print(f"[SYNC] ⚠️  git pull --rebase falló. El push podría fallar: {out_pull[:120]}")
+        print(f"[SYNC] ⚠️  git pull --rebase falló. Se conserva el commit local y no se empuja: {out_pull[:120]}")
+        _git("rebase", "--abort", capture=True)
+        _ensure_git_branch("sync_push post-rebase-fallido")
+        return
+
+    if not _ensure_git_branch("sync_push post-rebase"):
+        return
 
     # Reintentos para el push (por si hay microcortes o lentitud de red)
     max_retries = 3
     for attempt in range(1, max_retries + 1):
-        ok4, out4 = _git("push", "origin", "linux-arm64", capture=True)
+        ok4, out4 = _git("push", "origin", f"HEAD:{BRANCH_NAME}", capture=True)
         if ok4:
+            ok_head, head = _git("rev-parse", "HEAD", capture=True)
+            head_full = head.strip() if ok_head else ""
+            ok_remote, remote_ref = _git("ls-remote", "origin", f"refs/heads/{BRANCH_NAME}", capture=True)
+            remote_sha = remote_ref.split()[0] if ok_remote and remote_ref.strip() else ""
+            if head_full and remote_sha and remote_sha != head_full:
+                log.warning("[SYNC] Push reportó OK, pero remoto quedó en %s y HEAD es %s", remote_sha[:7], head_full[:7])
+                if attempt < max_retries:
+                    print(f"[SYNC] ⚠️  GitHub no quedó en el commit local; reintentando ({attempt}/{max_retries})...")
+                    time.sleep(3)
+                else:
+                    print("[SYNC] ⚠️  GitHub no quedó en el commit local; se intentará de nuevo después.")
+                continue
             ok5, sha = _git("rev-parse", "--short", "HEAD", capture=True)
             sha_str = sha.strip() if ok5 else "?"
             log.info("[SYNC] ✅ Registro subido a GitHub (commit %s) [Intento %d]: %s", sha_str, attempt, commit_msg)

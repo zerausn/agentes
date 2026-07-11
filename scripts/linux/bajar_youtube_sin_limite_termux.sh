@@ -14,9 +14,31 @@ ENV_FILE="$TERMUX_HOME/.agentes_termux_env"
 SCRIPT_PROOT="$PR_ROOT/root/agentes/youtube_uploader/yt_downloader_lotes_sin_limite.py"
 LOG_DIR="/sdcard/Antigravity/widget_logs"
 SESSION_LOG="$LOG_DIR/5_BAJAR_YOUTUBE_SIN_LIMITE.log"
+LOCK_DIR="$TERMUX_HOME/.run/5_BAJAR_YOUTUBE_SIN_LIMITE.lock"
 
 mkdir -p "$LOG_DIR"
 exec > >(tee -a "$SESSION_LOG") 2>&1
+
+mkdir -p "$TERMUX_HOME/.run"
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    old_pid="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
+    if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+        echo "[ERROR] Ya hay una ejecución activa de 5_BAJAR_YOUTUBE_SIN_LIMITE (PID $old_pid)."
+        echo "        Cierra esa sesión antes de lanzar otra."
+        read -r -p "Enter para cerrar..."
+        exit 1
+    fi
+
+    echo "[WARN] Lock anterior sin proceso activo; limpiando."
+    rm -rf "$LOCK_DIR"
+    if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+        echo "[ERROR] No se pudo crear el lock de ejecución."
+        read -r -p "Enter para cerrar..."
+        exit 1
+    fi
+fi
+printf "%s\n" "$$" > "$LOCK_DIR/pid"
+trap 'rm -rf "$LOCK_DIR"' EXIT INT TERM
 
 echo "============================================================"
 echo "  5_BAJAR_YOUTUBE_SIN_LIMITE — Descargador por Lotes"
