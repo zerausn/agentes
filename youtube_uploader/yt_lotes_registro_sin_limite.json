@@ -555,10 +555,10 @@
     "QKGtHL3BSHQ": {
       "title": "20251108 182600",
       "publishedAt": "2026-07-09T22:45:08Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/20251108 182600.mp4",
+      "downloaded_at": "2026-07-11 22:42",
+      "downloaded_by": "localhost"
     },
     "qLSVJnsQR50": {
       "title": "PW | (20260703_192604)",
