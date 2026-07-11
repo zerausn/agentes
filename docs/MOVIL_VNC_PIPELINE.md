@@ -5,7 +5,7 @@
 | Dispositivo | Modelo | Serial | Usuario Termux | IP |
 |---|---|---|---|---|
 | S24 Ultra | SM-S928B | RFCX91HV4GD | u0_a447 | 10.31.120.x |
-| Note 9 | SM-N9600 | 29396e8c1e3f7ece | u0_a309 | 10.31.120.236 |
+| Note 9 | SM-N9600 | 29396e8c1e3f7ece | u0_a291 | 10.31.120.236 |
 | Tablet | SM-X210 | R92Y1073GER | u0_a309 | 10.31.120.11 |
 
 ---
@@ -80,6 +80,10 @@ bash ~/.shortcuts/0_PIPELINE_COMPLETO.sh
 
 ## Note 9: Servidor VNC + SSH
 
+Nota: no fijar scripts al UID numerico del usuario Termux. En la revision del
+2026-07-11 el Note 9 reporto `u0_a291`, aunque instalaciones anteriores
+habian usado `u0_a309`. Para ADB, preferir siempre `run-as com.termux`.
+
 ### droidVNC-NG
 
 - **Versión:** 2.19.0
@@ -92,11 +96,11 @@ bash ~/.shortcuts/0_PIPELINE_COMPLETO.sh
 ### OpenSSH (Termux)
 
 - **Puerto:** 8022
-- **Usuario:** u0_a309
+- **Usuario:** verificar con `run-as com.termux id -un` o por `ls -la /data/data/com.termux/files/home`
 - **Contraseña:** antigravity
 - **Verificar:**
   ```bash
-  sshpass -p antigravity ssh -p 8022 u0_a309@10.31.120.236
+  sshpass -p antigravity ssh -p 8022 <USUARIO_TERMUX>@10.31.120.236
   ```
 
 ### ADB (desde PC Parrot)
