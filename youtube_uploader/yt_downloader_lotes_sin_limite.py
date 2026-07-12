@@ -247,12 +247,14 @@ def sync_push(commit_msg: str):
         print(f"[SYNC] ⚠️  git commit falló: {out3[:120]}")
         return
 
-    # Hacer pull con rebase ANTES del push para incorporar cambios de otros celulares (evita el error 'fetch first')
-    log.info("[SYNC] Sincronizando cambios remotos (pull --rebase) antes del push...")
-    ok_pull, out_pull = _git("pull", "--rebase", "origin", BRANCH_NAME, capture=True)
+    # Hacer pull con rebase ANTES del push para incorporar cambios de otros celulares.
+    # --autostash evita que cambios locales no relacionados (por ejemplo TikTok)
+    # bloqueen la publicacion del registro compartido de descargas.
+    log.info("[SYNC] Sincronizando cambios remotos (pull --rebase --autostash) antes del push...")
+    ok_pull, out_pull = _git("pull", "--rebase", "--autostash", "origin", BRANCH_NAME, capture=True)
     if not ok_pull:
-        log.warning("[SYNC] ⚠️  git pull --rebase falló antes del push: %s", out_pull)
-        print(f"[SYNC] ⚠️  git pull --rebase falló. Se conserva el commit local y no se empuja: {out_pull[:120]}")
+        log.warning("[SYNC] ⚠️  git pull --rebase --autostash falló antes del push: %s", out_pull)
+        print(f"[SYNC] ⚠️  git pull --rebase --autostash falló. Se conserva el commit local y no se empuja: {out_pull[:120]}")
         _git("rebase", "--abort", capture=True)
         _ensure_git_branch("sync_push post-rebase-fallido")
         return
