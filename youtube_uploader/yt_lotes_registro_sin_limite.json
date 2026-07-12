@@ -579,10 +579,10 @@
     "kg-EFW8CJJ4": {
       "title": "PW | (20260604_202813)",
       "publishedAt": "2026-07-10T22:45:21Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/PW  (20260604_202813).mp4",
+      "downloaded_at": "2026-07-12 01:05",
+      "downloaded_by": "Note9"
     },
     "4y5OdgZP7To": {
       "title": "PW | (20260425_191231)",
@@ -7023,7 +7023,7 @@
     "CnyPaLhmhrw": {
       "title": "20250404 180214",
       "publishedAt": "2025-05-14T12:15:15Z",
-      "status": "fallido",
+      "status": "pendiente",
       "file": null,
       "downloaded_at": null,
       "downloaded_by": null
@@ -7031,7 +7031,7 @@
     "ifvUEppkJI8": {
       "title": "20250404 180305",
       "publishedAt": "2025-05-14T12:14:46Z",
-      "status": "fallido",
+      "status": "pendiente",
       "file": null,
       "downloaded_at": null,
       "downloaded_by": null
@@ -7039,7 +7039,7 @@
     "AY1XvYZUtRU": {
       "title": "20250404 180346",
       "publishedAt": "2025-05-14T12:13:46Z",
-      "status": "fallido",
+      "status": "pendiente",
       "file": null,
       "downloaded_at": null,
       "downloaded_by": null
@@ -7047,7 +7047,7 @@
     "3SOdTcWifCI": {
       "title": "20250404 180524",
       "publishedAt": "2025-05-14T12:12:44Z",
-      "status": "fallido",
+      "status": "pendiente",
       "file": null,
       "downloaded_at": null,
       "downloaded_by": null
@@ -7055,10 +7055,10 @@
     "8Ltnq81N0PU": {
       "title": "20250404 181037",
       "publishedAt": "2025-05-14T12:11:56Z",
-      "status": "descargado",
-      "file": "/sdcard/Antigravity/crudos/20250404 181037.mp4",
-      "downloaded_at": "2026-07-11 23:47",
-      "downloaded_by": "localhost"
+      "status": "pendiente",
+      "file": null,
+      "downloaded_at": null,
+      "downloaded_by": null
     },
     "BRBGkeki9ZA": {
       "title": "20250404 181415",
