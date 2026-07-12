@@ -1,6 +1,6 @@
 # Descargador YouTube por nodos moviles
 
-Fecha de revision: 2026-07-11
+Fecha de revision: 2026-07-12
 Rama canonica: `linux-arm64`
 
 ## Objetivo
@@ -72,9 +72,11 @@ Un video se considera tomado por la red cuando el registro remoto ya tiene `stat
 
 7. Al terminar una descarga valida, marca el video como `descargado` y ejecuta `sync_push()`:
 
+- refresca `origin/linux-arm64` y preserva en el JSON local cualquier video que el remoto ya tenga como `descargado`;
 - hace commit solo del registro;
-- intenta `pull --rebase origin linux-arm64`;
+- intenta `pull --rebase --autostash origin linux-arm64`;
 - si el rebase falla, aborta el rebase y NO empuja;
+- despues del rebase vuelve a preservar `descargado` remoto y, si hizo cambios, amenda el commit local;
 - empuja con `git push origin HEAD:linux-arm64`;
 - verifica con `ls-remote` que GitHub quedo en el mismo SHA local.
 
@@ -100,6 +102,30 @@ Commit de documentacion:
 ```text
 12f4f899 docs: documentar sincronizacion de nodos moviles
 ```
+
+## Blindajes agregados el 2026-07-12
+
+Commits de codigo:
+
+```text
+04f3d7e3 fix: autostash al sincronizar registro youtube
+a3104f2e fix: preservar descargados remotos en nodos youtube
+```
+
+Cambios:
+
+- `sync_push()` usa `git pull --rebase --autostash` para que cambios locales no relacionados, como archivos de TikTok, no bloqueen la publicacion del registro YouTube.
+- Antes de crear el commit y otra vez despues del rebase, el script fusiona desde `origin/linux-arm64` todos los videos con `status: descargado`.
+- La regla nueva es monotonicidad: un video que ya quedo `descargado` en GitHub no puede volver a `pendiente` por culpa de un nodo con registro viejo cargado en memoria.
+- Si se detectan descargados remotos preservados, el script imprime `Preservados N descargado(s) remotos ya informados por otros nodos`.
+
+Caso real rescatado:
+
+```text
+8Ltnq81N0PU | 2025-05 | 20250404 181037.mp4 | descargado por localhost el 2026-07-11 23:47
+```
+
+Ese video habia sido subido por el S24 en `c7a03cf`, pero commits posteriores de otro nodo lo dejaron otra vez como `pendiente`. El registro remoto quedo corregido en `a3104f2e`.
 
 ## Incidente S24
 
@@ -139,10 +165,20 @@ s24-rescue-rebase-orig-20260711-1748
 Estado verificado:
 
 ```text
-S24: HEAD == origin/linux-arm64 == 0798c040 al cierre del arreglo de codigo
+S24: HEAD == origin/linux-arm64 == a3104f2e despues del arreglo de monotonicidad
 ```
 
-El commit de documentacion posterior (`12f4f899`) esta en GitHub; si el S24 no esta conectado, se actualiza con `0_RENOVAR_REPO` o `git pull --ff-only origin linux-arm64`.
+Backup adicional del registro local viejo antes de actualizar el S24 el 2026-07-12:
+
+```text
+/sdcard/Antigravity/backups/s24_sync_fix_20260712/yt_lotes_registro_sin_limite.before_pull.json
+```
+
+Stash conservado en el S24:
+
+```text
+stash@{0}: On linux-arm64: s24 registry before monotonic youtube sync 2026-07-12
+```
 
 ## Incidente Note 9
 
@@ -261,6 +297,7 @@ python3 -m py_compile /root/agentes/youtube_uploader/yt_downloader_lotes_sin_lim
 - Siempre operar desde `linux-arm64`.
 - El UID de Termux puede cambiar por instalacion; no hardcodear `u0_a291`, `u0_a309`, etc. Para ADB usar `run-as com.termux`.
 - Si un nodo estuvo desconectado durante un arreglo, correr `0_RENOVAR_REPO` antes de usarlo.
+- Despues del commit `a3104f2e`, cualquier nodo que haya estado corriendo una version anterior debe cerrarse y actualizarse antes de escoger otro lote.
 
 ## Nodos
 
@@ -268,7 +305,6 @@ Estado confirmado en esta revision:
 
 | Nodo | Modelo | Serial | Estado |
 |---|---|---|---|
-| S24 Ultra | SM-S928B | RFCX91HV4GD | Reparado con fix de codigo; actualizar docs si no recibio `12f4f899` |
-| Note 9 | SM-N9600 | 29396e8c1e3f7ece | Reparado y alineado en `12f4f899` |
+| S24 Ultra | SM-S928B | RFCX91HV4GD | Reparado y alineado en `a3104f2e`; proceso viejo cerrado antes del pull |
+| Note 9 | SM-N9600 | 29396e8c1e3f7ece | Tenia `--autostash`; debe recibir `a3104f2e` antes de escoger otro lote |
 | Vivo | pendiente de conexion | pendiente | Debe revisarse antes de usar si corre este descargador |
-
