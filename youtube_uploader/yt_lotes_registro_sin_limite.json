@@ -5135,10 +5135,10 @@
     "hoBTTxUeV7s": {
       "title": "20251017 183407",
       "publishedAt": "2025-12-02T23:00:58Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/20251017 183407.mp4",
+      "downloaded_at": "2026-07-12 22:18",
+      "downloaded_by": "Note9"
     },
     "wNxhx9wt02c": {
       "title": "20251018 202824",
