@@ -30,7 +30,8 @@ def dynamic_redirect_uri():
 @app.route("/")
 def index():
     user = session.get("user")
-    return render_template("index.html", user=user)
+    redirect_uri = dynamic_redirect_uri()
+    return render_template("index.html", user=user, redirect_uri=redirect_uri)
 
 
 def _pkce_pair():
@@ -155,6 +156,36 @@ def publish():
     })
     return jsonify(resp.json())
 
+
+VERIFY_FILES = {
+    "tiktokax8X4G179reOCBSgW2YLn7fvPMfom6Rz.txt": "ax8X4G179reOCBSgW2YLn7fvPMfom6Rz",
+    "tiktok6CtmXXeaDFMo42fDZk4QgJTwB4VlmE9S.txt": "6CtmXXeaDFMo42fDZk4QgJTwB4VlmE9S",
+    "tiktok0aF0EeTBpj5jZNKr0RJHRsKyfYuenG9i.txt": "0aF0EeTBpj5jZNKr0RJHRsKyfYuenG9i",
+}
+
+def _make_verify(filename, token):
+    def _handler():
+        return f"tiktok-developers-site-verification={token}", 200, {"Content-Type": "text/plain"}
+    _handler.__name__ = f"verify_{token}"
+    app.add_url_rule(f"/{filename}", endpoint=f"verify_{token}", view_func=_handler)
+
+for filename, token in VERIFY_FILES.items():
+    _make_verify(filename, token)
+
+@app.route("/terms/<path:subpath>")
+def terms_static(subpath):
+    token = VERIFY_FILES.get(subpath)
+    if token:
+        return f"tiktok-developers-site-verification={token}", 200, {"Content-Type": "text/plain"}
+    return "Not found", 404
+
+@app.route("/terms")
+def terms():
+    return render_template("terms.html")
+
+@app.route("/privacy")
+def privacy():
+    return render_template("privacy.html")
 
 @app.route("/logout")
 def logout():
