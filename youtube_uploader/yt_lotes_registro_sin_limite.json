@@ -7039,10 +7039,10 @@
     "8Ltnq81N0PU": {
       "title": "20250404 181037",
       "publishedAt": "2025-05-14T12:11:56Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/20250404 181037.mp4",
+      "downloaded_at": "2026-07-11 23:47",
+      "downloaded_by": "localhost"
     },
     "BRBGkeki9ZA": {
       "title": "20250404 181415",

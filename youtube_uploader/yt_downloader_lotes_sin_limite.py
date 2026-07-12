@@ -116,6 +116,90 @@ def _ensure_git_branch(context: str) -> bool:
     return False
 
 
+def _load_registry_from_git(ref: str) -> dict:
+    """Carga el registro JSON desde un ref de Git, por ejemplo origin/linux-arm64."""
+    rel_registry = REGISTRY_FILE.relative_to(REPO_DIR).as_posix()
+    ok, content = _git("show", f"{ref}:{rel_registry}", capture=True)
+    if not ok or not content.strip():
+        return {}
+    try:
+        return json.loads(content)
+    except Exception as e:
+        log.warning("[SYNC] No se pudo leer registro desde %s: %s", ref, e)
+        return {}
+
+
+def _index_registry(registry: dict) -> dict:
+    index = {}
+    for month, videos in registry.items():
+        if not isinstance(videos, dict):
+            continue
+        for vid_id, entry in videos.items():
+            if isinstance(entry, dict):
+                index[vid_id] = (month, entry)
+    return index
+
+
+def _merge_downloaded_entries(target: dict, source: dict) -> int:
+    """
+    Conserva en target cualquier video que source ya tenga como descargado.
+    El estado descargado es monotónico: ningún nodo debe degradarlo a pendiente.
+    """
+    merged = 0
+    target_index = _index_registry(target)
+
+    for source_month, videos in source.items():
+        if not isinstance(videos, dict):
+            continue
+        for vid_id, source_entry in videos.items():
+            if not isinstance(source_entry, dict):
+                continue
+            if source_entry.get("status") != "descargado":
+                continue
+
+            target_month, target_entry = target_index.get(vid_id, (source_month, None))
+            if target_entry is None:
+                target.setdefault(source_month, {})[vid_id] = dict(source_entry)
+                target_index[vid_id] = (source_month, target[source_month][vid_id])
+                merged += 1
+                continue
+
+            if target_entry.get("status") == "descargado":
+                continue
+
+            target_entry["status"] = "descargado"
+            for field in ("file", "downloaded_at", "downloaded_by"):
+                target_entry[field] = source_entry.get(field)
+            target.setdefault(target_month, {})[vid_id] = target_entry
+            merged += 1
+
+    return merged
+
+
+def _preserve_remote_downloads(context: str) -> int:
+    """
+    Antes de publicar, mezcla los descargados remotos en el registro local.
+    Evita que un celular con un JSON viejo vuelva a marcar como pendiente
+    un video que otro nodo ya informó como descargado.
+    """
+    ok_fetch, out_fetch = _git("fetch", "origin", BRANCH_NAME, "--quiet", capture=True)
+    if not ok_fetch:
+        log.warning("[SYNC] No se pudo refrescar remoto antes de %s: %s", context, out_fetch)
+        return 0
+
+    local_data = load_registry()
+    remote_data = _load_registry_from_git(f"origin/{BRANCH_NAME}")
+    if not local_data or not remote_data:
+        return 0
+
+    merged = _merge_downloaded_entries(local_data, remote_data)
+    if merged:
+        save_registry(local_data)
+        log.info("[SYNC] Preservados %d descargados remotos antes de %s.", merged, context)
+        print(f"[SYNC] ✅ Preservados {merged} descargado(s) remotos ya informados por otros nodos.")
+    return merged
+
+
 def sync_pull():
     """
     Hace git pull antes de empezar para obtener el registro más reciente
@@ -220,6 +304,8 @@ def sync_push(commit_msg: str):
 
     rel_registry = REGISTRY_FILE.relative_to(REPO_DIR)
 
+    _preserve_remote_downloads("crear commit")
+
     # Solo agregar el archivo de registro, forzando porque *.json suele estar en .gitignore
     ok1, _ = _git("add", "-f", str(rel_registry), capture=True)
     if not ok1:
@@ -261,6 +347,19 @@ def sync_push(commit_msg: str):
 
     if not _ensure_git_branch("sync_push post-rebase"):
         return
+
+    preserved_after_rebase = _preserve_remote_downloads("push")
+    if preserved_after_rebase:
+        ok_add2, _ = _git("add", "-f", str(rel_registry), capture=True)
+        if not ok_add2:
+            log.warning("[SYNC] ⚠️  git add falló tras preservar descargados remotos.")
+            print("[SYNC] ⚠️  git add falló tras preservar descargados remotos. Se omite el push.")
+            return
+        ok_amend, out_amend = _git("commit", "--amend", "--no-edit", capture=True)
+        if not ok_amend:
+            log.warning("[SYNC] ⚠️  git commit --amend falló tras preservar remotos: %s", out_amend)
+            print(f"[SYNC] ⚠️  git commit --amend falló tras preservar remotos: {out_amend[:120]}")
+            return
 
     # Reintentos para el push (por si hay microcortes o lentitud de red)
     max_retries = 3
