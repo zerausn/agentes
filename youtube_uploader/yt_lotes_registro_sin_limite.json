@@ -603,10 +603,10 @@
     "gpxEiLO0b6o": {
       "title": "PW | 2026-04-11 | (20260409_184455)",
       "publishedAt": "2026-07-10T19:00:35Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/PW  2026-04-11  (20260409_184455).mp4",
+      "downloaded_at": "2026-07-12 02:12",
+      "downloaded_by": "Note9"
     },
     "gTPIIwT5lnM": {
       "title": "PW | 2026-04-11 | (20260313_183212)",
