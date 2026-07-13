@@ -739,10 +739,10 @@
     "iHZ5K08k8wY": {
       "title": "20251018 195005",
       "publishedAt": "2026-07-12T22:45:32Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/20251018 195005.mp4",
+      "downloaded_at": "2026-07-13 17:18",
+      "downloaded_by": "Note9"
     }
   },
   "2026-06": {
