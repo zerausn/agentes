@@ -795,10 +795,10 @@
     "ShpnBZM9et4": {
       "title": "20251024 180632",
       "publishedAt": "2026-07-13T22:45:33Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/20251024 180632.mp4",
+      "downloaded_at": "2026-07-14 21:02",
+      "downloaded_by": "Note9"
     }
   },
   "2026-06": {
