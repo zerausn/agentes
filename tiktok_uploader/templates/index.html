@@ -1,119 +1,152 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Uploaderbot - TikTok</title>
+    <title>Uploaderbot</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0f0f0f;
-            color: #fff;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-        }
-        .card {
-            background: #1a1a1a;
-            border-radius: 16px;
-            padding: 48px;
-            text-align: center;
-            max-width: 420px;
-            width: 90%;
-            border: 1px solid #2a2a2a;
-        }
-        .logo { font-size: 32px; font-weight: 700; margin-bottom: 8px; color: #fe2c55; }
-        .subtitle { color: #888; margin-bottom: 32px; }
-        .btn {
-            display: inline-block;
-            background: #fe2c55;
-            color: #fff;
-            padding: 14px 36px;
-            border-radius: 8px;
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 16px;
-            transition: background 0.2s;
-        }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f0f0f; color: #eee; line-height: 1.6; }
+        .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+        nav { display: flex; align-items: center; justify-content: space-between; padding: 20px 0; border-bottom: 1px solid #222; }
+        .logo { font-size: 22px; font-weight: 700; color: #fe2c55; }
+        .nav-links { display: flex; gap: 24px; align-items: center; }
+        .nav-links a { color: #aaa; text-decoration: none; font-size: 14px; }
+        .nav-links a:hover { color: #fff; }
+        .btn { display: inline-block; background: #fe2c55; color: #fff; padding: 10px 28px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; transition: background .2s; }
         .btn:hover { background: #e0244a; }
-        .btn-secondary {
-            background: #252525;
-            border: 1px solid #3a3a3a;
-        }
-        .btn-secondary:hover { background: #2f2f2f; }
-        .user-info {
-            background: #252525;
-            padding: 16px;
-            border-radius: 8px;
-            margin-bottom: 24px;
-            word-break: break-all;
-            font-size: 13px;
-            color: #aaa;
-        }
-        .actions { display: flex; flex-direction: column; gap: 12px; }
-        .hint {
-            margin-top: 12px;
-            color: #7f7f7f;
-            font-size: 12px;
-            line-height: 1.4;
-        }
-        .redirect-uri {
-            margin-top: 24px;
-            padding: 12px;
-            border-radius: 8px;
-            background: #141414;
-            border: 1px solid #262626;
-            text-align: left;
-        }
-        .redirect-uri p {
-            color: #777;
-            font-size: 12px;
-            margin-bottom: 6px;
-        }
-        .redirect-uri code {
-            display: block;
-            color: #8fe7ff;
-            word-break: break-all;
-            font-size: 12px;
-        }
+        .btn-outline { background: transparent; border: 1px solid #fe2c55; color: #fe2c55; }
+        .btn-outline:hover { background: #fe2c55; color: #fff; }
+        .hero { text-align: center; padding: 80px 0 60px; }
+        .hero h1 { font-size: 44px; font-weight: 700; color: #fff; margin-bottom: 16px; }
+        .hero p { font-size: 18px; color: #888; max-width: 600px; margin: 0 auto 32px; }
+        .hero .btn { font-size: 16px; padding: 14px 36px; }
+        .section { padding: 60px 0; }
+        .section h2 { font-size: 28px; color: #fff; text-align: center; margin-bottom: 40px; }
+        .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; }
+        .feature { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 28px; }
+        .feature h3 { color: #fff; font-size: 18px; margin-bottom: 8px; }
+        .feature p { color: #888; font-size: 14px; }
+        .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 24px; counter-reset: step; }
+        .step { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 28px; position: relative; }
+        .step::before { counter-increment: step; content: counter(step); position: absolute; top: 16px; right: 20px; font-size: 32px; font-weight: 700; color: #2a2a2a; }
+        .step h3 { color: #fff; font-size: 18px; margin-bottom: 8px; }
+        .step p { color: #888; font-size: 14px; }
+        .about { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 40px; }
+        .about h3 { color: #fff; font-size: 18px; margin-bottom: 12px; }
+        .about p { color: #888; font-size: 14px; margin-bottom: 12px; }
+        .about ul { list-style: none; padding: 0; }
+        .about li { color: #888; font-size: 14px; padding: 6px 0; }
+        .about li::before { content: "✓ "; color: #fe2c55; }
+        .user-box { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 24px; max-width: 480px; margin: 0 auto; text-align: center; }
+        .user-box .avatar { width: 64px; height: 64px; border-radius: 50%; background: #252525; margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+        .user-box .open-id { color: #888; font-size: 13px; word-break: break-all; margin-bottom: 16px; }
+        .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+        footer { text-align: center; padding: 40px 0; border-top: 1px solid #222; margin-top: 40px; }
+        footer a { color: #666; text-decoration: none; font-size: 13px; margin: 0 12px; }
+        footer a:hover { color: #aaa; }
+        footer p { color: #555; font-size: 12px; margin-top: 12px; }
+        @media (max-width: 600px) { .hero h1 { font-size: 28px; } .hero p { font-size: 15px; } .nav-links { display: none; } }
     </style>
 </head>
 <body>
-    <div class="card">
-        <div class="logo">Uploaderbot</div>
-        <p class="subtitle">Sube videos a TikTok desde tu escritorio</p>
-        {% if user %}
-            <div class="user-info">
-                ✅ Conectado: {{ user.open_id[:16] }}...<br>
-                Scopes: {{ user.granted_scopes or 'desconocidos' }}<br>
-                Modo: {{ user.scope_mode }}
-            </div>
-            <div class="actions">
-                {% if user.scope_mode == "full" %}
-                    <a href="/upload" class="btn">Subir video</a>
+    <div class="container">
+        <nav>
+            <div class="logo">Uploaderbot</div>
+            <div class="nav-links">
+                <a href="#features">Features</a>
+                <a href="#how-it-works">How It Works</a>
+                <a href="#about">About</a>
+                <a href="/terms">Terms</a>
+                <a href="/privacy">Privacy</a>
+                {% if user %}
+                    <a href="/upload" class="btn">Upload Video</a>
                 {% else %}
-                    <a href="/login" class="btn">Pedir scopes completos</a>
+                    <a href="/login" class="btn">Login with TikTok</a>
                 {% endif %}
-                <a href="/logout" style="color:#666;font-size:13px;">Cerrar sesión</a>
             </div>
-        {% else %}
-            <div class="actions">
-                <a href="/login" class="btn">Login completo</a>
-                <a href="/login/basic" class="btn btn-secondary">Probar OAuth básico</a>
+        </nav>
+
+        <section class="hero">
+            <h1>Upload videos to TikTok<br>from your desktop</h1>
+            <p>Uploaderbot lets you authenticate with your TikTok account and publish videos directly through the official TikTok Content Posting API. No app needed — just a browser.</p>
+            {% if user %}
+                <div class="user-box">
+                    <div class="avatar">🎬</div>
+                    <div class="open-id">Connected: {{ user.open_id[:20] }}...</div>
+                    <div class="actions">
+                        <a href="/upload" class="btn">Upload Video</a>
+                        <a href="/logout" class="btn btn-outline">Logout</a>
+                    </div>
+                </div>
+            {% else %}
+                <a href="/login" class="btn">Get Started — Login with TikTok</a>
+            {% endif %}
+        </section>
+
+        <section class="section" id="features">
+            <h2>Features</h2>
+            <div class="features">
+                <div class="feature">
+                    <h3>OAuth 2.0 Login</h3>
+                    <p>Secure authentication via TikTok Login Kit with PKCE. Your credentials never leave TikTok's servers.</p>
+                </div>
+                <div class="feature">
+                    <h3>Video Upload</h3>
+                    <p>Upload MP4, MOV or WebM files directly to TikTok. Supports videos up to 4GB.</p>
+                </div>
+                <div class="feature">
+                    <h3>Privacy Controls</h3>
+                    <p>Choose who sees your video: public, friends only, or private. Full control over your content.</p>
+                </div>
+                <div class="feature">
+                    <h3>Cross-Platform</h3>
+                    <p>Works on any device with a modern browser. No installation required.</p>
+                </div>
             </div>
-            <p class="hint">Si el login básico funciona y el completo no, el bloqueo está en los scopes de publicación o su aprobación en TikTok.</p>
-        {% endif %}
-        <div class="redirect-uri">
-            <p>Redirect URI registrada en TikTok Developers</p>
-            <code>{{ redirect_uri }}</code>
-        </div>
-        <div style="margin-top:24px;padding-top:16px;border-top:1px solid #262626;font-size:12px;color:#555;">
-            <a href="/terms" style="color:#777;text-decoration:none;">Terms of Service</a>
-            &middot;
-            <a href="/privacy" style="color:#777;text-decoration:none;">Privacy Policy</a>
-        </div>
+        </section>
+
+        <section class="section" id="how-it-works">
+            <h2>How It Works</h2>
+            <div class="steps">
+                <div class="step">
+                    <h3>Login</h3>
+                    <p>Click "Login with TikTok" and authorize Uploaderbot to access your profile and video list.</p>
+                </div>
+                <div class="step">
+                    <h3>Select Video</h3>
+                    <p>Choose a video file from your computer. Add a title and set the privacy level.</p>
+                </div>
+                <div class="step">
+                    <h3>Publish</h3>
+                    <p>Click publish and the video is uploaded to your TikTok account via the official API.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="section" id="about">
+            <h2>About Uploaderbot</h2>
+            <div class="about">
+                <h3>What is Uploaderbot?</h3>
+                <p>Uploaderbot is a web application that enables TikTok creators to publish videos directly from their desktop browser. Built on top of TikTok's official Content Posting API, it provides a simple interface for uploading and scheduling content without needing a mobile device.</p>
+                <h3>Why Uploaderbot?</h3>
+                <ul>
+                    <li>No app installation required</li>
+                    <li>Works from any desktop browser</li>
+                    <li>Direct integration with TikTok's official API</li>
+                    <li>Your data stays private — we never store videos or credentials</li>
+                    <li>Open source and transparent</li>
+                </ul>
+                <h3>Data Handling</h3>
+                <p>Uploaderbot only accesses the data necessary to provide the service: your public profile info and video list for authentication, and video upload/publish capabilities to post content. Access tokens are kept in memory during your session and discarded on logout. No videos or personal data are stored on our servers.</p>
+            </div>
+        </section>
+
+        <footer>
+            <a href="/terms">Terms of Service</a>
+            <a href="/privacy">Privacy Policy</a>
+            <p>&copy; 2026 Uploaderbot. All rights reserved.</p>
+        </footer>
     </div>
 </body>
 </html>
