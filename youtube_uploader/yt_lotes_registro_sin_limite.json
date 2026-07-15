@@ -4499,10 +4499,10 @@
     "a81jovHQ1Ag": {
       "title": "20251108 181950",
       "publishedAt": "2026-02-20T23:00:01Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/20251108 181950.mp4",
+      "downloaded_at": "2026-07-15 14:59",
+      "downloaded_by": "Note9"
     },
     "9saV6nzVUTo": {
       "title": "20251108 182940",
