@@ -4635,10 +4635,10 @@
     "BfqTWpSvLZ8": {
       "title": "20251108 183728",
       "publishedAt": "2026-02-04T23:00:27Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/20251108 183728.mp4",
+      "downloaded_at": "2026-07-15 23:37",
+      "downloaded_by": "Note9"
     },
     "tifpeicDvVc": {
       "title": "20251115 193842",
