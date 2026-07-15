@@ -172,18 +172,18 @@ def _make_verify(filename, token):
 for filename, token in VERIFY_FILES.items():
     _make_verify(filename, token)
 
-@app.route("/terms/<path:subpath>")
+@app.route("/terms-of-service/<path:subpath>")
 def terms_static(subpath):
     token = VERIFY_FILES.get(subpath)
     if token:
         return f"tiktok-developers-site-verification={token}", 200, {"Content-Type": "text/plain"}
     return "Not found", 404
 
-@app.route("/terms")
+@app.route("/terms-of-service")
 def terms():
     return render_template("terms.html")
 
-@app.route("/privacy")
+@app.route("/privacy-policy")
 def privacy():
     return render_template("privacy.html")
 
