@@ -4643,10 +4643,10 @@
     "tifpeicDvVc": {
       "title": "20251115 193842",
       "publishedAt": "2026-02-04T23:00:06Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/20251115 193842.mp4",
+      "downloaded_at": "2026-07-16 00:35",
+      "downloaded_by": "Note9"
     },
     "Qe1Add-M_6I": {
       "title": "20251024 185816",
