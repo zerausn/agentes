@@ -931,10 +931,10 @@
     "bJ-t2-Mg8VI": {
       "title": "20251018 193209",
       "publishedAt": "2026-07-15T22:45:38Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/20251018 193209.mp4",
+      "downloaded_at": "2026-07-16 15:50",
+      "downloaded_by": "Note9"
     }
   },
   "2026-06": {
