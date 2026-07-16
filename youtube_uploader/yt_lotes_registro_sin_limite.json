@@ -907,18 +907,18 @@
     "KHkWTfHeyFc": {
       "title": "PW | (20260418_191957)",
       "publishedAt": "2026-07-15T19:00:06Z",
-      "status": "pendiente",
+      "status": "descargado",
       "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "downloaded_at": "2026-07-16 15:14",
+      "downloaded_by": "Note9"
     },
     "HzEvyxuPcI8": {
       "title": "PW | 2026-04-14 | (20260414_101523)",
       "publishedAt": "2026-07-15T19:00:27Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/PW  2026-04-14  (20260414_101523).mp4",
+      "downloaded_at": "2026-07-16 15:22",
+      "downloaded_by": "Note9"
     },
     "2QiBNVUvW2A": {
       "title": "PW | 2026-03-09 | (20260201_190014)",
