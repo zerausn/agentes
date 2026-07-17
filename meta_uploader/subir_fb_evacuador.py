@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import sys
+import time
 from pathlib import Path
 
 # Asegurar que Python encuentre meta_uploader en el mismo directorio
@@ -23,15 +24,13 @@ from meta_uploader import (
 )
 
 # --- Rutas ---
-# Detectar si estamos en Termux (Android) o en PC
-TERMUX_PREFIX = os.environ.get("PREFIX", "")
-IS_TERMUX = "com.termux" in TERMUX_PREFIX
-
-if IS_TERMUX:
-    ROOT = Path("/sdcard/Antigravity")
-else:
-    # Rutas del PC (Linux Parrot)
-    ROOT = Path("/home/zerausn/Documents/Antigravity")
+ROOT = Path(os.environ.get("AGENTES_STORAGE_ROOT", ""))
+if not str(ROOT):
+    mobile_root = Path("/sdcard/Antigravity")
+    if mobile_root.exists():
+        ROOT = mobile_root
+    else:
+        ROOT = Path("/home/zerausn/Documents/Antigravity")
 
 SOURCE_DIR = ROOT / "videos subidos exitosamente"
 DONE_DIR = ROOT / "subidos a facebbok"
