@@ -963,10 +963,10 @@
     "ATU_7m8tITU": {
       "title": "PW | (20260213_212723)",
       "publishedAt": "2026-07-16T22:45:19Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/PW  (20260213_212723).mp4",
+      "downloaded_at": "2026-07-18 17:07",
+      "downloaded_by": "Note9"
     },
     "T8-FMAv7-Os": {
       "title": "PW | (20260418_211618)",
