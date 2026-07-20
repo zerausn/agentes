@@ -352,12 +352,8 @@ def keyboard_visible() -> bool:
     markers = (
         "mInputShown=true",
         "mIsInputViewShown=true",
-        "mInputViewStarted=true",
-        "mShowRequested=true",
     )
-    if any(marker in text for marker in markers):
-        return True
-    return current_package() in IME_PACKAGES
+    return any(marker in text for marker in markers)
 
 
 def type_caption(caption: str) -> bool:
@@ -558,18 +554,58 @@ def automate_tiktok_publish() -> bool:
     return False
 
 
+TIKTOK_RE = re.compile(r"^tiktok$", re.I)
+ONCE_RE = re.compile(r"^(solo\s+una\s+vez|just\s+once)$", re.I)
+
+
+def chooser_select_tiktok() -> bool:
+    """
+    El selector de Android 'Completar la accion mediante' requiere:
+      1. Tocar la app TikTok para seleccionarla (habilita los botones Solo una vez / Siempre).
+      2. Tocar 'Solo una vez'.
+    Usa deteccion de UI para encontrar ambos elementos por etiqueta.
+    """
+    logging.info("Esperando selector Android...")
+    deadline = time.time() + 20
+    while time.time() < deadline:
+        if current_package() != "android":
+            time.sleep(1)
+            continue
+        nodes = dump_ui()
+        tiktok_node = find_match(nodes, TIKTOK_RE)
+        if tiktok_node:
+            logging.info("TikTok encontrado en chooser: %s", tiktok_node["center"])
+            tap(tiktok_node["center"], "TikTok en chooser")
+            time.sleep(2)
+            # Ahora 'Solo una vez' deberia estar habilitado
+            nodes2 = dump_ui()
+            once_node = find_match(nodes2, ONCE_RE)
+            if once_node:
+                logging.info("Boton 'Solo una vez' encontrado: %s", once_node["center"])
+                tap(once_node["center"], "Solo una vez")
+                time.sleep(5)
+                return True
+            # Fallback: coordenada conocida de 'Solo una vez'
+            logging.warning("No se detecto 'Solo una vez' por UI; usando coordenada fallback.")
+            tap_scaled(200, 1351, "Solo una vez fallback", pause=5)
+            return True
+        time.sleep(2)
+    logging.error("No se encontro TikTok en el chooser Android.")
+    return False
+
+
 def automate_tiktok_publish_coords(caption: str) -> bool:
     """
     Flujo probado en Note9 con override 720x1480.
-    Las coordenadas se escalan al tamano actual de pantalla.
+    Usa deteccion de UI para el chooser y coordenadas escaladas para el resto.
     """
     logging.info("Automatizando TikTok por coordenadas escaladas.")
     required_steps: list[tuple[str, bool]] = []
 
-    # Resolver Android: si aparece, TikTok esta en la primera fila, tercera opcion.
+    # Resolver Android: seleccionar TikTok y 'Solo una vez'.
     pkg = current_package()
     if pkg == "android":
-        required_steps.append(("chooser TikTok", tap_scaled(446, 946, "chooser TikTok", pause=5)))
+        required_steps.append(("chooser TikTok", chooser_select_tiktok()))
     else:
         logging.info("No se detecta resolver Android; foreground=%s", pkg or "?")
 
@@ -586,7 +622,7 @@ def automate_tiktok_publish_coords(caption: str) -> bool:
     # Editor: flecha rosa arriba derecha.
     required_steps.append(("Siguiente editor", tap_scaled(665, 77, "Siguiente editor", pause=8)))
 
-    # Pantalla Publicar: caption y publicar.
+    # Pantalla Publicar: campo descripcion, caption y publicar.
     required_steps.append(("campo descripcion", tap_scaled(178, 152, "campo descripcion", pause=1)))
     required_steps.append(("caption", type_caption(caption)))
     close_caption_editor()
