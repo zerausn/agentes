@@ -20,6 +20,7 @@ Dado que TikTok requiere OAuth 2.0 para interactuar con la cuenta del usuario, l
 ## 📂 Estructura del Módulo
 
 - **`app.py`**: Servidor Flask principal que implementa el flujo OAuth y la interfaz de subida.
+- **`tiktok_evacuador_720.py`**: Evacuador movil sin API aprobada. Toma 1 video desde `/sdcard/Antigravity/subidos a facebbok`, lo comparte a la app TikTok y lo mueve a `subidos a tiktok` cuando termina el ciclo.
 - **`config.py`**: Carga de configuración desde variables de entorno con valores predeterminados seguros.
 - **`demo_script.py`**: Script de consola interactivo para ilustrar el flujo de peticiones OAuth y API a mano.
 - **`run_flask.sh`**: Wrapper simple para ejecutar la app de Flask cargando variables desde `.env.local`.
@@ -74,3 +75,10 @@ TUNNEL_PROVIDER=ngrok ./start_demo_stack.sh
 ./stop_demo_stack.sh
 ```
 Este comando matará los procesos de Flask y del proveedor de túnel que quedaron corriendo en el fondo de manera segura.
+
+---
+
+## 📱 Widget móvil sin Content Posting API
+
+Mientras la API oficial no este aprobada, el nodo Android puede usar el widget `6_SUBIR_TIKTOK720.sh`.
+La guia operativa esta en [`docs/TIKTOK_WIDGET720_NO_API.md`](docs/TIKTOK_WIDGET720_NO_API.md).

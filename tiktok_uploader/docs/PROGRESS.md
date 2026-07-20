@@ -5,6 +5,15 @@ Publicar videos en TikTok via Content Posting API y configurar cuenta creador co
 
 ## Status: APP REVIEW ATTEMPT #3 — SANDBOX VERIFICATION
 
+### 2026-07-20 — Widget movil TikTok sin API
+
+- Creado `tiktok_evacuador_720.py` para tomar 1 video desde `/sdcard/Antigravity/subidos a facebbok`.
+- Creado widget `6_SUBIR_TIKTOK720.sh` con loop anti-Doze de 720s, siguiendo la logica de YouTube/Facebook.
+- La UI de TikTok se controla por ADB local (`127.0.0.1:5555`) porque `input tap` desde Termux/Proot falla por `INJECT_EVENTS`.
+- Caption alineado con YouTube/Facebook: nombre con `_`, `#PW`, `#teaser #N` solo para teasers, `Instagram Facebook Youtube`, linktree y hashtags `#teatro #performance #escriturasperformaticas`.
+- Prueba real en Note9: 1 video llego al final del flujo y fue movido a `/sdcard/Antigravity/subidos a tiktok`.
+- Documentacion operativa: `docs/TIKTOK_WIDGET720_NO_API.md`.
+
 ### What's Working
 - Flask app con OAuth PKCE (S256 code_challenge + code_verifier)
 - Login Kit funcional con sandbox (scopes: user.info.basic, profile, stats, video.list)
