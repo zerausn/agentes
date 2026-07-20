@@ -479,43 +479,40 @@ def tap_match(pattern: re.Pattern[str], label: str, timeout: int = 12) -> bool:
 
 def close_caption_editor() -> bool:
     """
-    TikTok abre la descripcion en un editor de pantalla completa. Hay que salir de
-    ese editor antes de tocar Publicar; si no, el tap cae sobre el teclado.
+    Cierra el teclado si quedo abierto tras inyectar el texto.
     """
     ok = True
-    ok = keyevent("KEYCODE_BACK", "ocultar teclado descripcion", pause=2) and ok
+    if keyboard_visible():
+        ok = keyevent("KEYCODE_BACK", "ocultar teclado descripcion", pause=2) and ok
     if keyboard_visible():
         ok = keyevent("KEYCODE_BACK", "ocultar teclado descripcion reintento", pause=2) and ok
     if keyboard_visible():
         ok = tap_scaled(560, 1435, "ocultar teclado nav", pause=2) and ok
     if keyboard_visible():
-        logging.warning("El teclado aun parece visible; se validara con la confirmacion final.")
-        return ok
-
-    # Segundo BACK: salir del editor de descripcion y volver a la pantalla de publicacion.
-    ok = keyevent("KEYCODE_BACK", "volver a pantalla publicar", pause=3) and ok
+        logging.warning("El teclado aun parece visible; se intentara continuar de todos modos.")
     return ok
 
 
 def publish_confirmed() -> bool:
     pkg = current_package()
     nodes = dump_ui()
-    visible_text = " ".join((node.get("label") or "") for node in nodes).lower()
-
+    
     if pkg in IME_PACKAGES:
         logging.error("Publicacion no confirmada: sigue activo el teclado (%s).", pkg)
         return False
-    if pkg == TIKTOK_PACKAGE:
-        logging.error("Publicacion no confirmada: TikTok sigue en primer plano.")
-        return False
-    if not pkg:
-        logging.error("Publicacion no confirmada: no se pudo leer foreground package.")
-        return False
-    if "escriturasperformaticas" in visible_text or "#pw" in visible_text:
-        logging.error("Publicacion no confirmada: la descripcion sigue visible en pantalla.")
+
+    # Si todavia vemos el boton publicar, fallamos
+    if find_match(nodes, POST_RE):
+        logging.error("Publicacion no confirmada: el boton Publicar sigue visible.")
         return False
 
-    logging.info("Publicacion confirmada por salida de UI: foreground=%s", pkg)
+    # Si vemos el boton "Borradores" o "Drafts", fallamos
+    drafts_re = re.compile(r"^(drafts|borradores)$", re.I)
+    if find_match(nodes, drafts_re):
+        logging.error("Publicacion no confirmada: el video se guardo en borradores en vez de publicar.")
+        return False
+
+    logging.info("Publicacion confirmada: la UI avanzo correctamente despues del clic.")
     return True
 
 
