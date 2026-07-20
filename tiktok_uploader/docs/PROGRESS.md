@@ -13,6 +13,8 @@ Publicar videos en TikTok via Content Posting API y configurar cuenta creador co
 - Caption alineado con YouTube/Facebook: nombre con `_`, `#PW`, `#teaser #N` solo para teasers, `Instagram Facebook Youtube`, linktree y hashtags `#teatro #performance #escriturasperformaticas`.
 - Prueba real en Note9: 1 video llego al final del flujo y fue movido a `/sdcard/Antigravity/subidos a tiktok`.
 - Documentacion operativa: `docs/TIKTOK_WIDGET720_NO_API.md`.
+- Validacion adicional: se corrigio el texto exacto de TikTok a una sola linea con `Instagram Facebook Youtube`, sin `#cali`; `#teaser #N` queda condicionado al sufijo `_teaser_N`. Tambien se agrego confirmacion final de salida de UI antes de mover archivos.
+- Prueba final del guard: `20251018 200806_teaser_3.mp4` publico con caption corregido, confirmo `foreground=com.sec.android.app.launcher` y se movio a `subidos a tiktok`.
 
 ### What's Working
 - Flask app con OAuth PKCE (S256 code_challenge + code_verifier)

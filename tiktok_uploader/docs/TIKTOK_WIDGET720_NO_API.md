@@ -75,6 +75,8 @@ Si aparece `unauthorized`, aceptar la huella RSA en el telefono y repetir `adb c
 
 `input tap` ejecutado directamente desde Termux/Proot falla con `INJECT_EVENTS`. Por eso el widget usa `android-tools` y ADB local. Si el telefono se reinicia o `adbd` deja de escuchar en TCP, el widget no publica y deja el archivo en cola con error hasta que se reactive `adb tcpip 5555`.
 
+El archivo solo debe moverse a `subidos a tiktok` si despues del tap final la UI sale de TikTok/editor/teclado. Si la descripcion sigue visible, el ciclo se marca como error y el archivo queda en cola.
+
 ## Validacion en Note9
 
 Prueba realizada el 2026-07-20:
@@ -84,3 +86,5 @@ Prueba realizada el 2026-07-20:
 - Fuente inicial: `/sdcard/Antigravity/subidos a facebbok`
 - Resultado: 1 video procesado y movido a `/sdcard/Antigravity/subidos a tiktok`
 - Pantalla final: launcher de Samsung, consistente con salida de TikTok despues de publicar
+- Caption corregido y validado con `20251018 200806_teaser_2.mp4`: `20251018_200806 #PW #teaser #2 Siguenos tambien en Instagram Facebook Youtube linktr.ee/performaticwritingscali #teatro #performance #escriturasperformaticas`
+- Validacion final con guard de salida UI: `20251018 200806_teaser_3.mp4` termino con `foreground=com.sec.android.app.launcher`, `[TIKTOK_OK]` y movimiento confirmado a `subidos a tiktok`.

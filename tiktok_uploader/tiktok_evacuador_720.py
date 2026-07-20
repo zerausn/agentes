@@ -74,6 +74,11 @@ AUTOMATION_TIMEOUT = int(os.environ.get("TIKTOK_AUTOMATION_TIMEOUT", "240"))
 POST_SETTLE_SECONDS = int(os.environ.get("TIKTOK_POST_SETTLE_SECONDS", "45"))
 COORD_BASE_W = 720
 COORD_BASE_H = 1480
+IME_PACKAGES = {
+    "com.google.android.googlequicksearchbox",
+    "com.samsung.android.honeyboard",
+    "com.google.android.inputmethod.latin",
+}
 
 
 logging.basicConfig(
@@ -341,6 +346,20 @@ def keyevent(key: str, label: str, pause: float = 1.0) -> bool:
     return False
 
 
+def keyboard_visible() -> bool:
+    result = run_android(["dumpsys", "input_method"], timeout=15)
+    text = result.stdout + result.stderr
+    markers = (
+        "mInputShown=true",
+        "mIsInputViewShown=true",
+        "mInputViewStarted=true",
+        "mShowRequested=true",
+    )
+    if any(marker in text for marker in markers):
+        return True
+    return current_package() in IME_PACKAGES
+
+
 def type_caption(caption: str) -> bool:
     safe_caption = shell_text_arg(caption)
     if not safe_caption:
@@ -458,6 +477,48 @@ def tap_match(pattern: re.Pattern[str], label: str, timeout: int = 12) -> bool:
     return False
 
 
+def close_caption_editor() -> bool:
+    """
+    TikTok abre la descripcion en un editor de pantalla completa. Hay que salir de
+    ese editor antes de tocar Publicar; si no, el tap cae sobre el teclado.
+    """
+    ok = True
+    ok = keyevent("KEYCODE_BACK", "ocultar teclado descripcion", pause=2) and ok
+    if keyboard_visible():
+        ok = keyevent("KEYCODE_BACK", "ocultar teclado descripcion reintento", pause=2) and ok
+    if keyboard_visible():
+        ok = tap_scaled(560, 1435, "ocultar teclado nav", pause=2) and ok
+    if keyboard_visible():
+        logging.warning("El teclado aun parece visible; se validara con la confirmacion final.")
+        return ok
+
+    # Segundo BACK: salir del editor de descripcion y volver a la pantalla de publicacion.
+    ok = keyevent("KEYCODE_BACK", "volver a pantalla publicar", pause=3) and ok
+    return ok
+
+
+def publish_confirmed() -> bool:
+    pkg = current_package()
+    nodes = dump_ui()
+    visible_text = " ".join((node.get("label") or "") for node in nodes).lower()
+
+    if pkg in IME_PACKAGES:
+        logging.error("Publicacion no confirmada: sigue activo el teclado (%s).", pkg)
+        return False
+    if pkg == TIKTOK_PACKAGE:
+        logging.error("Publicacion no confirmada: TikTok sigue en primer plano.")
+        return False
+    if not pkg:
+        logging.error("Publicacion no confirmada: no se pudo leer foreground package.")
+        return False
+    if "escriturasperformaticas" in visible_text or "#pw" in visible_text:
+        logging.error("Publicacion no confirmada: la descripcion sigue visible en pantalla.")
+        return False
+
+    logging.info("Publicacion confirmada por salida de UI: foreground=%s", pkg)
+    return True
+
+
 def automate_tiktok_publish() -> bool:
     deadline = time.time() + AUTOMATION_TIMEOUT
     last_action = ""
@@ -531,13 +592,14 @@ def automate_tiktok_publish_coords(caption: str) -> bool:
     # Pantalla Publicar: caption y publicar.
     required_steps.append(("campo descripcion", tap_scaled(178, 152, "campo descripcion", pause=1)))
     required_steps.append(("caption", type_caption(caption)))
-    required_steps.append(("cerrar editor caption", keyevent("KEYCODE_BACK", "cerrar editor caption", pause=3)))
+    close_caption_editor()
     time.sleep(1)
     if tap_match(POST_RE, "Publicar", timeout=8):
         time.sleep(POST_SETTLE_SECONDS)
         required_steps.append(("Publicar", True))
     else:
         required_steps.append(("Publicar", tap_scaled(535, 1335, "Publicar fallback", pause=POST_SETTLE_SECONDS)))
+    required_steps.append(("confirmar salida publicar", publish_confirmed()))
 
     failed = [label for label, ok in required_steps if not ok]
     if failed:
