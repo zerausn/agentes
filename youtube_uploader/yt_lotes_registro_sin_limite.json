@@ -1167,6 +1167,22 @@
             "file": "/sdcard/Antigravity/crudos/PW  2025-12-10  (20251011_222751).mp4",
             "downloaded_at": "2026-07-20 18:57",
             "downloaded_by": "Note9"
+        },
+        "W_Dh_bjGxyk": {
+            "title": "PW | 2026-04-13 | (20260302_185535)",
+            "publishedAt": "2026-07-20T19:00:15Z",
+            "status": "fallido",
+            "file": null,
+            "downloaded_at": null,
+            "downloaded_by": null
+        },
+        "TsCsvdq9GFE": {
+            "title": "PW | 2026-03-09 | (20251221_005730)",
+            "publishedAt": "2026-07-20T19:00:32Z",
+            "status": "fallido",
+            "file": null,
+            "downloaded_at": null,
+            "downloaded_by": null
         }
     },
     "2026-06": {
@@ -4883,6 +4899,22 @@
             "file": null,
             "downloaded_at": null,
             "downloaded_by": null
+        },
+        "dIUbUsd4_sE": {
+            "title": "PW | (20260429_185945)",
+            "publishedAt": "2026-05-24T02:06:51Z",
+            "status": "pendiente",
+            "file": null,
+            "downloaded_at": null,
+            "downloaded_by": null
+        },
+        "5BHj4EU2s4I": {
+            "title": "PW | (20260508_194856)",
+            "publishedAt": "2026-05-09T08:10:53Z",
+            "status": "pendiente",
+            "file": null,
+            "downloaded_at": null,
+            "downloaded_by": null
         }
     },
     "2026-04": {
@@ -5510,6 +5542,30 @@
             "title": "20251020 182537",
             "publishedAt": "2026-01-26T23:00:16Z",
             "status": "pendiente",
+            "file": null,
+            "downloaded_at": null,
+            "downloaded_by": null
+        },
+        "SlX0tk-lMAI": {
+            "title": "20251121 175808",
+            "publishedAt": "2026-01-24T23:00:38Z",
+            "status": "fallido",
+            "file": null,
+            "downloaded_at": null,
+            "downloaded_by": null
+        },
+        "nyiJXfAdY5c": {
+            "title": "20251121 200845",
+            "publishedAt": "2026-01-23T23:01:14Z",
+            "status": "fallido",
+            "file": null,
+            "downloaded_at": null,
+            "downloaded_by": null
+        },
+        "OzVkwyOn-C0": {
+            "title": "20251121 190421",
+            "publishedAt": "2026-01-22T23:00:38Z",
+            "status": "fallido",
             "file": null,
             "downloaded_at": null,
             "downloaded_by": null
@@ -6891,6 +6947,22 @@
         "U8O-PSaTs7g": {
             "title": "20250926 190916",
             "publishedAt": "2025-10-07T07:00:06Z",
+            "status": "pendiente",
+            "file": null,
+            "downloaded_at": null,
+            "downloaded_by": null
+        },
+        "Zpj_bBUumTk": {
+            "title": "20251009 203302",
+            "publishedAt": "2025-10-15T23:00:40Z",
+            "status": "pendiente",
+            "file": null,
+            "downloaded_at": null,
+            "downloaded_by": null
+        },
+        "HBG7eAkVvro": {
+            "title": "20250926 191034",
+            "publishedAt": "2025-10-04T07:00:16Z",
             "status": "pendiente",
             "file": null,
             "downloaded_at": null,
