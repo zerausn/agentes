@@ -1163,10 +1163,10 @@
     "q2NR_hEjSAo": {
       "title": "PW | 2025-12-10 | (20251011_222751)",
       "publishedAt": "2026-07-18T19:00:04Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/PW  2025-12-10  (20251011_222751).mp4",
+      "downloaded_at": "2026-07-20 18:57",
+      "downloaded_by": "Note9"
     }
   },
   "2026-06": {
