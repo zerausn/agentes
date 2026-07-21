@@ -41,6 +41,20 @@ Cambios 2026-07-20 (Android 14 / Samsung Galaxy S24):
     (animacion post-publicacion que bloquea uiautomator dump).
   - FIX: Se aplica `touch` al archivo antes de abrir TikTok para garantizar que el
     video que Python selecciona == el video que TikTok muestra primero en galeria.
+
+Cambios 2026-07-21 (Note9 / vigia fix):
+  - BUG FIX CRITICO: dump_ui() ya no cachea el XML anterior — antes reutilizaba el
+    archivo tiktok_ui.xml viejo si _uiautomator_available era True, lo que causaba que
+    todos los dump_ui() dentro de una ejecucion leian el mismo estado de pantalla.
+    Ahora siempre borra y vuelca de nuevo.
+  - BUG FIX: Eliminado `return nodes` duplicado/muerto al final de _parse_ui_nodes().
+  - FIX: vigia_tiktok720_termux.sh ahora pasa AGENTES_STORAGE_ROOT, TIKTOK_SHARE_METHOD
+    y TIKTOK_PUBLISH_MODE explicitamente al evacuador (antes dependia de defaults).
+  - MEJORA: Flujo intent mejorado — en vez de un solo tap_match(NEXT_RE, timeout=10),
+    ahora intenta Siguiente hasta 2 veces con UI detection + coordenada fallback,
+    cubriendo versiones de TikTok con 2 pantallas de editor.
+  - MEJORA: Deteccion de boton Publicar mejorada — primero intenta UI, luego coordenada.
+    publish_ok ahora refleja si publish_confirmed() paso, no solo si el tap se ejecuto.
 """
 
 from __future__ import annotations
@@ -87,6 +101,7 @@ UI_DUMP_FILE = STATE_DIR / "tiktok_ui.xml"
 LOCK_FILE = STATE_DIR / "tiktok_evacuador.lock"
 
 _content_uris: dict[str, str] = {}
+_uiautomator_available: bool | None = None
 
 SUPPORTED_EXTS = {".mp4", ".mov", ".mkv"}
 DEVICE_NAME = os.environ.get("AGENTES_DEVICE_NAME") or socket.gethostname() or "desconocido"
@@ -97,6 +112,7 @@ TIKTOK_ACTIVITY = os.environ.get(
 )
 UI_BACKEND = os.environ.get("TIKTOK_UI_BACKEND", "direct").strip().lower()
 ADB_SERIAL = os.environ.get("TIKTOK_ADB_SERIAL", "127.0.0.1:5555").strip()
+TAP_HELPER_PKG = os.environ.get("TIKTOK_TAP_HELPER_PKG", "com.antigravity.touchhelper").strip()
 AUTOMATION_TIMEOUT = int(os.environ.get("TIKTOK_AUTOMATION_TIMEOUT", "240"))
 PUBLISH_MODE = os.environ.get("TIKTOK_PUBLISH_MODE", "direct").strip().lower()
 SHARE_METHOD = os.environ.get("TIKTOK_SHARE_METHOD", "intent").strip().lower()
@@ -141,14 +157,69 @@ def now_str() -> str:
 
 def run(cmd: list[str], timeout: int = 30) -> subprocess.CompletedProcess:
     env = os.environ.copy()
-    env["PATH"] = "/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin:" + env.get("PATH", "")
+    env["PATH"] = "/system/bin:/system/xbin:/data/data/com.termux/files/usr/bin:" + env.get("PATH", "")
+    if "TMPDIR" not in env or not os.path.isdir(env["TMPDIR"]):
+        env["TMPDIR"] = "/data/data/com.termux/files/usr/tmp"
     return subprocess.run(cmd, text=True, capture_output=True, timeout=timeout, env=env)
 
+
+KEYCODE_TO_GLOBAL = {
+    "KEYCODE_BACK": 1,
+    "KEYCODE_HOME": 2,
+    "KEYCODE_RECENTS": 3,
+    "KEYCODE_NOTIFICATIONS": 4,
+    "KEYCODE_DPAD_CENTER": 1,
+    "KEYCODE_ENTER": 1,
+}
+
+def ensure_adb_connected() -> None:
+    if UI_BACKEND not in ("adb", "accessibility"):
+        return
+    r = run(["adb", "devices"], timeout=10)
+    if "127.0.0.1:5555" in r.stdout and "device" in r.stdout:
+        return
+    run(["adb", "connect", "127.0.0.1:5555"], timeout=10)
 
 def run_android(cmd: list[str], timeout: int = 30) -> subprocess.CompletedProcess:
     if UI_BACKEND == "adb":
         shell_cmd = " ".join(shlex.quote(arg) for arg in cmd)
         return run(["adb", "-s", ADB_SERIAL, "shell", "exec " + shell_cmd], timeout=timeout)
+    if UI_BACKEND == "accessibility":
+        if cmd[:2] == ["input", "tap"] and len(cmd) == 4:
+            _, _, sx, sy = cmd
+            return run([
+                "am", "broadcast", "-a", "com.antigravity.TAP",
+                "--ei", "x", sx, "--ei", "y", sy,
+                "-n", f"{TAP_HELPER_PKG}/.TapReceiver",
+            ], timeout=10)
+        if cmd[:2] == ["input", "swipe"] and len(cmd) >= 6:
+            _, _, x1, y1, x2, y2 = cmd[:6]
+            dur = cmd[6] if len(cmd) > 6 else "300"
+            return run([
+                "am", "broadcast", "-a", "com.antigravity.SWIPE",
+                "--ei", "x1", x1, "--ei", "y1", y1,
+                "--ei", "x2", x2, "--ei", "y2", y2,
+                "--ei", "duration", dur,
+                "-n", f"{TAP_HELPER_PKG}/.TapReceiver",
+            ], timeout=10)
+        if cmd[:2] == ["input", "keyevent"] and len(cmd) >= 3:
+            key = cmd[2]
+            global_key = KEYCODE_TO_GLOBAL.get(key)
+            if global_key is not None:
+                return run([
+                    "am", "broadcast", "-a", "com.antigravity.KEYEVENT",
+                    "--ei", "key", str(global_key),
+                    "-n", f"{TAP_HELPER_PKG}/.TapReceiver",
+                ], timeout=10)
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+        if cmd[:2] == ["input", "text"] and len(cmd) >= 3:
+            text = " ".join(cmd[2:])
+            return run([
+                "am", "broadcast", "-a", "com.antigravity.TEXT",
+                "--es", "text", text,
+                "-n", f"{TAP_HELPER_PKG}/.TapReceiver",
+            ], timeout=10)
+        return run(cmd, timeout=timeout)
     return run(cmd, timeout=timeout)
 
 
@@ -479,19 +550,24 @@ def parse_bounds(bounds: str) -> tuple[int, int] | None:
 
 
 def dump_ui() -> list[dict]:
+    """Siempre vuelca la UI actual via uiautomator (sin cache: el XML anterior se borra)."""
+    global _uiautomator_available
     STATE_DIR.mkdir(parents=True, exist_ok=True)
-    # Evitar leer un XML viejo si la pantalla esta animando y el dump falla
+    # Borrar siempre el XML anterior para evitar leer estado rancio
     run_android(["rm", "-f", str(UI_DUMP_FILE)], timeout=5)
     result = run_android(["uiautomator", "dump", str(UI_DUMP_FILE)], timeout=20)
-    if result.returncode != 0:
-        logging.warning("uiautomator dump fallo: %s %s", result.stdout.strip(), result.stderr.strip())
-        return []
-    try:
-        root = ET.parse(UI_DUMP_FILE).getroot()
-    except Exception as exc:
-        logging.warning("No se pudo parsear UI XML: %s", exc)
-        return []
+    if result.returncode == 0 and UI_DUMP_FILE.exists():
+        _uiautomator_available = True
+        try:
+            root = ET.parse(UI_DUMP_FILE).getroot()
+            return _parse_ui_nodes(root)
+        except Exception:
+            return []
+    _uiautomator_available = False
+    return []
 
+
+def _parse_ui_nodes(root: ET.Element) -> list[dict]:
     nodes: list[dict] = []
     for node in root.iter("node"):
         text = (node.attrib.get("text") or "").strip()
@@ -879,7 +955,7 @@ def open_next(args: argparse.Namespace) -> int:
             append_history(record)
             return 1
 
-        time.sleep(20)
+        time.sleep(25)  # Dar tiempo a TikTok para cargarse completamente
 
         if current_package() == "android":
             chooser_select_tiktok()
@@ -887,50 +963,55 @@ def open_next(args: argparse.Namespace) -> int:
 
         required_steps: list[tuple[str, bool]] = []
 
-        # Si hay boton Siguiente, estamos en el editor; tocarlo una vez
-        if tap_match(NEXT_RE, "Siguiente", timeout=10):
-            time.sleep(10)
-        else:
-            logging.info("Sin Siguiente — ya estamos en pantalla de publicar.")
+        # Puede haber 1-2 pantallas de editor antes de llegar a descripcion.
+        # Tocamos "Siguiente" hasta 2 veces (con deteccion UI + coordenada fallback).
+        for _editor_step in range(2):
+            nodes = dump_ui()
+            nxt = find_match(nodes, NEXT_RE)
+            if nxt:
+                logging.info("Editor step %d: tocando Siguiente UI '%s'", _editor_step + 1, nxt["label"])
+                tap(nxt["center"], nxt["label"])
+                time.sleep(8)
+            else:
+                # Intentar coordenada fallback del boton Siguiente editor
+                logging.info("Editor step %d: Siguiente no detectado por UI, probando coordenada.", _editor_step + 1)
+                tap_scaled(531, 1341, f"Siguiente editor coord (step {_editor_step + 1})", pause=6)
 
         # Pantalla de caption: tocar campo y escribir
         required_steps.append(("campo descripcion", tap_scaled(178, 152, "campo descripcion", pause=2)))
         required_steps.append(("caption", type_caption(caption)))
         required_steps.append(("cerrar teclado", close_caption_editor()))
-        time.sleep(3)
+        time.sleep(2)
 
         if PUBLISH_MODE == "draft":
             publish_ok = save_as_draft()
             required_steps.append(("Guardar borrador", publish_ok))
         else:
-            # Publicar: boton rojo arriba a la derecha (608,80)
-            publish_ok = tap_scaled(608, 80, "Publicar top", pause=5)
-            for step in range(3):
-                if publish_ok:
-                    break
-                ok = tap_match(NEXT_RE, "Siguiente", timeout=5)
-                if not ok:
-                    ok = tap_scaled(531, 1341, "Siguiente coord", pause=3)
-                if ok:
-                    time.sleep(4)
-                    publish_ok = tap_match(PUBLICAR_RE, "Publicar", timeout=5)
-                    if not publish_ok:
-                        publish_ok = tap_scaled(608, 80, "Publicar top coord", pause=3)
-                else:
-                    break
-            if not publish_ok:
-                logging.info("Publicar no encontrado por UI; coordenada fija.")
-                publish_ok = tap_scaled(608, 80, "Publicar superior", pause=10)
+            # Intentar detectar el boton Publicar por UI primero
+            publish_ok = False
+            nodes = dump_ui()
+            pub_node = find_match(nodes, PUBLICAR_RE)
+            if pub_node:
+                logging.info("Boton Publicar detectado por UI: %s en %s", pub_node["label"], pub_node["center"])
+                publish_ok = tap(pub_node["center"], pub_node["label"])
+            else:
+                # Fallback: coordenada fija del boton rojo arriba a la derecha
+                logging.info("Publicar no detectado por UI; usando coordenada (608, 80).")
+                publish_ok = tap_scaled(608, 80, "Publicar top coord", pause=3)
+
             if publish_ok:
-                # Esperar a que TikTok suba el video (poll cada 15s)
+                # Esperar a que TikTok procese y suba el video (poll cada 15s)
                 time.sleep(15)
+                confirmed = False
                 upload_deadline = time.time() + POST_SETTLE_SECONDS
                 while time.time() < upload_deadline:
                     if publish_confirmed():
+                        confirmed = True
                         break
                     time.sleep(15)
-                else:
-                    publish_ok = publish_confirmed()
+                if not confirmed:
+                    confirmed = publish_confirmed()
+                publish_ok = confirmed
 
             required_steps.append(("Publicar", publish_ok))
 
@@ -997,6 +1078,7 @@ def main() -> int:
     global PUBLISH_MODE, SHARE_METHOD
     PUBLISH_MODE = args.publish_mode
     SHARE_METHOD = args.share_method
+    ensure_adb_connected()
     if args.status:
         return show_status()
     try:

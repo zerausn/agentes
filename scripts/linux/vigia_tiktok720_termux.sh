@@ -9,12 +9,12 @@
 # Usa ADB local (127.0.0.1:5555) para UI automation.
 # ================================================================
 
-export PATH="/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin"
 export PREFIX="/data/data/com.termux/files/usr"
 export HOME="/data/data/com.termux/files/home"
-export TMPDIR="$PREFIX/tmp"
+export PATH="/system/bin:/system/xbin:${PREFIX}/bin"
+export TMPDIR="${PREFIX}/tmp"
 
-TERMUX_HOME="/data/data/com.termux/files/home"
+TERMUX_HOME="$HOME"
 ENV_FILE="$TERMUX_HOME/.agentes_termux_env"
 EVACUADOR="$TERMUX_HOME/agentes/tiktok_uploader/tiktok_evacuador_720.py"
 LOG_DIR="/sdcard/Antigravity/widget_logs"
@@ -112,6 +112,25 @@ ensure_adb_local || exit 1
 
 echo "[MODO] Sin proot-distro. Python directo desde Termux + ADB local."
 
+adb_wake() {
+    adb connect 127.0.0.1:5555 >/dev/null 2>&1 || true
+    if adb devices | awk '$1 == "127.0.0.1:5555" && $2 == "device" {found=1} END {exit(found ? 0 : 1)}'; then
+        return 0
+    fi
+    echo "[ADB-WAKE] Caido. Reconectando..."
+    adb kill-server >/dev/null 2>&1 || true
+    sleep 1
+    adb start-server >/dev/null 2>&1 || true
+    sleep 2
+    adb connect 127.0.0.1:5555 >/dev/null 2>&1
+    sleep 1
+    if adb devices | awk '$1 == "127.0.0.1:5555" && $2 == "device" {found=1} END {exit(found ? 0 : 1)}'; then
+        return 0
+    fi
+    echo "[ADB-WAKE] AVISO: ADB no disponible. Intentando con accessibility fallback."
+    return 1
+}
+
 CICLO=0
 
 while true; do
@@ -123,7 +142,19 @@ while true; do
     echo "  CICLO #${CICLO} — $(date '+%Y-%m-%d %H:%M:%S')"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-    TIKTOK_UI_BACKEND=adb TIKTOK_ADB_SERIAL=127.0.0.1:5555 \
+    if adb_wake; then
+        UI_BACKEND_VAL="adb"
+    else
+        UI_BACKEND_VAL="accessibility"
+        echo "[CICLO] Fallback a accessibility para inputs."
+    fi
+
+    PATH=$PATH TMPDIR=$TMPDIR \
+    AGENTES_STORAGE_ROOT=/sdcard/Antigravity \
+    TIKTOK_UI_BACKEND=$UI_BACKEND_VAL \
+    TIKTOK_ADB_SERIAL=127.0.0.1:5555 \
+    TIKTOK_SHARE_METHOD=intent \
+    TIKTOK_PUBLISH_MODE=direct \
     "$PREFIX/bin/python3" "$EVACUADOR" \
         --open-next 2>&1 | tee -a "$LOG_DIR/tiktok_evacuador.log"
     EXIT_CODE=$?
