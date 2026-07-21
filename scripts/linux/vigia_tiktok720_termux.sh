@@ -123,6 +123,7 @@ while true; do
     echo "  CICLO #${CICLO} — $(date '+%Y-%m-%d %H:%M:%S')"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+    TIKTOK_UI_BACKEND=adb TIKTOK_ADB_SERIAL=127.0.0.1:5555 \
     "$PREFIX/bin/python3" "$EVACUADOR" \
         --open-next 2>&1 | tee -a "$LOG_DIR/tiktok_evacuador.log"
     EXIT_CODE=$?
