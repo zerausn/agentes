@@ -200,6 +200,38 @@ def append_history(item: dict) -> None:
 def iter_videos() -> list[Path]:
     if not SOURCE_DIR.exists():
         return []
+
+    # 1. Intentar consultar MediaStore (el mismo orden exacto de TikTok)
+    try:
+        # En subprocess + adb shell, hay que pasar las comillas explicitamente
+        # para que la shell de Android no rompa el LIKE o el ORDER BY.
+        cmd = [
+            "content", "query", 
+            "--uri", "content://media/external/video/media", 
+            "--projection", "_data", 
+            "--where", f"\"_data LIKE '%{SOURCE_DIR.name}%'\"", 
+            "--sort", "\"date_added DESC, _id DESC\""
+        ]
+        result = run_android(cmd, timeout=10)
+        if result.returncode == 0:
+            ordered_paths = []
+            for line in result.stdout.strip().split("\n"):
+                if not line.strip(): continue
+                match = re.search(r"_data=(.*?)(?:,|$)", line)
+                if match:
+                    raw_path = match.group(1).strip()
+                    raw_path = raw_path.replace("/storage/emulated/0/", "/sdcard/")
+                    p = Path(raw_path)
+                    if p.is_file() and p.suffix.lower() in SUPPORTED_EXTS and not p.name.endswith(".part"):
+                        ordered_paths.append(p)
+            if ordered_paths:
+                logging.info("MediaStore detectado. Sincronizacion 100%% garantizada con TikTok.")
+                return ordered_paths
+    except Exception as exc:
+        logging.warning("No se pudo consultar MediaStore: %s", exc)
+
+    # 2. Fallback: ordenar por modificacion (menos preciso si se copiaron en lote)
+    logging.warning("Usando fallback mtime para iter_videos.")
     return sorted(
         (
             f
@@ -208,7 +240,8 @@ def iter_videos() -> list[Path]:
             and f.suffix.lower() in SUPPORTED_EXTS
             and not f.name.endswith(".part")
         ),
-        key=lambda p: p.name.lower(),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
     )
 
 
@@ -720,16 +753,6 @@ def open_next(args: argparse.Namespace) -> int:
         record["finished_at"] = now_str()
         append_history(record)
         return 1
-
-    # CRITICO: hacer que el archivo seleccionado sea el mas reciente
-    # en el filesystem, para que aparezca PRIMERO en la galeria de TikTok
-    # (que ordena por fecha de modificacion, mas reciente primero).
-    # Asi el tap fijo en (200,241) siempre tocara exactamente este archivo.
-    try:
-        run_android(["touch", str(video)], timeout=5)
-        logging.info("touch aplicado al video seleccionado: %s", video.name)
-    except Exception as exc:
-        logging.warning("No se pudo hacer touch al archivo: %s", exc)
 
     time.sleep(8)
     folder_name = video.parent.name

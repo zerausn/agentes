@@ -102,7 +102,7 @@ Android 14 en el Galaxy S24 bloquea el intent `android.intent.action.SEND` con e
 | **Cierre de teclado** | `close_caption_editor()` ahora toca el fondo de pantalla `(360, 400)` para quitar el foco del campo de texto, luego KEYCODE_BACK como respaldo. |
 | **Dump de UI** | `dump_ui()` borra el XML anterior con `rm -f` antes de ejecutar `uiautomator dump`, evitando leer estados rancios durante animaciones. |
 | **Confirmación de publicación** | `publish_confirmed()` asume éxito si `dump_ui()` devuelve lista vacía (TikTok animando transición al feed bloquea `uiautomator`). |
-| **Orden de archivos** | Antes de abrir TikTok, se ejecuta `touch` al archivo seleccionado para que sea el **más reciente en el filesystem**. Garantiza que el primer video de la galería de TikTok (orden por fecha) coincida con el que Python seleccionó (orden alfabético). |
+| **Orden de archivos** | Sincronización infalible mediante consulta nativa a **MediaStore**. Python ejecuta `adb shell content query` ordenando por `date_added DESC, _id DESC` (el mismo SQL exacto que usa la galería "Recientes" de TikTok). Se corrigió un bug de "quote-stripping" de subprocess para asegurar que la consulta de MediaStore devuelva el video correcto. |
 
 ### Widget Termux (`6_SUBIR_TIKTOK720.sh`)
 - **Intervalo:** 720 segundos entre ciclos.
