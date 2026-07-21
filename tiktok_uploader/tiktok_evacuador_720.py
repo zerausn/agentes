@@ -562,7 +562,19 @@ def current_package() -> str:
     if match:
         return match.group(1)
     match = re.search(r"mFocusedApp=.*? ([A-Za-z0-9_.]+)/", text)
-    return match.group(1) if match else ""
+    if match:
+        return match.group(1)
+    # Fallback: dump UI via uiautomator y extraer package del XML
+    try:
+        dump_ui()
+        with UI_DUMP_FILE.open("r", encoding="utf-8") as f:
+            content = f.read(8192)
+        m = re.search(r'package="([A-Za-z0-9_.]+)"', content)
+        if m:
+            return m.group(1)
+    except OSError:
+        pass
+    return ""
 
 
 def tap_match(pattern: re.Pattern[str], label: str, timeout: int = 12) -> bool:
@@ -672,9 +684,6 @@ def chooser_select_tiktok() -> bool:
     logging.info("Esperando selector Android...")
     deadline = time.time() + 20
     while time.time() < deadline:
-        if current_package() != "android":
-            time.sleep(1)
-            continue
         nodes = dump_ui()
         tiktok_node = find_match(nodes, TIKTOK_RE)
         if tiktok_node:
@@ -694,7 +703,7 @@ def chooser_select_tiktok() -> bool:
             tap_scaled(200, 1351, "Solo una vez fallback", pause=5)
             return True
         time.sleep(2)
-    logging.error("No se encontro TikTok en el chooser Android.")
+    logging.info("No se detecto selector Android — TikTok se abrio directamente.")
     return False
 
 

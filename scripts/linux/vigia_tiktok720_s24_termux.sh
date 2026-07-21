@@ -1,11 +1,12 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # ================================================================
-# 6_SUBIR_TIKTOK720_S24 — Evacuador TikTok app (S24 via USB-C)
+# 6_SUBIR_TIKTOK720_S24 — Evacuador TikTok app (S24 local)
 #
 # Sube 1 video cada 720s desde:
 #   /sdcard/Antigravity/subidos a facebbok
 #
-# Sin proot-distro. Usa Python directo de Termux + ADB USB.
+# Sin proot-distro ni ADB. El evacuador usa UI_BACKEND=direct
+# por defecto: ejecuta input tap/am start directamente en el shell.
 # ================================================================
 
 export PATH="/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin"
@@ -19,7 +20,6 @@ EVACUADOR="$TERMUX_HOME/agentes/tiktok_uploader/tiktok_evacuador_720.py"
 LOG_DIR="/sdcard/Antigravity/widget_logs"
 SESSION_LOG="$LOG_DIR/6_SUBIR_TIKTOK720_S24.log"
 SOURCE_DIR="/sdcard/Antigravity/subidos a facebbok"
-ADB_SERIAL="${TIKTOK_ADB_SERIAL:-RFCX91HV4GD}"
 
 INTERVALO=720
 CHECK_INTERVAL=15
@@ -58,29 +58,6 @@ else:
 "
 }
 
-ensure_adb() {
-    if ! command -v adb >/dev/null 2>&1; then
-        echo "[ERROR] Falta android-tools. Instala: pkg install android-tools"
-        return 1
-    fi
-
-    if adb devices | awk -v serial="$ADB_SERIAL" '$1 == serial && $2 == "device" {found=1} END {exit(found ? 0 : 1)}'; then
-        echo "[ADB] S24 conectado: $ADB_SERIAL"
-        return 0
-    fi
-
-    echo "[ADB] Conectando a $ADB_SERIAL..."
-    adb connect "$ADB_SERIAL" 2>/dev/null || true
-    sleep 2
-    if adb devices | awk -v serial="$ADB_SERIAL" '$1 == serial && $2 == "device" {found=1} END {exit(found ? 0 : 1)}'; then
-        echo "[ADB] Conectado: $ADB_SERIAL"
-        return 0
-    fi
-
-    echo "[ERROR] S24 no conectado. Verifica cable USB y depuracion USB."
-    return 1
-}
-
 mkdir -p "$LOG_DIR"
 exec > >(tee -a "$SESSION_LOG") 2>&1
 
@@ -89,6 +66,7 @@ echo "=============================================="
 echo "  6_SUBIR_TIKTOK720_S24 — TikTok por app"
 echo "  Intervalo: ${INTERVALO}s | Check: ${CHECK_INTERVAL}s"
 echo "  Fuente: ${SOURCE_DIR}"
+echo "  UI_BACKEND: direct (shell local)"
 echo "  Inicio: $(date '+%Y-%m-%d %H:%M:%S')"
 echo "=============================================="
 
@@ -109,7 +87,8 @@ fi
 
 [ -f "$ENV_FILE" ] && . "$ENV_FILE"
 
-ensure_adb || exit 1
+# UI_BACKEND=direct por defecto: el evacuador usa el shell local
+# (input tap, am start via /system/bin/) sin pasar por ADB
 
 CICLO=0
 
