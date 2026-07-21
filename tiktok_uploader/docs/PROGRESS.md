@@ -1,58 +1,68 @@
-# TikTok Uploader — Progress
+# TikTok Uploader — Progreso
 
-## Goal
-Publicar videos en TikTok via Content Posting API y configurar cuenta creador con monetización, incluyendo registro y aprobación de la app Uploaderbot en TikTok Developers.
+## Meta
+Publicar videos en TikTok desde un nodo Android Note9 sin usar la Content Posting API (no aprobada).
 
-## Status: APP REVIEW ATTEMPT #3 — SANDBOX VERIFICATION
+## Estado Actual (2026-07-20): FUNCIONAL — Widget 720s con Share Intent + ADB local
 
-### 2026-07-20 — Widget movil TikTok sin API
+El sistema produce publicaciones reales en TikTok usando UI automation sobre la app Android.
+La API de TikTok sigue sin aprobarse; el método UI es la estrategia de producción.
 
-- Creado `tiktok_evacuador_720.py` para tomar 1 video desde `/sdcard/Antigravity/subidos a facebbok`.
-- Creado widget `6_SUBIR_TIKTOK720.sh` con loop anti-Doze de 720s, siguiendo la logica de YouTube/Facebook.
-- La UI de TikTok se controla por ADB local (`127.0.0.1:5555`) porque `input tap` desde Termux/Proot falla por `INJECT_EVENTS`.
-- Caption alineado con YouTube/Facebook: nombre con `_`, `#PW`, `#teaser #N` solo para teasers, `Instagram Facebook Youtube`, linktree y hashtags `#teatro #performance #escriturasperformaticas`.
-- Prueba real en Note9: 1 video llego al final del flujo y fue movido a `/sdcard/Antigravity/subidos a tiktok`.
-- Documentacion operativa: `docs/TIKTOK_WIDGET720_NO_API.md`.
-- Validacion adicional: se corrigio el texto exacto de TikTok a una sola linea con `Instagram Facebook Youtube`, sin `#cali`; `#teaser #N` queda condicionado al sufijo `_teaser_N`. Tambien se agrego confirmacion final de salida de UI antes de mover archivos.
-- Prueba final del guard: `20251018 200806_teaser_3.mp4` publico con caption corregido, confirmo `foreground=com.sec.android.app.launcher` y se movio a `subidos a tiktok`.
+---
 
-### What's Working
-- Flask app con OAuth PKCE (S256 code_challenge + code_verifier)
-- Login Kit funcional con sandbox (scopes: user.info.basic, profile, stats, video.list)
-- Dynamic redirect URI desde request.headers (via ProxyFix + X-Forwarded-*)
-- Terms of Service y Privacy Policy servidos en el mismo dominio ngrok
-- 3 TikTok verify files servidos en `/` y `/terms/`
-- ngrok estable en Note9, URL fija: `https://gravy-diaper-refrain.ngrok-free.dev`
-- ADB como canal de gestión (SSH cayó por cambio de IP, ADB via USB)
-- Dual credential routing simplificado: siempre sandbox hasta aprobación
+## Lo que Funciona
 
-### Infrastructure
-- **Host**: Note9 (SM-N9600) via Termux + proot-distro (Debian)
-- **Web**: Flask (debug mode, auto-reload on file change)
-- **Tunnel**: ngrok free, URL fija con authtoken persistente
-- **Gestión**: ADB via USB (run-as com.termux)
-- **Scripts**: `Iniciar_TikTok.sh` widget, `start_flask.sh` startup
-- **Repo**: `agentes/` rama `linux-arm64` en GitHub
+### Subsistema ADB/UI (PRODUCCIÓN)
+- **Share Intent method**: `am start SEND` con `content://` URI desde MediaStore. Abre TikTok directamente en el editor con el video cargado.
+- **Chooser Android**: Detección automática de TikTok en el selector "Completar la acción mediante" y selección "Solo una vez".
+- **Navegación UI**: Coordenadas escaladas base 720x1480 sobre Note9 con override display.
+- **Detección de texto**: `uiautomator dump` parseado como XML para encontrar botones por etiqueta.
+- **Caption**: Escritura con `input text` (espacios como `%s`) en el campo de descripción.
+- **Publicar**: Botón rojo arriba a la derecha en coordenada `(608, 80)` escalada.
+- **Modo Draft**: Alternativa que toca "Borradores" en vez de Publicar.
+- **Confirmación post-publicación**: Detecta dump UI vacío (animación) o ausencia de botón Publicar.
+- **Lock**: `fcntl.flock` evita ejecución concurrente.
+- **Queue state**: `tiktok_queue.json` guarda historial de últimos 500 intentos.
+- **touch en modo monkey**: Asegura que el video seleccionado aparezca primero en galería.
+- **Ciclo 720s**: `vigia_tiktok720_termux.sh` con wake-lock y loop anti-Doze.
+- **ADB local**: `127.0.0.1:5555` — no requiere USB ni WiFi.
+- **ADB key bind**: `_proot_bind.sh` monta claves ADB dentro del proot para evitar re-autorización.
+- **Prueba real exitosa**: 2 videos publicados y movidos a `subidos a tiktok` el 2026-07-20.
 
-### OAuth Flow
-1. `/login` genera PKCE pair + state CSRF + redirect a TikTok authorize
-2. TikTok auth → callback → token exchange con code_verifier
-3. `/upload` muestra página de subida (sandbox notice, Content Posting no disponible)
-4. Scopes solicitados: user.info.basic, user.info.profile, user.info.stats, video.list
+### Subsistema Web Flask (EN PAUSA)
+- OAuth PKCE (S256 code_challenge + code_verifier) funcional.
+- Login Kit con sandbox (scopes: user.info.basic, profile, stats, video.list).
+- Dynamic redirect URI desde request.headers (ProxyFix + X-Forwarded-*).
+- Terms of Service y Privacy Policy servidos en el mismo dominio ngrok.
+- 3 TikTok verify files servidos.
+- ngrok estable en Note9, URL fija: `https://gravy-diaper-refrain.ngrok-free.dev`.
 
-### TikTok Developer Portal Config
-- Sandbox app: `performaticmachine` (client_key: `sbawgooshw60ceibf2`)
-- Production app: `Uploaderbot` (client_key: `awhfxd65i4i468x8`) — pendiente de aprobación
-- Redirect URIs registrados:
-  - `https://gravy-diaper-refrain.ngrok-free.dev/callback`
-  - `https://zerausn.github.io/agentes/callback.html`
+## Lo que NO Funciona / Limitaciones
 
-## Next Steps (immediate)
-1. Completar verify de URL prefix en portal TikTok (3 archivos)
-2. Llenar review description y enviar a revisión
-3. Tras aprobación: cambiar `_creds()` a production y probar Content Posting API
+- **Content Posting API**: No aprobada. Sandbox no la soporta. Production app pendiente de review.
+- **`input tap` desde Termux/Proot**: Falla con `INJECT_EVENTS`. Se requiere ADB local.
+- **ADB local se pierde al reiniciar**: Requiere reconectar con `adb tcpip 5555` vía USB.
+- **Monkey method más lento**: Requiere navegar Crear → Cargar → Recientes → carpeta → video. El share intent es mucho más directo.
+- **No hay verificación de publicación real en TikTok**: Solo se confirma que la UI avanzó. No se consulta API para verificar que el video exista.
+- **Sin cola de reintentos**: Si falla, el archivo queda en source para el próximo ciclo. No hay límite de reintentos ni backoff.
 
-## Blockers
-- **Sandbox no soporta Content Posting API** — solo Login Kit
-- **Production app requiere aprobación** para usar video.upload/video.publish
-- **Note9 IP dinámica** — SSH cayó al cambiar de red (10.100.x.x vs 192.168.1.x)
+## Infraestructura
+
+| Componente | Detalle |
+|---|---|
+| Host | Note9 (SM-N9600) Android 10 |
+| Terminal | Termux + proot-distro (Debian arm64) |
+| Automatización | ADB local + Python 3 |
+| Loop | Widget Termux `6_SUBIR_TIKTOK720` |
+| Logs | `/sdcard/Antigravity/widget_logs/6_SUBIR_TIKTOK720.log` |
+| Control | ADB vía USB o scripts en `/sdcard/Antigravity/` |
+| Repo | `agentes/` rama `linux-arm64` en GitHub |
+
+## Próximos Pasos
+
+1. Probar método `intent` como default y mantener `monkey` como fallback.
+2. Agregar notificación Termux cuando un video se publique exitosamente.
+3. Implementar cola de reintentos con backoff (máximo 3 intentos, luego mover a `fallidos_tiktok`).
+4. Agregar verificación real: abrir TikTok y revisar perfil para confirmar publicación.
+5. Probar estabilidad del widget 720s en ejecución continua 24h+.
+6. Si la API se aprueba, migrar a Content Posting API y dejar UI automation como respaldo.

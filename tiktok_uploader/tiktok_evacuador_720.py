@@ -52,6 +52,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import shutil
 import socket
 import subprocess
@@ -86,6 +87,8 @@ CAPTION_FILE = STATE_DIR / "tiktok_caption_actual.txt"
 UI_DUMP_FILE = STATE_DIR / "tiktok_ui.xml"
 LOCK_FILE = STATE_DIR / "tiktok_evacuador.lock"
 
+_content_uris: dict[str, str] = {}
+
 SUPPORTED_EXTS = {".mp4", ".mov", ".mkv"}
 DEVICE_NAME = os.environ.get("AGENTES_DEVICE_NAME") or socket.gethostname() or "desconocido"
 TIKTOK_PACKAGE = os.environ.get("TIKTOK_PACKAGE", "com.zhiliaoapp.musically")
@@ -96,7 +99,9 @@ TIKTOK_ACTIVITY = os.environ.get(
 UI_BACKEND = os.environ.get("TIKTOK_UI_BACKEND", "direct").strip().lower()
 ADB_SERIAL = os.environ.get("TIKTOK_ADB_SERIAL", "127.0.0.1:5555").strip()
 AUTOMATION_TIMEOUT = int(os.environ.get("TIKTOK_AUTOMATION_TIMEOUT", "240"))
-POST_SETTLE_SECONDS = int(os.environ.get("TIKTOK_POST_SETTLE_SECONDS", "45"))
+PUBLISH_MODE = os.environ.get("TIKTOK_PUBLISH_MODE", "direct").strip().lower()
+SHARE_METHOD = os.environ.get("TIKTOK_SHARE_METHOD", "intent").strip().lower()
+POST_SETTLE_SECONDS = int(os.environ.get("TIKTOK_POST_SETTLE_SECONDS", "90"))
 COORD_BASE_W = 720
 COORD_BASE_H = 1480
 IME_PACKAGES = {
@@ -116,12 +121,18 @@ logging.basicConfig(
 )
 
 
-POST_RE = re.compile(r"^(post|publish|publicar|publicar ahora)$", re.I)
+POST_RE = re.compile(r"^(post|publish|publicar|publicar ahora|crear)$", re.I)
+NEXT_RE = re.compile(r"^(siguiente|next|continuar)$", re.I)
+PUBLICAR_RE = re.compile(r"^(publicar|publish|post|crear)$", re.I)
+CREAR_RE = re.compile(r"^(crear|create)$", re.I)
 NEXT_RE = re.compile(r"^(next|siguiente|continuar|continue|listo|done)$", re.I)
+VIDEO_NUEVO_RE = re.compile(r"^(video\s+nuevo|new\s+video)$", re.I)
 DISMISS_RE = re.compile(
     r"^(allow|permitir|aceptar|ok|entendido|got it|not now|ahora no|skip|saltar|cancelar|cancel)$",
     re.I,
 )
+GUARDAR_RE = re.compile(r"^(guardar|save)$", re.I)
+BORRADOR_RE = re.compile(r"^(borradores?|drafts?)$", re.I)
 BOUNDS_RE = re.compile(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]")
 
 
@@ -137,7 +148,8 @@ def run(cmd: list[str], timeout: int = 30) -> subprocess.CompletedProcess:
 
 def run_android(cmd: list[str], timeout: int = 30) -> subprocess.CompletedProcess:
     if UI_BACKEND == "adb":
-        return run(["adb", "-s", ADB_SERIAL, "shell", *cmd], timeout=timeout)
+        shell_cmd = " ".join(shlex.quote(arg) for arg in cmd)
+        return run(["adb", "-s", ADB_SERIAL, "shell", shell_cmd], timeout=timeout)
     return run(cmd, timeout=timeout)
 
 
@@ -198,34 +210,43 @@ def append_history(item: dict) -> None:
 
 
 def iter_videos() -> list[Path]:
+    """Retorna videos pendientes ordenados por fecha. Poblada _content_uris global."""
+    global _content_uris
     if not SOURCE_DIR.exists():
         return []
 
-    # 1. Intentar consultar MediaStore (el mismo orden exacto de TikTok)
+    _content_uris = {}
     try:
-        # En subprocess + adb shell, hay que pasar las comillas explicitamente
-        # para que la shell de Android no rompa el LIKE o el ORDER BY.
         cmd = [
-            "content", "query", 
-            "--uri", "content://media/external/video/media", 
-            "--projection", "_data", 
-            "--where", f"\"_data LIKE '%{SOURCE_DIR.name}%'\"", 
-            "--sort", "\"date_added DESC, _id DESC\""
+            "content", "query",
+            "--uri", "content://media/external/video/media",
+            "--projection", "_data:_id",
+            "--where", f"_data LIKE '%{SOURCE_DIR.name}%'",
+            "--sort", "date_added DESC, _id DESC",
         ]
         result = run_android(cmd, timeout=10)
         if result.returncode == 0:
             ordered_paths = []
             for line in result.stdout.strip().split("\n"):
-                if not line.strip(): continue
-                match = re.search(r"_data=(.*?)(?:,|$)", line)
+                if not line.strip():
+                    continue
+                match = re.search(r"_data=(.*?)(?:,\s|$)", line)
+                id_match = re.search(r"_id=(\d+)", line)
+                vid_id = id_match.group(1) if id_match else None
                 if match:
                     raw_path = match.group(1).strip()
                     raw_path = raw_path.replace("/storage/emulated/0/", "/sdcard/")
                     p = Path(raw_path)
-                    if p.is_file() and p.suffix.lower() in SUPPORTED_EXTS and not p.name.endswith(".part"):
+                    if (
+                        p.is_file()
+                        and p.suffix.lower() in SUPPORTED_EXTS
+                        and not p.name.endswith(".part")
+                    ):
                         ordered_paths.append(p)
+                        if vid_id:
+                            _content_uris[p.name] = f"content://media/external/video/media/{vid_id}"
             if ordered_paths:
-                logging.info("MediaStore detectado. Sincronizacion 100%% garantizada con TikTok.")
+                logging.info("MediaStore OK (%d videos en cola, %d URIs).", len(ordered_paths), len(_content_uris))
                 return ordered_paths
     except Exception as exc:
         logging.warning("No se pudo consultar MediaStore: %s", exc)
@@ -320,6 +341,59 @@ def unique_dest(folder: Path, name: str) -> Path:
 def write_caption(caption: str) -> None:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     CAPTION_FILE.write_text(caption + "\n", encoding="utf-8")
+
+
+def get_content_uri(path: Path) -> str | None:
+    """Retorna content URI desde el cache poblado por iter_videos()."""
+    global _content_uris
+    uri = _content_uris.get(path.name)
+    if uri:
+        logging.info("Content URI cache: %s", uri)
+        return uri
+    logging.warning("No content URI en cache para: %s", path.name)
+    return None
+
+
+def launch_share_intent(video: Path) -> bool:
+    """Comparte el video directamente a TikTok via Android Share Intent.
+    Usa content:// URI desde MediaStore para Android 10+."""
+    content_uri = get_content_uri(video)
+    if not content_uri:
+        logging.warning("No hay content URI para %s. Cached URIs: %d", video.name, len(_content_uris))
+        # Fallback: construir URI generando content:// desde _data
+        # Primero verificamos si el video existe en MediaStore
+        for fname, uri in list(_content_uris.items())[:3]:
+            logging.debug("  cache: %s -> %s", fname, uri)
+        return False
+
+    logging.info("Share intent URI: %s", content_uri)
+    cmd = [
+        "am", "start",
+        "-a", "android.intent.action.SEND",
+        "-t", "video/mp4",
+        "--eu", "android.intent.extra.STREAM", content_uri,
+        "-f", "0x10000000",  # FLAG_ACTIVITY_NEW_TASK
+        "-n", f"{TIKTOK_PACKAGE}/{TIKTOK_ACTIVITY}",
+    ]
+    result = run_android(cmd, timeout=15)
+    if result.returncode == 0:
+        logging.info("Share intent enviado a TikTok: %s", video.name)
+        return True
+    logging.warning("Share intent fallo: %s %s", result.stdout.strip(), result.stderr.strip())
+    cmd2 = [
+        "am", "start",
+        "-a", "android.intent.action.SEND",
+        "-t", "video/mp4",
+        "--eu", "android.intent.extra.STREAM", content_uri,
+        "-f", "0x10000000",
+    ]
+    result2 = run_android(cmd2, timeout=15)
+    if result2.returncode == 0:
+        logging.info("Share intent (sin componente) enviado.")
+        return True
+    logging.warning("Share intent sin componente fallo: %s", result2.stderr.strip())
+    return False
+
 
 def launch_tiktok_home() -> bool:
     cmd = [
@@ -499,20 +573,7 @@ def tap_match(pattern: re.Pattern[str], label: str, timeout: int = 12) -> bool:
 
 
 def close_caption_editor() -> bool:
-    """
-    Cierra el teclado si quedo abierto tras inyectar el texto.
-    """
-    ok = True
-    if keyboard_visible():
-        ok = keyevent("KEYCODE_BACK", "ocultar teclado descripcion", pause=2) and ok
-    if keyboard_visible():
-        # Tocar un espacio vacio en la pantalla para quitar el foco
-        ok = tap_scaled(360, 400, "tocar fondo para ocultar teclado", pause=2) and ok
-    if keyboard_visible():
-        ok = keyevent("KEYCODE_BACK", "ocultar teclado descripcion reintento", pause=2) and ok
-    if keyboard_visible():
-        logging.warning("El teclado aun parece visible; se intentara continuar de todos modos.")
-    return ok
+    return True
 
 
 def publish_confirmed() -> bool:
@@ -632,27 +693,54 @@ def chooser_select_tiktok() -> bool:
     return False
 
 
+def save_as_draft() -> bool:
+    """Guarda como borrador tocando 'Borradores' en la pantalla de publicacion.
+    No usa BACK (esa ruta falla en algunas versiones de TikTok)."""
+    logging.info("Guardando como borrador (tocando boton Borradores)...")
+    ok = tap_match(BORRADOR_RE, "Borradores", timeout=8)
+    if not ok:
+        ok = tap_scaled(187, 1333, "Borradores coordenada", pause=5)
+    if ok:
+        logging.info("Video guardado como borrador.")
+        return True
+    logging.warning("No se encontro boton Borradores.")
+    return False
+
+
 def automate_tiktok_publish_coords(caption: str, folder_name: str) -> bool:
     """
     Flujo probado en Note9 con override 720x1480.
-    Usa deteccion de UI para el chooser y coordenadas escaladas para el resto.
+    Usa deteccion de UI para elementos dinámicos y coordenadas escaladas para el resto.
+    PUBLISH_MODE=direct: publica directo con boton CREAR
+    PUBLISH_MODE=draft: guarda como borrador en vez de publicar
     """
-    logging.info("Automatizando TikTok por coordenadas escaladas.")
+    logging.info("Automatizando TikTok (publish_mode=%s).", PUBLISH_MODE)
     required_steps: list[tuple[str, bool]] = []
 
-    # Home Screen: Tap Crear (+) en vez de Share Intent
+    # Home Screen: Tap Crear (+) en la barra inferior
     required_steps.append(("Crear (+)", tap_scaled(360, 1353, "Crear (+)", pause=5)))
 
-    # Camera Screen: Tap Cargar (Upload) abajo a la izquierda
-    required_steps.append(("Cargar", tap_scaled(70, 1330, "Cargar", pause=3)))
+    # Camera Screen: Tap CREAR (no PUBLICAR) para abrir opciones
+    # CREAR button bounds: [450,1297] - [584,1376] → center (517, 1337)
+    required_steps.append(("CREAR (camara)", tap_scaled(517, 1337, "CREAR", pause=5)))
+
+    # Menu desplegable: Tap "Video nuevo"
+    video_nuevo = False
+    for attempt in range(5):
+        nodes = dump_ui()
+        vn = find_match(nodes, VIDEO_NUEVO_RE)
+        if vn:
+            video_nuevo = tap(vn["center"], "Video nuevo")
+            time.sleep(5)
+            break
+        time.sleep(2)
+    required_steps.append(("Video nuevo", video_nuevo))
 
     # Gallery Screen: Tocar dropdown 'Recientes' para cambiar de carpeta
     required_steps.append(("Recientes", tap_scaled(360, 83, "Dropdown Recientes", pause=3)))
 
     # Esperar y buscar el nombre de la carpeta de origen
     folder_re = re.compile(re.escape(folder_name), re.I)
-    
-    # Try multiple times to find the folder as UI loads
     folder_selected = False
     for attempt in range(5):
         nodes = dump_ui()
@@ -663,37 +751,52 @@ def automate_tiktok_publish_coords(caption: str, folder_name: str) -> bool:
             time.sleep(3)
             break
         time.sleep(2)
-        
     required_steps.append((f"Seleccionar {folder_name}", folder_selected))
 
-    # Permiso multimedia si aparece (poco probable en este flujo)
+    # Permiso multimedia si aparece
     tap_scaled(360, 1210, "Permitir multimedia", pause=2)
 
-    # Galeria (carpeta filtrada): primer video y siguiente.
+    # Galeria: primer video (asegurado por touch + MediaStore)
+    time.sleep(2)
     required_steps.append(("primer video", tap_scaled(200, 241, "primer video", pause=1)))
     required_steps.append(("Siguiente galeria", tap_scaled(600, 1352, "Siguiente galeria", pause=6)))
 
-    # Editor: boton Siguiente (abajo a la derecha)
+    # Editor: Siguiente (abajo a la derecha)
     required_steps.append(("Siguiente editor", tap_scaled(531, 1341, "Siguiente editor", pause=10)))
 
-    # Pantalla Publicar: campo descripcion, caption y publicar.
+    # Pantalla de descripcion: caption
     required_steps.append(("campo descripcion", tap_scaled(178, 152, "campo descripcion", pause=1)))
     required_steps.append(("caption", type_caption(caption)))
-    close_caption_editor()
-    time.sleep(1)
-    if tap_match(POST_RE, "Publicar", timeout=8):
-        time.sleep(POST_SETTLE_SECONDS)
-        required_steps.append(("Publicar", True))
+    required_steps.append(("cerrar teclado", close_caption_editor()))
+    time.sleep(2)
+
+    if PUBLISH_MODE == "draft":
+        publish_ok = save_as_draft()
+        required_steps.append(("Guardar borrador", publish_ok))
     else:
-        required_steps.append(("Publicar", tap_scaled(535, 1335, "Publicar fallback", pause=POST_SETTLE_SECONDS)))
-    required_steps.append(("confirmar salida publicar", publish_confirmed()))
+        publish_ok = tap_scaled(608, 80, "Publicar top", pause=5)
+        if publish_ok:
+            time.sleep(15)
+            upload_deadline = time.time() + POST_SETTLE_SECONDS
+            while time.time() < upload_deadline:
+                if publish_confirmed():
+                    break
+                time.sleep(15)
+            else:
+                publish_ok = publish_confirmed()
+
+        required_steps.append(("Publicar", publish_ok))
+        if publish_ok:
+            required_steps.append(("confirmar publicacion", True))
+        else:
+            required_steps.append(("confirmar publicacion", publish_confirmed()))
 
     failed = [label for label, ok in required_steps if not ok]
     if failed:
-        logging.error("Automatizacion incompleta; no se mueve el archivo. Fallaron: %s", ", ".join(failed))
+        logging.error("Automatizacion incompleta. Fallaron: %s", ", ".join(failed))
         return False
 
-    logging.info("Secuencia de publicacion por coordenadas completada.")
+    logging.info("Secuencia completada exitosamente (mode=%s).", PUBLISH_MODE)
     return True
 
 
@@ -733,6 +836,13 @@ def open_next(args: argparse.Namespace) -> int:
     print("[CAPTION]")
     print(caption)
 
+    # Listar archivos en la carpeta fuente para saber cual seleccionar en TikTok
+    print(f"\n--- Archivos en {SOURCE_DIR} ---")
+    for f in sorted(SOURCE_DIR.iterdir()):
+        if f.is_file() and f.suffix.lower() in SUPPORTED_EXTS:
+            print(f"  {f.name}")
+    print(f"Total: {len(videos)} pendientes\n")
+
     if args.dry_run:
         logging.info("DRY-RUN: no se abre TikTok ni se mueve archivo.")
         return 0
@@ -748,19 +858,97 @@ def open_next(args: argparse.Namespace) -> int:
     wake_screen()
     reset_tiktok()
 
-    if not launch_tiktok_home():
-        record["status"] = "launch_home_failed"
-        record["finished_at"] = now_str()
-        append_history(record)
-        return 1
+    if SHARE_METHOD == "intent":
+        if not launch_share_intent(video):
+            record["status"] = "share_intent_failed"
+            record["finished_at"] = now_str()
+            append_history(record)
+            return 1
 
-    time.sleep(8)
-    folder_name = video.parent.name
-    if not automate_tiktok_publish_coords(caption, folder_name):
-        record["status"] = "ui_automation_failed"
-        record["finished_at"] = now_str()
-        append_history(record)
-        return 1
+        time.sleep(20)
+
+        if current_package() == "android":
+            chooser_select_tiktok()
+            time.sleep(10)
+
+        required_steps: list[tuple[str, bool]] = []
+
+        # Si hay boton Siguiente, estamos en el editor; tocarlo una vez
+        if tap_match(NEXT_RE, "Siguiente", timeout=10):
+            time.sleep(10)
+        else:
+            logging.info("Sin Siguiente — ya estamos en pantalla de publicar.")
+
+        # Pantalla de caption: tocar campo y escribir
+        required_steps.append(("campo descripcion", tap_scaled(178, 152, "campo descripcion", pause=2)))
+        required_steps.append(("caption", type_caption(caption)))
+        required_steps.append(("cerrar teclado", close_caption_editor()))
+        time.sleep(3)
+
+        if PUBLISH_MODE == "draft":
+            publish_ok = save_as_draft()
+            required_steps.append(("Guardar borrador", publish_ok))
+        else:
+            # Publicar: boton rojo arriba a la derecha (608,80)
+            publish_ok = tap_scaled(608, 80, "Publicar top", pause=5)
+            for step in range(3):
+                if publish_ok:
+                    break
+                ok = tap_match(NEXT_RE, "Siguiente", timeout=5)
+                if not ok:
+                    ok = tap_scaled(531, 1341, "Siguiente coord", pause=3)
+                if ok:
+                    time.sleep(4)
+                    publish_ok = tap_match(PUBLICAR_RE, "Publicar", timeout=5)
+                    if not publish_ok:
+                        publish_ok = tap_scaled(608, 80, "Publicar top coord", pause=3)
+                else:
+                    break
+            if not publish_ok:
+                logging.info("Publicar no encontrado por UI; coordenada fija.")
+                publish_ok = tap_scaled(608, 80, "Publicar superior", pause=10)
+            if publish_ok:
+                # Esperar a que TikTok suba el video (poll cada 15s)
+                time.sleep(15)
+                upload_deadline = time.time() + POST_SETTLE_SECONDS
+                while time.time() < upload_deadline:
+                    if publish_confirmed():
+                        break
+                    time.sleep(15)
+                else:
+                    publish_ok = publish_confirmed()
+
+            required_steps.append(("Publicar", publish_ok))
+
+        failed = [label for label, ok in required_steps if not ok]
+        if failed:
+            logging.error("Share-intent flow incompleto. Fallaron: %s", ", ".join(failed))
+            record["status"] = "caption_publish_failed"
+            record["finished_at"] = now_str()
+            append_history(record)
+            return 1
+
+    else:
+        # Metodo monkey: navegacion completa por UI
+        try:
+            run_android(["touch", str(video)], timeout=5)
+            logging.info("Touch aplicado a: %s", video.name)
+        except Exception as exc:
+            logging.warning("No se pudo hacer touch al video: %s", exc)
+
+        if not launch_tiktok_home():
+            record["status"] = "launch_home_failed"
+            record["finished_at"] = now_str()
+            append_history(record)
+            return 1
+
+        time.sleep(8)
+        folder_name = video.parent.name
+        if not automate_tiktok_publish_coords(caption, folder_name):
+            record["status"] = "ui_automation_failed"
+            record["finished_at"] = now_str()
+            append_history(record)
+            return 1
 
     move_to_done(video, record)
     return 0
@@ -783,11 +971,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--open-next", action="store_true", help="abre y publica el siguiente video")
     parser.add_argument("--status", action="store_true", help="muestra estado de la cola")
     parser.add_argument("--dry-run", action="store_true", help="no abre TikTok ni cambia archivos")
+    parser.add_argument("--publish-mode", choices=["direct", "draft"], default=os.environ.get("TIKTOK_PUBLISH_MODE", "direct"),
+                        help="direct=publica, draft=guarda borrador")
+    parser.add_argument("--share-method", choices=["intent", "monkey"], default=os.environ.get("TIKTOK_SHARE_METHOD", "intent"),
+                        help="intent=share directo, monkey=navegacion UI")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    global PUBLISH_MODE, SHARE_METHOD
+    PUBLISH_MODE = args.publish_mode
+    SHARE_METHOD = args.share_method
     if args.status:
         return show_status()
     try:

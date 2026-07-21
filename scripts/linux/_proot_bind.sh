@@ -23,3 +23,12 @@ PROOT_BIND_ARGS=()
 if [ -n "$REAL_SDCARD" ] && [ "$REAL_SDCARD" != "/sdcard" ]; then
     PROOT_BIND_ARGS+=(--bind "${REAL_SDCARD}:/sdcard")
 fi
+
+# Bind mount ADB keys desde Termux hacia /root/.android del proot
+# para que adb -s 127.0.0.1:5555 funcione sin re-autorizar.
+TERMUX_HOME="/data/data/com.termux/files/home"
+ADB_KEY_SRC="$TERMUX_HOME/.android"
+ADB_KEY_DST="/root/.android"
+if [ -d "$ADB_KEY_SRC" ]; then
+    PROOT_BIND_ARGS+=(--bind "$ADB_KEY_SRC:$ADB_KEY_DST")
+fi

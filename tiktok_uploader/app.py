@@ -1,3 +1,4 @@
+import os
 import secrets
 import base64
 import hashlib
@@ -13,13 +14,12 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 TOKENS = {}
 
-PROD_CLIENT_KEY = "awhfxd65i4i468x8"
-PROD_CLIENT_SECRET = "QwlYmiutMspEQF266RnFoYFOtB6JaLAB"
-SANDBOX_CLIENT_KEY = "sbawgooshw60ceibf2"
-SANDBOX_CLIENT_SECRET = "cabF93Nh2eIgiafuqXzOsqZiZSEXwS55"
+USE_PRODUCTION = os.environ.get("TIKTOK_USE_PRODUCTION", "").lower() in ("1", "true", "yes")
 
 
 def _creds():
+    if USE_PRODUCTION:
+        return PROD_CLIENT_KEY, PROD_CLIENT_SECRET
     return SANDBOX_CLIENT_KEY, SANDBOX_CLIENT_SECRET
 
 

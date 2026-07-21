@@ -1,53 +1,61 @@
-# TikTok Uploader — Key Decisions
+# TikTok Uploader — Decisiones Clave
 
-## 2026-05-26: OAuth login via 302 redirect instead of JS redirect
-- Context: Cloudflare proxy was corrupting JavaScript-based redirects in the tunnel.
-- Decision: Use Flask `redirect()` (HTTP 302) for `/login` endpoint instead of client-side JS redirect.
-- Consequence: Cleaner OAuth flow, no Cloudflare corruption.
+## 2026-07-20: Share Intent como método principal (sobre monkey)
+- **Contexto**: El método monkey requería navegar Crear → Cargar → Recientes → carpeta → video. Era frágil y lento. El share intent abre TikTok directamente en el editor.
+- **Decisión**: `TIKTOK_SHARE_METHOD=intent` como default. `monkey` como fallback.
+- **Consecuencia**: Flujo más rápido (menos taps), más robusto (menos puntos de fallo), pero requiere content:// URI de MediaStore.
 
-## 2026-05-26: localhost.run over trapdoor.sh as primary tunnel
-- Context: trapdoor.sh was returning persistent 429 (rate limit) and 502 (bad gateway) errors.
-- Decision: Fall back to localhost.run (SSH reverse tunnel) which is free and reliable.
-- Consequence: Each tunnel restart generates a new random `.lhr.life` subdomain, requiring redirect URI updates in TikTok portal.
+## 2026-07-20: Content URI desde MediaStore en vez de file://
+- **Contexto**: Android 10+ bloquea `file://` URIs en intents. Se requiere `content://` para compartir por `ACTION_SEND`.
+- **Decisión**: Consultar `content://media/external/video/media` con `_data` y `_id`, construir URIs del caché local.
+- **Consecuencia**: El share intent funciona en Android 10+ con permisos de almacenamiento. Cache de URIs evita consultas repetidas.
 
-## 2026-06-18: Note9 (SM-X210) como host 24/7 con ngrok + tmux
-- Context: localhost.run cambia URL cada reinicio; inestable para revisión de TikTok que requiere URL fija. PC no está siempre encendido.
-- Decision: Migrar Flask + ngrok al Note9 (arm64) que está encendido 24/7. ngrok con authtoken da URL persistente (`gravy-diaper-refrain.ngrok-free.dev`). tmux en Termux mantiene procesos vivos entre sesiones SSH.
-- Consequence: URL fija para Redirect URI. PC ya no necesita procesos en segundo plano. Note9 se auto-arranca con Termux:Boot.
+## 2026-07-20: Botón Publicar arriba a la derecha (608,80) en vez de buscar por UI
+- **Contexto**: TikTok tiene múltiples botones "Publicar" (arriba, abajo, en el editor). Buscar por UI era inconsistente.
+- **Decisión**: Coordenada fija `(608, 80)` en base 720x1480. Primero intenta detección por UI, si falla usa coordenada.
+- **Consecuencia**: Publica consistentemente. El botón está siempre en la misma posición en la pantalla de descripción.
 
-## 2026-05-26: Dynamic redirect URI from request headers
-- Context: Tunnel URL changes every restart; hardcoding `REDIRECT_URI` in config.py required manual updates.
-- Decision: Use `ProxyFix` middleware and resolve `redirect_uri` dynamically from `X-Forwarded-Proto` and `X-Forwarded-Host` headers at request time.
-- Consequence: App works with any tunnel URL without config changes. Portal Redirect URI still needs manual sync.
+## 2026-07-20: No cerrar teclado (`close_caption_editor` es no-op)
+- **Contexto**: En versiones anteriores se cerraba el teclado tocando el fondo de pantalla. Esto a veces movía el foco y rompía la secuencia.
+- **Decisión**: `close_caption_editor()` retorna `True` inmediatamente sin hacer nada.
+- **Consecuencia**: El teclado puede quedar abierto pero no interfiere con el botón Publicar (está arriba a la derecha, fuera del área del teclado). Menos taps = menos riesgo.
 
-## 2026-05-26: Flask debug=False, use_reloader=False
-- Context: The reloader was creating duplicate processes that crashed the tunnel.
-- Decision: Explicitly disable debug mode and reloader in production.
-- Consequence: No hot-reload during development, but stable tunnel connections.
+## 2026-07-20: ADB local (127.0.0.1:5555) como backend de UI
+- **Contexto**: `input tap` desde Termux/Proot falla con `INJECT_EVENTS`. No hay permiso para inyectar eventos táctiles desde el contexto de Termux.
+- **Decisión**: Usar ADB local (`adb -s 127.0.0.1:5555 shell input tap`) que sí tiene privilegios shell.
+- **Consecuencia**: Requiere `android-tools` en Termux y `adb tcpip 5555` después de cada reinicio. Pero funciona de forma 100% local sin WiFi.
 
-## 2026-05-26: Website on GitHub Pages, app behind tunnel
-- Context: TikTok requires a public website with legal pages and login entry point.
-- Decision: Host static site (index, privacy, terms, data-deletion) on GitHub Pages at `zerausn.github.io/agentes/`. Flask app runs behind SSH tunnel with dynamic URL.
-- Consequence: Two separate domains — website is static on GitHub, app is on tunnel. Reviewers need to follow the login link to the tunnel.
+## 2026-07-20: Coordenadas base 720x1480 con escalado dinámico
+- **Contexto**: Note9 tiene resolución nativa 1440x2960, pero se usa override display 720x1480 para que los taps sean más precisos (los elementos UI son más grandes).
+- **Decisión**: `COORD_BASE_W=720`, `COORD_BASE_H=1480`. `tap_scaled()` escala proporcionalmente a la resolución real.
+- **Consecuencia**: Las coordenadas funcionan en Note9 con override. Si se cambia la resolución, el escalado ajusta automáticamente.
 
-## 2026-05-26: terms.html converted to directory for TikTok URL prefix verification
-- Context: TikTok verification requires a file at `https://zerausn.github.io/agentes/terms.html/tiktok...txt`.
-- Decision: Convert `terms.html` from a file to a directory (`terms.html/index.html`) with the verification file inside.
-- Consequence: Terms URL is `https://zerausn.github.io/agentes/terms.html/` (with trailing slash).
+## 2026-07-20: Widget Termux en vez de cron o systemd
+- **Contexto**: En Termux no hay systemd ni cron confiable (Android mata procesos). El widget Termux con loop bash es la forma más estable de mantener un proceso perpetuo.
+- **Decisión**: `vigia_tiktok720_termux.sh` como script bash con loop infinito y wake-lock. Llamado desde el widget `6_SUBIR_TIKTOK720.sh`.
+- **Consecuencia**: El proceso vive mientras Termux Widget lo tenga. wake-lock evita Doze. Intervalo de 720s (12 min) alineado con YouTube/Facebook.
 
-## 2026-05-26: App icon on all website pages
-- Context: TikTok review requires the app icon visible on browser tab (favicon) and header of all pages (Privacy, Terms, Data Deletion).
-- Decision: Add `<link rel="icon">`, `<link rel="apple-touch-icon">`, and `<header class="app-header">` with app icon image to every HTML page.
-- Consequence: All legal pages display the Uploaderbot brand consistently.
+## 2026-07-20: Sin verificación real de publicación (confianza en UI)
+- **Contexto**: No hay API para verificar si un video efectivamente se publicó. Solo se puede observar la UI.
+- **Decisión**: `publish_confirmed()` asume éxito si: (1) dump_ui vacío (animación), (2) botón Publicar desapareció, (3) no estamos en pantalla de Borradores.
+- **Consecuencia**: Posibles falsos positivos si la UI cambia. Pero es el mejor método disponible sin API.
 
-## 2026-05-26: Config.py refactored with PUBLIC_BASE_URL and env vars
-- Context: Config had hardcoded values, making it inflexible for different tunnel URLs.
-- Decision: Extract `PUBLIC_BASE_URL`, `REDIRECT_URI`, `PORT`, `DEBUG`, `SECRET_KEY` into environment variables with sensible defaults. Use a helper `_env_list()` for scopes.
-- Consequence: Deployment config is now environment-driven; code works across environments without edits.
+## 2026-05-26: OAuth login via 302 redirect en vez de JS redirect
+- **Contexto**: Cloudflare proxy corruptía redirects JavaScript.
+- **Decisión**: Usar Flask `redirect()` (HTTP 302) para `/login`.
+- **Consecuencia**: Flujo OAuth limpio, sin corrupción de Cloudflare.
 
-## 2026-06-18: Termux Widget — SELinux context entre usuarios Android
-- Context: `Iniciar_TikTok.sh` creado via SSH/scp (`u0_a289`) no aparecía en el Termux Widget. El widget (ejecutándose como `u0_a291`) lo ignoraba silenciosamente.
-- Causa raíz: Android aisla apps por UID. El widget corre como `u0_a291` (UID de `com.termux`), pero el archivo fue creado por `u0_a289` (UID del usuario SSH). Aunque los permisos Unix (`chmod 755`) permitían lectura, el contexto SELinux del archivo (`u0_a289`) impedía que `u0_a291` lo viera. El widget no muestra error — simplemente omite los archivos que no puede leer.
-- Decisión: Usar `adb shell run-as com.termux cp` para crear/copiar shortcuts. `cp` desde `run-as` preserva el contexto SELinux correcto del usuario `u0_a291`, haciendo el archivo visible para el widget.
-- Forma correcta documentada en HANDOVER.md
-- Consecuencia: Los shortcuts siempre deben crearse desde `run-as com.termux`, no desde SSH. Alternativamente, existe otro directorio (`/data/data/com.termux/.shortcuts/`) que el widget también lee, pero es menos conocido y no siempre accesible.
+## 2026-06-18: Note9 como host 24/7 con ngrok + tmux
+- **Contexto**: localhost.run cambia URL cada reinicio. PC no está siempre encendido.
+- **Decisión**: Migrar Flask + ngrok al Note9 (arm64) que está encendido 24/7.
+- **Consecuencia**: URL fija para Redirect URI. PC ya no necesita procesos en segundo plano.
+
+## 2026-06-18: Termux Widget — SELinux context
+- **Contexto**: Scripts creados via SSH no aparecían en el widget por contexto SELinux incorrecto.
+- **Decisión**: Usar `adb shell run-as com.termux cp` para crear shortcuts. El widget corre como `u0_a291`, los archivos deben tener ese contexto.
+- **Consecuencia**: Los shortcuts siempre deben crearse desde `run-as com.termux`, no desde SSH.
+
+## 2026-06-18: _proot_bind.sh para montar /sdcard y ADB keys
+- **Contexto**: El proot Debian no tiene acceso a `/sdcard` (bind mount manual) ni a las claves ADB de Termux.
+- **Decisión**: Script `_proot_bind.sh` que detecta la ruta real del almacenamiento externo y bind-mounta `/sdcard` y `~/.android` dentro del proot.
+- **Consecuencia**: El evacuador Python dentro del proot puede acceder a archivos en `/sdcard` y conectar ADB local sin re-autorizar.

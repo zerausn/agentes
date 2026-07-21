@@ -130,6 +130,7 @@ while true; do
          AGENTES_STORAGE_ROOT=/sdcard/Antigravity \
          TIKTOK_UI_BACKEND=adb \
          TIKTOK_ADB_SERIAL='${ADB_SERIAL}' \
+         TIKTOK_PUBLISH_MODE='${TIKTOK_PUBLISH_MODE:-direct}' \
          python3 tiktok_evacuador_720.py --open-next 2>&1 | tee -a '${LOG_FILE}'"
     EXIT_CODE=$?
 
