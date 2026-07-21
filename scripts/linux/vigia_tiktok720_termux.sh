@@ -1,13 +1,12 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # ================================================================
-# 6_SUBIR_TIKTOK720 — Evacuador TikTok por app (sin API aprobada)
+# 6_SUBIR_TIKTOK720 — Evacuador TikTok por app (sin API)
 #
-# Sube/abre 1 video cada 720 segundos desde:
+# Sube 1 video cada 720s desde:
 #   /sdcard/Antigravity/subidos a facebbok
 #
-# Metodo: comparte el video hacia la app TikTok y automatiza la UI
-# con adb local + input tap. Al terminar la secuencia, mueve el archivo
-# a /sdcard/Antigravity/subidos a tiktok.
+# Corre Python directo desde Termux (sin proot-distro).
+# Usa ADB local (127.0.0.1:5555) para UI automation.
 # ================================================================
 
 export PATH="/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin"
@@ -16,11 +15,8 @@ export HOME="/data/data/com.termux/files/home"
 export TMPDIR="$PREFIX/tmp"
 
 TERMUX_HOME="/data/data/com.termux/files/home"
-PROOT="/data/data/com.termux/files/usr/bin/proot-distro"
-PR_ROOT="/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/debian"
 ENV_FILE="$TERMUX_HOME/.agentes_termux_env"
-EVACUADOR_PROOT="$PR_ROOT/root/agentes/tiktok_uploader/tiktok_evacuador_720.py"
-LOG_FILE="$PR_ROOT/root/agentes/tiktok_uploader/tiktok_evacuador.log"
+EVACUADOR="$TERMUX_HOME/agentes/tiktok_uploader/tiktok_evacuador_720.py"
 LOG_DIR="/sdcard/Antigravity/widget_logs"
 SESSION_LOG="$LOG_DIR/6_SUBIR_TIKTOK720.log"
 SOURCE_DIR="/sdcard/Antigravity/subidos a facebbok"
@@ -56,23 +52,28 @@ count_pending() {
     find "$SOURCE_DIR" -maxdepth 1 -type f \( -iname '*.mp4' -o -iname '*.mov' -o -iname '*.mkv' \) 2>/dev/null | wc -l
 }
 
-ensure_local_adb() {
-    mkdir -p "$TMPDIR"
-
+ensure_adb_local() {
     if ! command -v adb >/dev/null 2>&1; then
         echo "[ERROR] Falta android-tools en Termux. Instala: pkg install android-tools"
         return 1
     fi
-
-    adb connect "$ADB_SERIAL" >/dev/null 2>&1 || true
-
-    if adb devices | awk -v serial="$ADB_SERIAL" '$1 == serial && $2 == "device" {found=1} END {exit(found ? 0 : 1)}'; then
-        echo "[ADB] Local autorizado: $ADB_SERIAL"
+    adb connect 127.0.0.1:5555 >/dev/null 2>&1 || true
+    if adb devices | awk '$1 == "127.0.0.1:5555" && $2 == "device" {found=1} END {exit(found ? 0 : 1)}'; then
+        echo "[ADB] Local OK: 127.0.0.1:5555"
         return 0
     fi
-
-    echo "[ERROR] ADB local no autorizado: $ADB_SERIAL"
-    echo "        Activa 'adb tcpip 5555' y acepta la huella RSA en el Note9."
+    echo "[ADB] Reconectando..."
+    adb kill-server >/dev/null 2>&1 || true
+    sleep 1
+    adb start-server >/dev/null 2>&1 || true
+    sleep 2
+    adb connect 127.0.0.1:5555 2>&1
+    sleep 1
+    if adb devices | awk '$1 == "127.0.0.1:5555" && $2 == "device" {found=1} END {exit(found ? 0 : 1)}'; then
+        echo "[ADB] Local OK tras reconexion."
+        return 0
+    fi
+    echo "[ERROR] ADB local no disponible. Revisa 'adb tcpip 5555' en Note9."
     return 1
 }
 
@@ -81,9 +82,10 @@ exec > >(tee -a "$SESSION_LOG") 2>&1
 
 echo ""
 echo "=============================================="
-echo "  6_SUBIR_TIKTOK720 — TikTok por app"
+echo "  6_SUBIR_TIKTOK720 — TikTok por app (Termux directo)"
 echo "  Intervalo: ${INTERVALO}s | Check: ${CHECK_INTERVAL}s"
 echo "  Fuente: ${SOURCE_DIR}"
+echo "  ADB: local 127.0.0.1:5555"
 echo "  Inicio: $(date '+%Y-%m-%d %H:%M:%S')"
 echo "=============================================="
 
@@ -96,23 +98,19 @@ fi
 
 trap 'printf "\n"; echo "[SALIDA] $(date "+%H:%M:%S") — liberando wake-lock"; termux-wake-unlock 2>/dev/null || true; exit' INT TERM EXIT
 
-if [ ! -x "$PROOT" ]; then
-    echo "[ERROR] proot-distro no encontrado: $PROOT"
-    exit 1
-fi
-
-if [ ! -f "$EVACUADOR_PROOT" ]; then
+if [ ! -f "$EVACUADOR" ]; then
     echo "[ERROR] No existe tiktok_evacuador_720.py"
-    echo "        Ruta: $EVACUADOR_PROOT"
+    echo "        Ruta: $EVACUADOR"
+    echo "        Copialo desde /sdcard:"
+    echo "        cp /sdcard/Antigravity/agentes/... \$TERMUX_HOME/agentes/tiktok_uploader/"
     exit 1
 fi
 
 [ -f "$ENV_FILE" ] && . "$ENV_FILE"
-touch "$LOG_FILE" 2>/dev/null || true
 
-source "$(dirname "$0")/_proot_bind.sh"
+ensure_adb_local || exit 1
 
-ensure_local_adb || exit 1
+echo "[MODO] Sin proot-distro. Python directo desde Termux + ADB local."
 
 CICLO=0
 
@@ -125,13 +123,8 @@ while true; do
     echo "  CICLO #${CICLO} — $(date '+%Y-%m-%d %H:%M:%S')"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-    "$PROOT" login debian "${PROOT_BIND_ARGS[@]}" -- /bin/bash -lc \
-        "set -o pipefail; cd /root/agentes/tiktok_uploader && \
-         AGENTES_STORAGE_ROOT=/sdcard/Antigravity \
-         TIKTOK_UI_BACKEND=adb \
-         TIKTOK_ADB_SERIAL='${ADB_SERIAL}' \
-         TIKTOK_PUBLISH_MODE='${TIKTOK_PUBLISH_MODE:-direct}' \
-         python3 tiktok_evacuador_720.py --open-next 2>&1 | tee -a '${LOG_FILE}'"
+    "$PREFIX/bin/python3" "$EVACUADOR" \
+        --open-next 2>&1 | tee -a "$LOG_DIR/tiktok_evacuador.log"
     EXIT_CODE=$?
 
     T_FIN=$(date +%s)
