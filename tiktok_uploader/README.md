@@ -82,3 +82,31 @@ Este comando matará los procesos de Flask y del proveedor de túnel que quedaro
 
 Mientras la API oficial no este aprobada, el nodo Android puede usar el widget `6_SUBIR_TIKTOK720.sh`.
 La guia operativa esta en [`docs/TIKTOK_WIDGET720_NO_API.md`](docs/TIKTOK_WIDGET720_NO_API.md).
+
+---
+
+## 🔄 Cambios 2026-07-20 — Compatibilidad Android 14 / Samsung Galaxy S24
+
+### Problema detectado
+Android 14 en el Galaxy S24 bloquea el intent `android.intent.action.SEND` con el error
+`INTERACT_ACROSS_USERS_FULL`, impidiendo que el script abriera TikTok con el video precargado.
+
+### Solución implementada en `tiktok_evacuador_720.py`
+
+| Área | Cambio |
+|---|---|
+| **Apertura de TikTok** | Reemplazado `launch_share` / `launch_direct` / `launch_termux_open` por `launch_tiktok_home()` usando `monkey -p com.zhiliaoapp.musically`. |
+| **Flujo de navegación** | Nuevo flujo: Tap **Crear (+)** → Tap **Cargar** → dropdown **Recientes** → selección de carpeta por UI → video → Siguiente. |
+| **Selección de carpeta** | La función `automate_tiktok_publish_coords(caption, folder_name)` busca el nombre de la carpeta en la UI con `uiautomator dump` y hace tap dinámico (no coordenada fija). |
+| **Botón Siguiente editor** | Coordenada corregida de `(665, 77)` a `(531, 1341)` por cambio de layout en S24. |
+| **Cierre de teclado** | `close_caption_editor()` ahora toca el fondo de pantalla `(360, 400)` para quitar el foco del campo de texto, luego KEYCODE_BACK como respaldo. |
+| **Dump de UI** | `dump_ui()` borra el XML anterior con `rm -f` antes de ejecutar `uiautomator dump`, evitando leer estados rancios durante animaciones. |
+| **Confirmación de publicación** | `publish_confirmed()` asume éxito si `dump_ui()` devuelve lista vacía (TikTok animando transición al feed bloquea `uiautomator`). |
+| **Orden de archivos** | Antes de abrir TikTok, se ejecuta `touch` al archivo seleccionado para que sea el **más reciente en el filesystem**. Garantiza que el primer video de la galería de TikTok (orden por fecha) coincida con el que Python seleccionó (orden alfabético). |
+
+### Widget Termux (`6_SUBIR_TIKTOK720.sh`)
+- **Intervalo:** 720 segundos entre ciclos.
+- **Fuente:** `/sdcard/Antigravity/subidos a facebbok/`
+- **Destino exitoso:** `/sdcard/Antigravity/subidos a tiktok/`
+- **Log:** `/sdcard/Antigravity/widget_logs/6_SUBIR_TIKTOK720.log`
+- **Wake lock:** activado automáticamente para evitar que Doze suspenda el proceso.

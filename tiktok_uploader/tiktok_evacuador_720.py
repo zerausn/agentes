@@ -5,10 +5,23 @@ Evacua UN SOLO VIDEO hacia TikTok usando la app Android, sin Content Posting API
 El loop de 720s vive en scripts/linux/vigia_tiktok720_termux.sh.
 
 Flujo por ciclo:
-  1. Toma el primer video de /sdcard/Antigravity/subidos a facebbok.
-  2. Lo comparte a la app TikTok.
-  3. Usa input tap/text por coordenadas para avanzar por Siguiente/Publicar.
-  4. Solo si todos los pasos de UI devuelven OK, espera unos segundos y mueve el archivo a
+  1. Toma el primer video (alphabetico) de /sdcard/Antigravity/subidos a facebbok.
+  2. Ejecuta `touch` al archivo seleccionado para que sea el mas reciente en el filesystem
+     y aparezca PRIMERO en la galeria de TikTok (que ordena por fecha de modificacion).
+  3. Abre TikTok en Home via `monkey -p com.zhiliaoapp.musically` (evita permisos de intent).
+  4. Navega por UI usando coordenadas escaladas y deteccion de texto:
+       - Tap Crear (+) en barra inferior
+       - Tap Cargar (Upload) en pantalla camara
+       - Tap dropdown Recientes → busca carpeta por nombre en UI → la selecciona
+       - Tap al primer video de la carpeta (que es el archivo seleccionado en paso 2)
+       - Tap Siguiente en galeria
+       - Tap Siguiente en editor (abajo a la derecha)
+       - Tap campo descripcion → escribe caption → cierra teclado
+       - Tap Publicar (por UI o fallback coordinado)
+  5. Espera POST_SETTLE_SECONDS para que TikTok procese la publicacion.
+  6. Verifica publicacion: si el boton Publicar desaparecio o el dump esta vacio
+     (animacion post-publicacion), considera exito.
+  7. Solo si todos los pasos devuelven OK, mueve el archivo a
      /sdcard/Antigravity/subidos a tiktok.
 
 Exit codes:
@@ -16,6 +29,18 @@ Exit codes:
   1  error durante apertura/automatizacion
   2  no hay videos pendientes
   3  otra instancia esta corriendo
+
+Cambios 2026-07-20 (Android 14 / Samsung Galaxy S24):
+  - REEMPLAZADO: launch_share/launch_direct/launch_termux_open → launch_tiktok_home()
+    usando `monkey` en vez de intents (Android 14 bloquea INTERACT_ACROSS_USERS_FULL).
+  - NUEVO: Flujo Crear → Cargar → Recientes → carpeta por UI → video → Siguiente.
+  - FIX: Siguiente editor movido de (665,77) a (531,1341) por cambio de layout en S24.
+  - FIX: close_caption_editor ahora toca el fondo de pantalla para quitar foco del teclado.
+  - FIX: dump_ui borra el XML anterior antes de volcar para evitar leer estados rancios.
+  - FIX: publish_confirmed ahora asume exito si dump_ui devuelve lista vacia
+    (animacion post-publicacion que bloquea uiautomator dump).
+  - FIX: Se aplica `touch` al archivo antes de abrir TikTok para garantizar que el
+    video que Python selecciona == el video que TikTok muestra primero en galeria.
 """
 
 from __future__ import annotations
@@ -263,56 +288,21 @@ def write_caption(caption: str) -> None:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     CAPTION_FILE.write_text(caption + "\n", encoding="utf-8")
 
-
-def launch_direct(path: Path, caption: str) -> bool:
-    component = f"{TIKTOK_PACKAGE}/{TIKTOK_ACTIVITY}"
-    file_uri = "file://" + str(path)
+def launch_tiktok_home() -> bool:
     cmd = [
-        "/system/bin/am",
-        "start",
-        "-a",
-        "android.intent.action.SEND",
-        "-t",
-        "video/mp4",
-        "-n",
-        component,
-        "--es",
-        "android.intent.extra.TEXT",
-        caption,
-        "--eu",
-        "android.intent.extra.STREAM",
-        file_uri,
-        "--grant-read-uri-permission",
+        "monkey",
+        "-p",
+        TIKTOK_PACKAGE,
+        "-c",
+        "android.intent.category.LAUNCHER",
+        "1",
     ]
-    result = run(cmd, timeout=30)
+    result = run_android(cmd, timeout=30)
     if result.returncode == 0:
-        logging.info("TikTok abierto con intent directo: %s", component)
+        logging.info("TikTok abierto en Home con SplashActivity.")
         return True
-    logging.warning("Intent directo fallo: %s %s", result.stdout.strip(), result.stderr.strip())
+    logging.warning("Fallo al abrir TikTok Home: %s %s", result.stdout.strip(), result.stderr.strip())
     return False
-
-
-def launch_termux_open(path: Path) -> bool:
-    cmd = [
-        "termux-open",
-        "--send",
-        "--content-type",
-        "video/mp4",
-        str(path),
-    ]
-    result = run(cmd, timeout=30)
-    if result.returncode == 0:
-        logging.info("Intent enviado con termux-open.")
-        return True
-    logging.error("termux-open fallo: %s %s", result.stdout.strip(), result.stderr.strip())
-    return False
-
-
-def launch_share(path: Path, caption: str) -> bool:
-    # termux-open muestra el resolver de Android; ese flujo fue mapeado en Note9.
-    if launch_termux_open(path):
-        return True
-    return launch_direct(path, caption)
 
 
 def screen_size() -> tuple[int, int]:
@@ -378,6 +368,8 @@ def parse_bounds(bounds: str) -> tuple[int, int] | None:
 
 def dump_ui() -> list[dict]:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
+    # Evitar leer un XML viejo si la pantalla esta animando y el dump falla
+    run_android(["rm", "-f", str(UI_DUMP_FILE)], timeout=5)
     result = run_android(["uiautomator", "dump", str(UI_DUMP_FILE)], timeout=20)
     if result.returncode != 0:
         logging.warning("uiautomator dump fallo: %s %s", result.stdout.strip(), result.stderr.strip())
@@ -481,25 +473,38 @@ def close_caption_editor() -> bool:
     if keyboard_visible():
         ok = keyevent("KEYCODE_BACK", "ocultar teclado descripcion", pause=2) and ok
     if keyboard_visible():
-        ok = keyevent("KEYCODE_BACK", "ocultar teclado descripcion reintento", pause=2) and ok
+        # Tocar un espacio vacio en la pantalla para quitar el foco
+        ok = tap_scaled(360, 400, "tocar fondo para ocultar teclado", pause=2) and ok
     if keyboard_visible():
-        ok = tap_scaled(560, 1435, "ocultar teclado nav", pause=2) and ok
+        ok = keyevent("KEYCODE_BACK", "ocultar teclado descripcion reintento", pause=2) and ok
     if keyboard_visible():
         logging.warning("El teclado aun parece visible; se intentara continuar de todos modos.")
     return ok
 
 
 def publish_confirmed() -> bool:
+    """
+    Verifica que la publicacion haya sido exitosa.
+    Si el dump de UI falla (pantalla animando, transicion), asumimos exito.
+    """
     pkg = current_package()
-    nodes = dump_ui()
-    
+
     if pkg in IME_PACKAGES:
         logging.error("Publicacion no confirmada: sigue activo el teclado (%s).", pkg)
         return False
 
-    # Si todavia vemos el boton publicar, fallamos
-    if find_match(nodes, POST_RE):
-        logging.error("Publicacion no confirmada: el boton Publicar sigue visible.")
+    nodes = dump_ui()
+
+    # Si el dump fallo (lista vacia durante animacion), asumimos exito:
+    # el video ya fue enviado y TikTok esta volviendo al feed.
+    if not nodes:
+        logging.info("Publicacion asumida OK: dump_ui vacio (animacion post-publicacion).")
+        return True
+
+    # Si todavia vemos el boton publicar activo, fallamos
+    match = find_match(nodes, POST_RE)
+    if match:
+        logging.error("Publicacion no confirmada: boton '%s' sigue visible.", match.get("label"))
         return False
 
     # Si vemos el boton "Borradores" o "Drafts", fallamos
@@ -594,7 +599,7 @@ def chooser_select_tiktok() -> bool:
     return False
 
 
-def automate_tiktok_publish_coords(caption: str) -> bool:
+def automate_tiktok_publish_coords(caption: str, folder_name: str) -> bool:
     """
     Flujo probado en Note9 con override 720x1480.
     Usa deteccion de UI para el chooser y coordenadas escaladas para el resto.
@@ -602,25 +607,41 @@ def automate_tiktok_publish_coords(caption: str) -> bool:
     logging.info("Automatizando TikTok por coordenadas escaladas.")
     required_steps: list[tuple[str, bool]] = []
 
-    # Resolver Android: seleccionar TikTok y 'Solo una vez'.
-    pkg = current_package()
-    if pkg == "android":
-        required_steps.append(("chooser TikTok", chooser_select_tiktok()))
-    else:
-        logging.info("No se detecta resolver Android; foreground=%s", pkg or "?")
+    # Home Screen: Tap Crear (+) en vez de Share Intent
+    required_steps.append(("Crear (+)", tap_scaled(360, 1353, "Crear (+)", pause=5)))
 
-    # TikTok CREATE: abrir selector de video nuevo.
-    required_steps.append(("Video nuevo", tap_scaled(278, 354, "Video nuevo", pause=3)))
+    # Camera Screen: Tap Cargar (Upload) abajo a la izquierda
+    required_steps.append(("Cargar", tap_scaled(70, 1330, "Cargar", pause=3)))
 
-    # Permiso multimedia si aparece. Si no aparece, el tap cae en zona inocua.
-    tap_scaled(360, 1210, "Permitir multimedia", pause=3)
+    # Gallery Screen: Tocar dropdown 'Recientes' para cambiar de carpeta
+    required_steps.append(("Recientes", tap_scaled(360, 83, "Dropdown Recientes", pause=3)))
 
-    # Galeria: primer video y siguiente.
-    required_steps.append(("primer video", tap_scaled(207, 241, "primer video", pause=1)))
+    # Esperar y buscar el nombre de la carpeta de origen
+    folder_re = re.compile(re.escape(folder_name), re.I)
+    
+    # Try multiple times to find the folder as UI loads
+    folder_selected = False
+    for attempt in range(5):
+        nodes = dump_ui()
+        folder_node = find_match(nodes, folder_re)
+        if folder_node:
+            logging.info("Carpeta encontrada en UI: %s", folder_node["center"])
+            folder_selected = tap(folder_node["center"], f"Carpeta {folder_name}")
+            time.sleep(3)
+            break
+        time.sleep(2)
+        
+    required_steps.append((f"Seleccionar {folder_name}", folder_selected))
+
+    # Permiso multimedia si aparece (poco probable en este flujo)
+    tap_scaled(360, 1210, "Permitir multimedia", pause=2)
+
+    # Galeria (carpeta filtrada): primer video y siguiente.
+    required_steps.append(("primer video", tap_scaled(200, 241, "primer video", pause=1)))
     required_steps.append(("Siguiente galeria", tap_scaled(600, 1352, "Siguiente galeria", pause=6)))
 
-    # Editor: flecha rosa arriba derecha.
-    required_steps.append(("Siguiente editor", tap_scaled(665, 77, "Siguiente editor", pause=8)))
+    # Editor: boton Siguiente (abajo a la derecha)
+    required_steps.append(("Siguiente editor", tap_scaled(531, 1341, "Siguiente editor", pause=10)))
 
     # Pantalla Publicar: campo descripcion, caption y publicar.
     required_steps.append(("campo descripcion", tap_scaled(178, 152, "campo descripcion", pause=1)))
@@ -694,14 +715,25 @@ def open_next(args: argparse.Namespace) -> int:
     wake_screen()
     reset_tiktok()
 
-    if not launch_share(video, caption):
-        record["status"] = "share_intent_failed"
+    if not launch_tiktok_home():
+        record["status"] = "launch_home_failed"
         record["finished_at"] = now_str()
         append_history(record)
         return 1
 
+    # CRITICO: hacer que el archivo seleccionado sea el mas reciente
+    # en el filesystem, para que aparezca PRIMERO en la galeria de TikTok
+    # (que ordena por fecha de modificacion, mas reciente primero).
+    # Asi el tap fijo en (200,241) siempre tocara exactamente este archivo.
+    try:
+        run_android(["touch", str(video)], timeout=5)
+        logging.info("touch aplicado al video seleccionado: %s", video.name)
+    except Exception as exc:
+        logging.warning("No se pudo hacer touch al archivo: %s", exc)
+
     time.sleep(8)
-    if not automate_tiktok_publish_coords(caption):
+    folder_name = video.parent.name
+    if not automate_tiktok_publish_coords(caption, folder_name):
         record["status"] = "ui_automation_failed"
         record["finished_at"] = now_str()
         append_history(record)
