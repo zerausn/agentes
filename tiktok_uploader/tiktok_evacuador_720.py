@@ -47,7 +47,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import fcntl
 import json
 import logging
 import os
@@ -166,17 +165,23 @@ def shell_text_arg(text: str) -> str:
 @contextlib.contextmanager
 def process_lock():
     STATE_DIR.mkdir(parents=True, exist_ok=True)
-    with LOCK_FILE.open("w", encoding="utf-8") as fh:
+    lock_path = str(LOCK_FILE)
+
+    try:
+        fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        raise RuntimeError("Otra instancia de TikTok evacuador esta corriendo")
+
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(f"{os.getpid()} {now_str()}\n")
+            fh.flush()
+        yield
+    finally:
         try:
-            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise RuntimeError("Otra instancia de TikTok evacuador esta corriendo")
-        fh.write(f"{os.getpid()} {now_str()}\n")
-        fh.flush()
-        try:
-            yield
-        finally:
-            fcntl.flock(fh, fcntl.LOCK_UN)
+            os.unlink(lock_path)
+        except OSError:
+            pass
 
 
 def load_state() -> dict:
