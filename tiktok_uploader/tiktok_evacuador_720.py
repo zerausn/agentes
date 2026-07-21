@@ -148,7 +148,7 @@ def run(cmd: list[str], timeout: int = 30) -> subprocess.CompletedProcess:
 def run_android(cmd: list[str], timeout: int = 30) -> subprocess.CompletedProcess:
     if UI_BACKEND == "adb":
         shell_cmd = " ".join(shlex.quote(arg) for arg in cmd)
-        return run(["adb", "-s", ADB_SERIAL, "shell", shell_cmd], timeout=timeout)
+        return run(["adb", "-s", ADB_SERIAL, "shell", "exec " + shell_cmd], timeout=timeout)
     return run(cmd, timeout=timeout)
 
 
