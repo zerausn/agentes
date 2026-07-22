@@ -110,3 +110,20 @@ Android 14 en el Galaxy S24 bloquea el intent `android.intent.action.SEND` con e
 - **Destino exitoso:** `/sdcard/Antigravity/subidos a tiktok/`
 - **Log:** `/sdcard/Antigravity/widget_logs/6_SUBIR_TIKTOK720.log`
 - **Wake lock:** activado automáticamente para evitar que Doze suspenda el proceso.
+
+---
+
+## 🔒 2026-07-21 — Fixes y Bloqueo de Versión para Note9 (Android 10)
+
+> [!WARNING]
+> **ESTE CÓDIGO ESTÁ OPTIMIZADO Y CONFIRMADO COMO FUNCIONAL EN EL NOTE9 (SM-N9600, Android 10).**
+> Anteriormente, intentos de hacer que el código funcionara en el S24 (Android 14) introdujeron bugs y comportamientos inestables. **Bajo ninguna circunstancia se debe contaminar o modificar este código funcional del Note9** para intentar solucionar problemas en el S24, a menos que el usuario lo solicite de manera explícita. El código actual debe mantenerse así.
+
+### Bugs Críticos Resueltos en Note9:
+
+| Área | Solución Implementada |
+|---|---|
+| **Caché Rancio UI** | **Bug Crítico**: `dump_ui()` reutilizaba el XML anterior si `_uiautomator_available` era True. Esto hacía que Python viera una captura "congelada" del pasado y no la pantalla actual. **Fix**: Se borra `tiktok_ui.xml` con `rm -f` obligatoriamente en cada llamada. |
+| **Share Intent** | Vuelto al método `TIKTOK_SHARE_METHOD=intent` como el predeterminado para el Note9 (más estable que `monkey`). `vigia_tiktok720_termux.sh` ahora declara explícitamente `AGENTES_STORAGE_ROOT`, `TIKTOK_SHARE_METHOD=intent`, y `TIKTOK_PUBLISH_MODE=direct`. |
+| **Detección Editor** | El flujo intent ahora intenta hacer tap en "Siguiente" hasta 2 veces usando detección de UI y fallback por coordenadas, ya que hay versiones de TikTok con 1 o 2 pantallas de editor. |
+| **Verificación Publicar** | El script ahora detecta el botón Publicar usando UI y usa la coordenada `(608, 80)` solo como fallback. La variable `publish_ok` ahora refleja estrictamente el resultado de la función `publish_confirmed()`, en lugar de asumir éxito ciegamente. |

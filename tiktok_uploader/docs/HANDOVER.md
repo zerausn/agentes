@@ -1,9 +1,13 @@
 # TikTok Uploader — Handover
 
-## Estado Actual (2026-07-20): PRODUCCIÓN CON UI AUTOMATION
+## Estado Actual (2026-07-21): PRODUCCIÓN CON UI AUTOMATION (BLOQUEADO PARA NOTE9)
 
 El sistema está publicando videos reales en TikTok usando Share Intent + ADB local.
 La Content Posting API no está aprobada; no hay plazo estimado.
+
+> [!WARNING]
+> **VERSIÓN BLOQUEADA PARA NOTE9 (SM-N9600, Android 10).**
+> Este código está probado y funciona perfectamente en el Note9. Intentos pasados de adaptarlo o probarlo en el Samsung Galaxy S24 (Android 14) introdujeron errores y rompieron la estabilidad en el Note9. **Bajo ninguna circunstancia se debe modificar o "contaminar" este código funcional para intentar dar soporte al S24**, a menos que haya una petición explícita del usuario para revisar ese caso específico. Si funciona en el Note9, se queda así.
 
 ---
 
