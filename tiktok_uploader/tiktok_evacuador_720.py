@@ -136,9 +136,9 @@ logging.basicConfig(
 )
 
 
-POST_RE = re.compile(r"^(post|publish|publicar|publicar ahora|crear)$", re.I)
+POST_RE = re.compile(r"^(post|publish|publicar|publicar ahora)$", re.I)
 NEXT_RE = re.compile(r"^(siguiente|next|continuar)$", re.I)
-PUBLICAR_RE = re.compile(r"^(publicar|publish|post|crear)$", re.I)
+PUBLICAR_RE = re.compile(r"^(publicar|publish|post)$", re.I)
 CREAR_RE = re.compile(r"^(crear|create)$", re.I)
 NEXT_RE = re.compile(r"^(next|siguiente|continuar|continue|listo|done)$", re.I)
 VIDEO_NUEVO_RE = re.compile(r"^(video\s+nuevo|new\s+video)$", re.I)
