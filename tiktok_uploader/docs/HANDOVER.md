@@ -169,6 +169,16 @@ cat /sdcard/Antigravity/.state/tiktok_queue.json | python3 -m json.tool
 - **Causa**: Actualización de TikTok mueve elementos UI.
 - **Solución**: Revisar coordenadas con `uiautomator dump` y ajustar.
 
+### Publicaciones Múltiples del Mismo Video (Falso Negativo)
+- **Síntoma**: Un video se publica correctamente, pero el script cree que falló, no lo mueve a la carpeta de completados, y lo vuelve a publicar 11 veces más.
+- **Causa**: La validación post-publicación (`POST_RE`) incluía la palabra "crear". Después de publicar, TikTok vuelve al Home Feed, donde el botón central inferior dice "Crear (+)". El script lo detectaba y creía erróneamente que seguía en el editor.
+- **Solución**: Se eliminó "crear" de las expresiones regulares en `tiktok_evacuador_720.py` (2026-07-22).
+
+### Almacenamiento Lleno (TikTok "Guardar en el dispositivo")
+- **Síntoma**: El celular se queda sin espacio de almacenamiento (0 bytes libres). `/sdcard/DCIM/Camera` se llena de copias pesadas de los videos publicados (`2026-XXXX.mp4`).
+- **Causa**: La opción "Guardar en el dispositivo" de TikTok estaba activada, causando que TikTok renderizara y guardara copias locales de cada video que el bot publicaba.
+- **Solución**: Abrir TikTok manualmente, intentar crear un video hasta la pantalla final (descripción), y **apagar** el interruptor "Guardar en el dispositivo". TikTok recuerda esta preferencia permanentemente para futuras publicaciones automatizadas.
+
 ### Flujo de borrador no verificado post-publicación
 - **Nota**: El modo draft guarda el video tocando "Borradores" pero no hay confirmación de que TikTok efectivamente lo guardó. Asumimos éxito si el botón fue tocado.
 
