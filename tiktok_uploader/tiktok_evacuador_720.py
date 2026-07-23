@@ -1081,13 +1081,22 @@ def main() -> int:
     ensure_adb_connected()
     if args.status:
         return show_status()
+    
+    ret = 3
     try:
         with process_lock():
-            return open_next(args)
+            ret = open_next(args)
     except RuntimeError as exc:
         logging.warning("%s", exc)
-        return 3
-
+        ret = 3
+        
+    if getattr(args, "open_next", False) and not getattr(args, "dry_run", False):
+        logging.info("Ciclo terminado. Esperando 45 segundos para asentar TikTok...")
+        time.sleep(45)
+        logging.info("Enviando evento HOME para evitar reproduccion infinita de videos.")
+        adb_shell("input keyevent KEYCODE_HOME")
+        
+    return ret
 
 if __name__ == "__main__":
     sys.exit(main())
