@@ -1094,7 +1094,7 @@ def main() -> int:
         logging.info("Ciclo terminado. Esperando 45 segundos para asentar TikTok...")
         time.sleep(45)
         logging.info("Enviando evento HOME para evitar reproduccion infinita de videos.")
-        adb_shell("input keyevent KEYCODE_HOME")
+        os.system(f"adb -s {ADB_SERIAL} shell input keyevent KEYCODE_HOME")
         
     return ret
 
