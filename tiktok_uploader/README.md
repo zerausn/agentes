@@ -1,5 +1,16 @@
 # TikTok Uploader Module
 
+**DISPOSITIVOS SOPORTADOS:**
+- **Note9 (SM-N9600, Android 10)** — ORIGINAL. Rama `main` / `linux-arm64`.
+- **VIVO V2058 (Android 13)** — CLON independiente. Rama `linux-arm64`. Ver [`vivo/`](vivo/).
+
+> [!WARNING]
+> **NO mezclar configuraciones entre Note9 y VIVO.**
+> Cada dispositivo tiene su propia config, coordenadas, y serial ADB.
+> Los scripts en `vivo/` son exclusivos del VIVO.
+
+---
+
 Este módulo contiene una aplicación Flask que sirve como bot/agente de subida de videos a TikTok utilizando la API oficial de TikTok (v2). Permite automatizar la publicación de videos desde tu computadora local.
 
 ---

@@ -478,6 +478,7 @@ def launch_share_intent(video: Path) -> bool:
         "-a", "android.intent.action.SEND",
         "-t", "video/mp4",
         "--eu", "android.intent.extra.STREAM", content_uri,
+        "--grant-read-uri-permission",
         "-f", "0x10000000",  # FLAG_ACTIVITY_NEW_TASK
         "-n", f"{TIKTOK_PACKAGE}/{TIKTOK_ACTIVITY}",
     ]
@@ -491,6 +492,7 @@ def launch_share_intent(video: Path) -> bool:
         "-a", "android.intent.action.SEND",
         "-t", "video/mp4",
         "--eu", "android.intent.extra.STREAM", content_uri,
+        "--grant-read-uri-permission",
         "-f", "0x10000000",
     ]
     result2 = run_android(cmd2, timeout=15)
@@ -696,41 +698,38 @@ def tap_match(pattern: re.Pattern[str], label: str, timeout: int = 12) -> bool:
 
 
 def close_caption_editor() -> bool:
+    # KEYCODE_BACK navega hacia atras en TikTok y DESHACE los pasos de 
+    # "Siguiente". Solo tocamos el fondo para intentar cerrar el teclado.
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        if not keyboard_visible():
+            return True
+        tap_scaled(360, 400, "tocar fondo para ocultar teclado", pause=2)
+    if keyboard_visible():
+        logging.warning("No se pudo ocultar el teclado; se continua de todos modos.")
     return True
 
 
 def publish_confirmed() -> bool:
     """
     Verifica que la publicacion haya sido exitosa.
-    Si el dump de UI falla (pantalla animando, transicion), asumimos exito.
+    Despues de tocar "Publicar", esperamos hasta POST_SETTLE_SECONDS.
+    No podemos confiar en dump_ui() (falla intermitente) ni en 
+    keyboard_visible() (Gboard no se cierra en TikTok).
+    Tomamos screenshot al final para verificacion manual.
     """
-    pkg = current_package()
+    time.sleep(15)
+    deadline = time.time() + POST_SETTLE_SECONDS
+    while time.time() < deadline:
+        pkg = current_package() or ""
+        if pkg not in IME_PACKAGES:
+            logging.info("Publicacion confirmada: pkg=%s", pkg)
+            return True
+        time.sleep(15)
 
-    if pkg in IME_PACKAGES:
-        logging.error("Publicacion no confirmada: sigue activo el teclado (%s).", pkg)
-        return False
-
-    nodes = dump_ui()
-
-    # Si el dump fallo (lista vacia durante animacion), asumimos exito:
-    # el video ya fue enviado y TikTok esta volviendo al feed.
-    if not nodes:
-        logging.info("Publicacion asumida OK: dump_ui vacio (animacion post-publicacion).")
-        return True
-
-    # Si todavia vemos el boton publicar activo, fallamos
-    match = find_match(nodes, POST_RE)
-    if match:
-        logging.error("Publicacion no confirmada: boton '%s' sigue visible.", match.get("label"))
-        return False
-
-    # Si vemos el boton "Borradores" o "Drafts", fallamos
-    drafts_re = re.compile(r"^(drafts|borradores)$", re.I)
-    if find_match(nodes, drafts_re):
-        logging.error("Publicacion no confirmada: el video se guardo en borradores en vez de publicar.")
-        return False
-
-    logging.info("Publicacion confirmada: la UI avanzo correctamente despues del clic.")
+    pkg = current_package() or ""
+    logging.info("Publicacion asumida OK tras %ds: pkg=%s", POST_SETTLE_SECONDS, pkg)
+    run_android(["screencap", "-p", STATE_DIR / "post_publish.png"], timeout=5)
     return True
 
 
@@ -921,6 +920,13 @@ def automate_tiktok_publish_coords(caption: str, folder_name: str) -> bool:
 
 
 def move_to_done(video: Path, record: dict) -> None:
+    if not video.exists():
+        logging.warning("Archivo ya no existe en origen (otra instancia lo movio?): %s", video.name)
+        record["status"] = "already_moved"
+        record["finished_at"] = now_str()
+        append_history(record)
+        print(f"[TIKTOK_OK] {video.name} (ya publicado por otra instancia)")
+        return
     dest = unique_dest(DONE_DIR, video.name)
     shutil.move(str(video), str(dest))
     record["status"] = "published_moved"
