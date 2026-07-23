@@ -692,7 +692,7 @@ def download_video(vid_id: str, title: str) -> str | None:
 
     # Si ya es MP4 limpio, moverlo directo
     if downloaded_path.suffix.lower() == ".mp4":
-        downloaded_path.rename(final_path)
+        shutil.move(str(downloaded_path), str(final_path))
         return str(final_path)
 
     # Detectar codec del video descargado — si es H.264 se copia sin re-encodar (instantáneo)
