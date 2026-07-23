@@ -285,11 +285,53 @@ def append_history(item: dict) -> None:
     save_state(state)
 
 
+def _purge_ghost_mediastore_entries(ms_rows: list[tuple[str, str]]) -> int:
+    """
+    Borra del MediaStore entradas cuyo archivo ya no existe en disco.
+    ms_rows: lista de (raw_path, vid_id) obtenida de la consulta al MediaStore.
+    Retorna la cantidad de fantasmas eliminados.
+    """
+    ghosts = 0
+    for raw_path, vid_id in ms_rows:
+        if not vid_id:
+            continue
+        raw_path_sdcard = raw_path.replace("/storage/emulated/0/", "/sdcard/")
+        if not Path(raw_path_sdcard).exists():
+            try:
+                run_android(
+                    ["content", "delete",
+                     "--uri", f"content://media/external/video/media/{vid_id}"],
+                    timeout=5,
+                )
+                ghosts += 1
+            except Exception:
+                pass
+    if ghosts:
+        logging.info("MediaStore: %d entradas fantasma eliminadas.", ghosts)
+    return ghosts
+
+
 def iter_videos() -> list[Path]:
-    """Retorna videos pendientes ordenados por fecha. Poblada _content_uris global."""
+    """
+    Retorna videos pendientes ordenados por mtime (más antiguo primero).
+    Fuente de verdad: el filesystem real (SOURCE_DIR.iterdir()).
+    MediaStore se consulta SOLO para poblar _content_uris (URIs para share intent)
+    y para limpiar entradas fantasma.
+    """
     global _content_uris
     if not SOURCE_DIR.exists():
         return []
+
+    # 1. Lista real de archivos en disco — fuente de verdad
+    real_files: list[Path] = sorted(
+        (
+            f for f in SOURCE_DIR.iterdir()
+            if f.is_file()
+            and f.suffix.lower() in SUPPORTED_EXTS
+            and not f.name.endswith(".part")
+        ),
+        key=lambda p: p.stat().st_mtime,
+    )
 
     _content_uris = {}
     try:
@@ -298,48 +340,36 @@ def iter_videos() -> list[Path]:
             "--uri", "content://media/external/video/media",
             "--projection", "_data:_id",
             "--where", f"_data LIKE '%{SOURCE_DIR.name}%'",
-            "--sort", "date_added DESC, _id DESC",
         ]
         result = run_android(cmd, timeout=10)
         if result.returncode == 0:
-            ordered_paths = []
+            ms_rows: list[tuple[str, str]] = []
             for line in result.stdout.strip().split("\n"):
                 if not line.strip():
                     continue
                 match = re.search(r"_data=(.*?)(?:,\s|$)", line)
                 id_match = re.search(r"_id=(\d+)", line)
-                vid_id = id_match.group(1) if id_match else None
-                if match:
-                    raw_path = match.group(1).strip()
-                    raw_path = raw_path.replace("/storage/emulated/0/", "/sdcard/")
-                    p = Path(raw_path)
-                    if (
-                        p.is_file()
-                        and p.suffix.lower() in SUPPORTED_EXTS
-                        and not p.name.endswith(".part")
-                    ):
-                        ordered_paths.append(p)
-                        if vid_id:
-                            _content_uris[p.name] = f"content://media/external/video/media/{vid_id}"
-            if ordered_paths:
-                logging.info("MediaStore OK (%d videos en cola, %d URIs).", len(ordered_paths), len(_content_uris))
-                return ordered_paths
+                if match and id_match:
+                    ms_rows.append((match.group(1).strip(), id_match.group(1)))
+
+            # Limpiar fantasmas (entradas MediaStore sin archivo en disco)
+            _purge_ghost_mediastore_entries(ms_rows)
+
+            # Poblar _content_uris solo con archivos que sí existen en disco
+            for raw_path, vid_id in ms_rows:
+                raw_path_sdcard = raw_path.replace("/storage/emulated/0/", "/sdcard/")
+                p = Path(raw_path_sdcard)
+                if p.is_file() and p.suffix.lower() in SUPPORTED_EXTS:
+                    _content_uris[p.name] = f"content://media/external/video/media/{vid_id}"
+
+            logging.info(
+                "MediaStore: %d entradas válidas con URI. Archivos reales en disco: %d.",
+                len(_content_uris), len(real_files),
+            )
     except Exception as exc:
         logging.warning("No se pudo consultar MediaStore: %s", exc)
 
-    # 2. Fallback: ordenar por modificacion (menos preciso si se copiaron en lote)
-    logging.warning("Usando fallback mtime para iter_videos.")
-    return sorted(
-        (
-            f
-            for f in SOURCE_DIR.iterdir()
-            if f.is_file()
-            and f.suffix.lower() in SUPPORTED_EXTS
-            and not f.name.endswith(".part")
-        ),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
+    return real_files
 
 
 def file_is_stable(path: Path) -> bool:
