@@ -1275,10 +1275,10 @@
     "hi0C7v4UTi0": {
       "title": "PW | 2026-04-02 | (20251221_010013)",
       "publishedAt": "2026-07-22T19:00:38Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/PW  2026-04-02  (20251221_010013).mp4",
+      "downloaded_at": "2026-07-23 04:07",
+      "downloaded_by": "Note9"
     },
     "_PXxNJz4FpU": {
       "title": "PW | 2025-12-11 | (20251030_183509)",
