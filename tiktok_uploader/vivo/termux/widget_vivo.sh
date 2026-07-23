@@ -6,6 +6,7 @@
 set -euo pipefail
 export TMPDIR=/data/data/com.termux/files/usr/tmp
 export PATH="/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin"
+PYTHON="/data/data/com.termux/files/usr/bin/python3"
 export AGENTES_STORAGE_ROOT=/sdcard/Antigravity
 export TIKTOK_UI_BACKEND=adb
 export TIKTOK_ADB_SERIAL=34237840310037S
