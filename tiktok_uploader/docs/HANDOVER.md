@@ -206,6 +206,30 @@ El widget `vigia_tiktok720_termux.sh` pasa estas variables al evacuador:
 - `TIKTOK_ADB_SERIAL=127.0.0.1:5555`
 - `TIKTOK_PUBLISH_MODE=direct` (configurable vía env `TIKTOK_PUBLISH_MODE`)
 
-## Rama Git
+## 🟢 VIVO V2058 (Agregado 2026-07-23)
+
+> **ADVERTENCIA**: El VIVO tiene su PROPIO widget en `vivo/termux/widget_vivo.sh`.
+> **NO USAR** `termux_widgets/6_SUBIR_TIKTOK720.sh` en VIVO.
+> **NO COPIAR** archivos de `vivo/` al Note9.
+
+### Diferencias clave con Note9
+- El VIVO usa `TIKTOK_UI_BACKEND=adb` (Note9 usa `accessibility`)
+- El VIVO no necesita proot-distro; Python corre directo desde Termux
+- El VIVO tiene settle dinámico (120s/300s según peso); Note9 usa 90s fijo
+- El widget VIVO (`widget_vivo.sh`) es un wrapper fino que llama al vigía compartido
+
+### Widget VIVO
+- `~/.shortcuts/6_SUBIR_TIKTOK720.sh` → copia de `vivo/termux/widget_vivo.sh`
+- Llama a `scripts/linux/vigia_tiktok720_termux.sh` (compartido con Note9)
+- El env `TIKTOK_UI_BACKEND=adb` está hardcodeado en el vigía para VIVO
+- El vigía se adapta: si ADB no responde, usa `accessibility` como fallback
+
+### Sincronización VIVO
+```bash
+bash vivo/sync_to_vivo.sh
+# Copia solo archivos en vivo/ y el tiktok_evacuador_720.py compartido
+```
+
+### Rama Git
 - `linux-arm64` — todo el código de agentes
 - Origin: `https://github.com/zerausn/agentes.git`

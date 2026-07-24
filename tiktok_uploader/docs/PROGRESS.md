@@ -28,6 +28,13 @@ La API de TikTok sigue sin aprobarse; el método UI es la estrategia de producci
 - **ADB local**: `127.0.0.1:5555` — no requiere USB ni WiFi.
 - **ADB key bind**: `_proot_bind.sh` monta claves ADB dentro del proot para evitar re-autorización.
 - **Prueba real exitosa**: 2 videos publicados y movidos a `subidos a tiktok` el 2026-07-20.
+- **VIVO V2058 funcional**: Flujo completo probado desde PC via ADB (2026-07-23).
+  Share intent → Siguiente → caption → Publicar → confirmado → movido a done.
+- **Widget VIVO**: `widget_vivo.sh` como wrapper que llama al vigía compartido
+  `vigia_tiktok720_termux.sh` con `TIKTOK_UI_BACKEND=adb`.
+- **Settle dinámico**: `settle_seconds(video)` — 120s si ≤200MB, 300s si >200MB.
+- **Retorno a HOME**: 20s después del settle (antes eran 45s).
+- **Flags share intent**: Corregidos a `-f 0x08000000 --grant-read-uri-permission --eu`.
 
 ### Subsistema Web Flask (EN PAUSA)
 - OAuth PKCE (S256 code_challenge + code_verifier) funcional.

@@ -24,7 +24,7 @@ export TMPDIR=/data/data/com.termux/files/usr/tmp
 export PATH="/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin"
 export AGENTES_STORAGE_ROOT=/sdcard/Antigravity
 export TIKTOK_UI_BACKEND=adb
-export TIKTOK_ADB_SERIAL=34237840310037S
+export TIKTOK_ADB_SERIAL=127.0.0.1:5555
 export TIKTOK_SHARE_METHOD=intent
 export TIKTOK_PUBLISH_MODE=direct
 export TIKTOK_POST_SETTLE_SECONDS=30
@@ -32,17 +32,13 @@ export TIKTOK_POST_SETTLE_SECONDS=30
 while true; do
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] ===== INICIO CICLO VIVO =====" >> "$LOG"
 
-    # Despertar pantalla y desbloquear
-    /system/bin/input keyevent KEYCODE_WAKEUP 2>/dev/null || true
-    sleep 2
-    /system/bin/input swipe 500 1700 500 500 350 2>/dev/null || true
-    sleep 2
+    termux-wake-lock 2>/dev/null || true
 
-    # Ejecutar
     timeout 180 "$PYTHON" "$SCRIPT" --open-next >> "$LOG" 2>&1
 
-    # HOME para evitar reproduccion
-    /system/bin/input keyevent KEYCODE_HOME 2>/dev/null || true
+    am broadcast -a com.antigravity.KEYEVENT --ei key 1 \
+        -n com.antigravity.touchhelper/.TapReceiver 2>/dev/null || true
+    termux-wake-unlock 2>/dev/null || true
 
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] ===== FIN CICLO VIVO (sleep 720s) =====" >> "$LOG"
 
