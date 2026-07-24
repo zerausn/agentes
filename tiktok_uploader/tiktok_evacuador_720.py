@@ -94,12 +94,9 @@ ROOT = Path(ROOT_ENV) if ROOT_ENV else Path("/sdcard/Antigravity")
 SOURCE_DIR = ROOT / "subidos a facebbok"
 DONE_DIR = ROOT / "subidos a tiktok"
 FAILED_DIR = ROOT / "fallidos_tiktok"
-STATE_DIR_OVERRIDE = os.environ.get("TIKTOK_STATE_DIR", "").strip()
-STATE_DIR = Path(STATE_DIR_OVERRIDE) if STATE_DIR_OVERRIDE else (ROOT / ".state")
+STATE_DIR = ROOT / ".state"
 STATE_FILE = STATE_DIR / "tiktok_queue.json"
 CAPTION_FILE = STATE_DIR / "tiktok_caption_actual.txt"
-CONTENT_URIS_CACHE = STATE_DIR / "content_uris.json"
-SHARE_REQUEST_FILE = STATE_DIR / "share_request.txt"
 UI_DUMP_FILE = STATE_DIR / "tiktok_ui.xml"
 LOCK_FILE = STATE_DIR / "tiktok_evacuador.lock"
 
@@ -120,18 +117,6 @@ AUTOMATION_TIMEOUT = int(os.environ.get("TIKTOK_AUTOMATION_TIMEOUT", "240"))
 PUBLISH_MODE = os.environ.get("TIKTOK_PUBLISH_MODE", "direct").strip().lower()
 SHARE_METHOD = os.environ.get("TIKTOK_SHARE_METHOD", "intent").strip().lower()
 POST_SETTLE_SECONDS = int(os.environ.get("TIKTOK_POST_SETTLE_SECONDS", "90"))
-
-def settle_seconds(video: Path) -> int:
-    try:
-        mb = video.stat().st_size / (1024 * 1024)
-    except OSError:
-        mb = 0
-    if mb > 200:
-        logging.info("Video %.0fMB > 200MB → settle 300s", mb)
-        return 300
-    logging.info("Video %.0fMB ≤ 200MB → settle 120s", mb)
-    return 120
-
 COORD_BASE_W = 720
 COORD_BASE_H = 1480
 IME_PACKAGES = {
@@ -141,16 +126,11 @@ IME_PACKAGES = {
 }
 
 
-class _ImmediateFileHandler(logging.FileHandler):
-    def emit(self, record):
-        super().emit(record)
-        self.flush()
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        _ImmediateFileHandler(LOG_FILE, encoding="utf-8"),
+        logging.FileHandler(LOG_FILE, encoding="utf-8"),
         logging.StreamHandler(),
     ],
 )
@@ -193,96 +173,52 @@ KEYCODE_TO_GLOBAL = {
 }
 
 def ensure_adb_connected() -> None:
-    if UI_BACKEND not in ("adb",):
+    if UI_BACKEND not in ("adb", "accessibility"):
         return
     r = run(["adb", "devices"], timeout=10)
-    if ADB_SERIAL in r.stdout and "device" in r.stdout:
+    if "127.0.0.1:5555" in r.stdout and "device" in r.stdout:
         return
-    if ADB_SERIAL == "127.0.0.1:5555":
-        run(["adb", "connect", "127.0.0.1:5555"], timeout=10)
-    else:
-        logging.warning("ADB device %s no conectado. Conecta USB.", ADB_SERIAL)
-
-def _has_termuxapi() -> bool:
-    return shutil.which("termux-tap") is not None
-
-
-def _termux_tap(*args: str) -> subprocess.CompletedProcess:
-    return run(["termux-tap", *args], timeout=15)
-
-
-def _termux_swipe(*args: str) -> subprocess.CompletedProcess:
-    return run(["termux-swipe", *args], timeout=15)
-
-
-def _termux_key(*args: str) -> subprocess.CompletedProcess:
-    return run(["termux-key", *args], timeout=10)
-
-
-def _termux_text(text: str) -> subprocess.CompletedProcess:
-    return run(["termux-text", text], timeout=15)
-
-
-def _am_broadcast(args: list[str], timeout: int = 10) -> subprocess.CompletedProcess:
-    shell_cmd = "/system/bin/am broadcast " + " ".join(shlex.quote(a) for a in args)
-    try:
-        subprocess.run(
-            ["/system/bin/sh", "-c", shell_cmd + " >/dev/null 2>&1 &"],
-            capture_output=True, timeout=3,
-        )
-    except subprocess.TimeoutExpired:
-        pass
-    return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+    run(["adb", "connect", "127.0.0.1:5555"], timeout=10)
 
 def run_android(cmd: list[str], timeout: int = 30) -> subprocess.CompletedProcess:
-    if UI_BACKEND == "termuxapi":
-        if cmd[:2] == ["input", "tap"] and len(cmd) == 4:
-            return _termux_tap(cmd[2], cmd[3])
-        if cmd[:2] == ["input", "swipe"] and len(cmd) >= 6:
-            return _termux_swipe(*cmd[2:])
-        if cmd[:2] == ["input", "keyevent"] and len(cmd) >= 3:
-            return _termux_key(cmd[2])
-        if cmd[:2] == ["input", "text"] and len(cmd) >= 3:
-            return _termux_text(" ".join(cmd[2:]))
-        return run(cmd, timeout=timeout)
     if UI_BACKEND == "adb":
         shell_cmd = " ".join(shlex.quote(arg) for arg in cmd)
         return run(["adb", "-s", ADB_SERIAL, "shell", "exec " + shell_cmd], timeout=timeout)
     if UI_BACKEND == "accessibility":
         if cmd[:2] == ["input", "tap"] and len(cmd) == 4:
             _, _, sx, sy = cmd
-            return _am_broadcast([
-                "-a", "com.antigravity.TAP",
+            return run([
+                "am", "broadcast", "-a", "com.antigravity.TAP",
                 "--ei", "x", sx, "--ei", "y", sy,
                 "-n", f"{TAP_HELPER_PKG}/.TapReceiver",
-            ])
+            ], timeout=10)
         if cmd[:2] == ["input", "swipe"] and len(cmd) >= 6:
             _, _, x1, y1, x2, y2 = cmd[:6]
             dur = cmd[6] if len(cmd) > 6 else "300"
-            return _am_broadcast([
-                "-a", "com.antigravity.SWIPE",
+            return run([
+                "am", "broadcast", "-a", "com.antigravity.SWIPE",
                 "--ei", "x1", x1, "--ei", "y1", y1,
                 "--ei", "x2", x2, "--ei", "y2", y2,
                 "--ei", "duration", dur,
                 "-n", f"{TAP_HELPER_PKG}/.TapReceiver",
-            ])
+            ], timeout=10)
         if cmd[:2] == ["input", "keyevent"] and len(cmd) >= 3:
             key = cmd[2]
             global_key = KEYCODE_TO_GLOBAL.get(key)
             if global_key is not None:
-                return _am_broadcast([
-                    "-a", "com.antigravity.KEYEVENT",
+                return run([
+                    "am", "broadcast", "-a", "com.antigravity.KEYEVENT",
                     "--ei", "key", str(global_key),
                     "-n", f"{TAP_HELPER_PKG}/.TapReceiver",
-                ])
+                ], timeout=10)
             return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
         if cmd[:2] == ["input", "text"] and len(cmd) >= 3:
             text = " ".join(cmd[2:])
-            return _am_broadcast([
-                "-a", "com.antigravity.TEXT",
+            return run([
+                "am", "broadcast", "-a", "com.antigravity.TEXT",
                 "--es", "text", text,
                 "-n", f"{TAP_HELPER_PKG}/.TapReceiver",
-            ])
+            ], timeout=10)
         return run(cmd, timeout=timeout)
     return run(cmd, timeout=timeout)
 
@@ -398,26 +334,12 @@ def iter_videos() -> list[Path]:
     )
 
     _content_uris = {}
-    # Intentar cache local primero (generado desde ADB shell)
-    if CONTENT_URIS_CACHE.exists():
-        try:
-            cached = json.loads(CONTENT_URIS_CACHE.read_text(encoding="utf-8"))
-            for name, uri in cached.items():
-                p = SOURCE_DIR / name
-                if p.is_file() and p.suffix.lower() in SUPPORTED_EXTS:
-                    _content_uris[name] = uri
-            logging.info(
-                "Content URIs cache: %d válidas de %d en cache.",
-                len(_content_uris), len(cached),
-            )
-        except Exception as exc:
-            logging.warning("Error leyendo cache de content URIs: %s", exc)
-
     try:
         cmd = [
             "content", "query",
             "--uri", "content://media/external/video/media",
             "--projection", "_data:_id",
+            "--where", f"_data LIKE '%{SOURCE_DIR.name}%'",
         ]
         result = run_android(cmd, timeout=10)
         if result.returncode == 0:
@@ -430,23 +352,22 @@ def iter_videos() -> list[Path]:
                 if match and id_match:
                     ms_rows.append((match.group(1).strip(), id_match.group(1)))
 
+            # Limpiar fantasmas (entradas MediaStore sin archivo en disco)
             _purge_ghost_mediastore_entries(ms_rows)
 
+            # Poblar _content_uris solo con archivos que sí existen en disco
             for raw_path, vid_id in ms_rows:
-                if SOURCE_DIR.name not in raw_path:
-                    continue
                 raw_path_sdcard = raw_path.replace("/storage/emulated/0/", "/sdcard/")
                 p = Path(raw_path_sdcard)
                 if p.is_file() and p.suffix.lower() in SUPPORTED_EXTS:
                     _content_uris[p.name] = f"content://media/external/video/media/{vid_id}"
 
+            logging.info(
+                "MediaStore: %d entradas válidas con URI. Archivos reales en disco: %d.",
+                len(_content_uris), len(real_files),
+            )
     except Exception as exc:
         logging.warning("No se pudo consultar MediaStore: %s", exc)
-
-    logging.info(
-        "MediaStore: %d entradas válidas con URI. Archivos reales en disco: %d.",
-        len(_content_uris), len(real_files),
-    )
 
     return real_files
 
@@ -528,62 +449,6 @@ def write_caption(caption: str) -> None:
     CAPTION_FILE.write_text(caption + "\n", encoding="utf-8")
 
 
-def _media_scan_broadcast(video: Path) -> bool:
-    """Envía MEDIA_SCANNER_SCAN_FILE broadcast para que el sistema indexe el video.
-    Usa os.system (shell directa) para evitar rc=255 de subprocess con capture_output.
-    No requiere permisos especiales — el sistema MediaScanner tiene acceso completo.
-    Retorna True si el broadcast se envió (no garantiza que el scan termine)."""
-    try:
-        file_path = str(video.resolve())
-        quoted = file_path.replace("'", "'\\''")
-        cmd = f"am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d 'file://{quoted}'"
-        rc = os.system(f"/system/bin/sh -c '{cmd}'")
-        ok = os.WIFEXITED(rc) and os.WEXITSTATUS(rc) == 0
-        if ok:
-            logging.info("MediaScanner broadcast enviado: %s", video.name)
-        else:
-            logging.warning("MediaScanner broadcast fallo (rc=%s)", rc)
-        return ok
-    except Exception as exc:
-        logging.warning("MediaScanner broadcast exception: %s", exc)
-        return False
-
-
-def insert_media_store(video: Path) -> str | None:
-    """Inserta un video en MediaStore si no tiene entrada.
-    Primero intenta broadcast MEDIA_SCANNER_SCAN_FILE (funciona en Android 13
-    sin permisos especiales), luego content insert como fallback.
-    Retorna la content:// URI o None si falla."""
-    _media_scan_broadcast(video)
-    time.sleep(3)
-    # Re-query MediaStore para obtener la URI
-    try:
-        data_path = str(video.resolve())
-        result = run_android([
-            "content", "query",
-            "--uri", "content://media/external/video/media",
-            "--projection", "_data:_id",
-        ], timeout=10)
-        if result.returncode == 0:
-            for line in result.stdout.strip().split("\n"):
-                if not line.strip():
-                    continue
-                raw_match = re.search(r"_data=(.*?)(?:,\s|$)", line)
-                id_match = re.search(r"_id=(\d+)", line)
-                if raw_match and id_match:
-                    raw_path = raw_match.group(1).strip()
-                    raw_sdcard = raw_path.replace("/storage/emulated/0/", "/sdcard/")
-                    if Path(raw_sdcard) == video:
-                        uri = f"content://media/external/video/media/{id_match.group(1)}"
-                        _content_uris[video.name] = uri
-                        logging.info("MediaStore URI tras scan: %s -> %s", video.name, uri)
-                        return uri
-        logging.warning("MediaStore re-query no encontro el archivo tras scan")
-    except Exception as exc:
-        logging.warning("MediaStore re-query exception: %s", exc)
-    return None
-
-
 def get_content_uri(path: Path) -> str | None:
     """Retorna content URI desde el cache poblado por iter_videos()."""
     global _content_uris
@@ -595,114 +460,61 @@ def get_content_uri(path: Path) -> str | None:
     return None
 
 
-def _ensure_media_store(video: Path) -> bool:
-    """Asegura que el video tenga entrada en MediaStore para que aparezca en la galeria.
-    Si no tiene content URI, lo inserta. Retorna True si hay URI disponible."""
-    global _content_uris
-    if _content_uris.get(video.name):
-        return True
-    uri = insert_media_store(video)
-    if uri:
-        _content_uris[video.name] = uri
-        logging.info("MediaStore OK: %s", video.name)
-        return True
-    logging.warning("No se pudo registrar en MediaStore: %s", video.name)
-    return False
-
-
 def launch_share_intent(video: Path) -> bool:
     """Comparte el video directamente a TikTok via Android Share Intent.
-    Usa content URI via run_android (con ADB funciona como shell).
-    Fallback: broadcast al TermuxOpenReceiver (fire-and-forget)."""
-    video_path = str(video.resolve())
+    Usa content:// URI desde MediaStore para Android 10+."""
     content_uri = get_content_uri(video)
     if not content_uri:
-        logging.warning("No hay content URI en cache para %s.", video.name)
-        content_uri = insert_media_store(video)
-    if content_uri:
-        logging.info("Share intent URI: %s", content_uri)
-        cmd = ["am", "start", "-a", "android.intent.action.SEND", "-t", "video/mp4",
-               "-f", "0x08000000", "--grant-read-uri-permission",
-               "--eu", "android.intent.extra.STREAM", content_uri,
-               "-n", f"{TIKTOK_PACKAGE}/{TIKTOK_ACTIVITY}"]
-        result = run_android(cmd, timeout=15)
-        if result.returncode == 0:
-            logging.info("Share intent local OK")
-            return True
+        logging.warning("No hay content URI para %s. Cached URIs: %d", video.name, len(_content_uris))
+        # Fallback: construir URI generando content:// desde _data
+        # Primero verificamos si el video existe en MediaStore
+        for fname, uri in list(_content_uris.items())[:3]:
+            logging.debug("  cache: %s -> %s", fname, uri)
+        return False
 
-    # Fallback: broadcast al TermuxOpenReceiver (fire-and-forget)
-    _am_broadcast([
+    logging.info("Share intent URI: %s", content_uri)
+    cmd = [
+        "am", "start",
         "-a", "android.intent.action.SEND",
-        "-n", "com.termux/com.termux.app.TermuxOpenReceiver",
-        "--es", "content-type", "video/mp4",
-        "--ez", "chooser", "true",
-        "-d", video_path,
-    ])
-    time.sleep(3)
-
-    # Fallback: ADB request para PC watcher
-    content_uri = get_content_uri(video) or content_uri
-    if content_uri:
-        STATE_DIR.mkdir(parents=True, exist_ok=True)
-        adb_cmd = (
-            ["adb", "shell"]
-            + ["am", "start", "-W",
-               "-a", "android.intent.action.SEND",
-               "-t", "video/mp4",
-               "--eu", "android.intent.extra.STREAM", content_uri,
-               "-f", "0x10000000",
-               "-n", f"{TIKTOK_PACKAGE}/{TIKTOK_ACTIVITY}",
-               ]
-        )
-        SHARE_REQUEST_FILE.write_text(" ".join(shlex.quote(a) for a in adb_cmd) + "\n", encoding="utf-8")
-        logging.info("Share request escrita para PC watcher.")
-    return True
+        "-t", "video/mp4",
+        "--eu", "android.intent.extra.STREAM", content_uri,
+        "-f", "0x10000000",  # FLAG_ACTIVITY_NEW_TASK
+        "-n", f"{TIKTOK_PACKAGE}/{TIKTOK_ACTIVITY}",
+    ]
+    result = run_android(cmd, timeout=15)
+    if result.returncode == 0:
+        logging.info("Share intent enviado a TikTok: %s", video.name)
+        return True
+    logging.warning("Share intent fallo: %s %s", result.stdout.strip(), result.stderr.strip())
+    cmd2 = [
+        "am", "start",
+        "-a", "android.intent.action.SEND",
+        "-t", "video/mp4",
+        "--eu", "android.intent.extra.STREAM", content_uri,
+        "-f", "0x10000000",
+    ]
+    result2 = run_android(cmd2, timeout=15)
+    if result2.returncode == 0:
+        logging.info("Share intent (sin componente) enviado.")
+        return True
+    logging.warning("Share intent sin componente fallo: %s", result2.stderr.strip())
+    return False
 
 
 def launch_tiktok_home() -> bool:
-    """Abre TikTok. En Android 13 no podemos verificar foreground (dumpsys
-    window restringido), así que confiamos en que el ADB tuvo éxito."""
-    tiktok_main_activity = f"{TIKTOK_PACKAGE}/com.ss.android.ugc.aweme.splash.SplashActivity"
-    try:
-        cmd = [
-            "am", "start",
-            "-n", tiktok_main_activity,
-            "-a", "android.intent.action.MAIN",
-            "-c", "android.intent.category.LAUNCHER",
-            "-f", "0x10000000",
-        ]
-        result = run_android(cmd, timeout=30)
-        if result.returncode == 0:
-            logging.info("TikTok abierto localmente.")
-            return True
-        logging.warning("Fallo local: %s", result.stderr.strip())
-    except Exception as exc:
-        logging.warning("Excepcion local: %s", exc)
-    # Fallback via ADB
-    SHARE_REQUEST_FILE.write_text(
-        " ".join(shlex.quote(a) for a in [
-            "adb", "shell", "am", "start", "-W",
-            "-n", tiktok_main_activity,
-            "-a", "android.intent.action.MAIN",
-            "-c", "android.intent.category.LAUNCHER",
-        ]) + "\n",
-        encoding="utf-8",
-    )
-    logging.info("Solicitando apertura via ADB...")
-    for _ in range(20):
-        time.sleep(1)
-        if not SHARE_REQUEST_FILE.exists():
-            time.sleep(5)
-            logging.info("ADB ejecutado. Asumiendo TikTok abierto.")
-            return True
-    logging.warning("ADB no respondio.")
-    SHARE_REQUEST_FILE.unlink(missing_ok=True)
-    return False
-    logging.warning("ADB no respondio para abrir TikTok.")
-    SHARE_REQUEST_FILE.unlink(missing_ok=True)
-    return False
-    logging.warning("ADB no respondio para abrir TikTok.")
-    SHARE_REQUEST_FILE.unlink(missing_ok=True)
+    cmd = [
+        "monkey",
+        "-p",
+        TIKTOK_PACKAGE,
+        "-c",
+        "android.intent.category.LAUNCHER",
+        "1",
+    ]
+    result = run_android(cmd, timeout=30)
+    if result.returncode == 0:
+        logging.info("TikTok abierto en Home con SplashActivity.")
+        return True
+    logging.warning("Fallo al abrir TikTok Home: %s %s", result.stdout.strip(), result.stderr.strip())
     return False
 
 
@@ -884,39 +696,41 @@ def tap_match(pattern: re.Pattern[str], label: str, timeout: int = 12) -> bool:
 
 
 def close_caption_editor() -> bool:
-    # KEYCODE_BACK navega hacia atras en TikTok y DESHACE los pasos de 
-    # "Siguiente". Solo tocamos el fondo para intentar cerrar el teclado.
-    deadline = time.time() + 10
-    while time.time() < deadline:
-        if not keyboard_visible():
-            return True
-        tap_scaled(360, 400, "tocar fondo para ocultar teclado", pause=2)
-    if keyboard_visible():
-        logging.warning("No se pudo ocultar el teclado; se continua de todos modos.")
     return True
 
 
-def publish_confirmed(settle: int | None = None) -> bool:
+def publish_confirmed() -> bool:
     """
     Verifica que la publicacion haya sido exitosa.
-    Despues de tocar "Publicar", esperamos hasta POST_SETTLE_SECONDS.
-    No podemos confiar en dump_ui() (falla intermitente) ni en 
-    keyboard_visible() (Gboard no se cierra en TikTok).
-    Tomamos screenshot al final para verificacion manual.
+    Si el dump de UI falla (pantalla animando, transicion), asumimos exito.
     """
-    effective_settle = settle if settle is not None else POST_SETTLE_SECONDS
-    time.sleep(15)
-    deadline = time.time() + effective_settle
-    while time.time() < deadline:
-        pkg = current_package() or ""
-        if pkg not in IME_PACKAGES:
-            logging.info("Publicacion confirmada: pkg=%s", pkg)
-            return True
-        time.sleep(15)
+    pkg = current_package()
 
-    pkg = current_package() or ""
-    logging.info("Publicacion asumida OK tras %ds: pkg=%s", effective_settle, pkg)
-    run_android(["screencap", "-p", STATE_DIR / "post_publish.png"], timeout=5)
+    if pkg in IME_PACKAGES:
+        logging.error("Publicacion no confirmada: sigue activo el teclado (%s).", pkg)
+        return False
+
+    nodes = dump_ui()
+
+    # Si el dump fallo (lista vacia durante animacion), asumimos exito:
+    # el video ya fue enviado y TikTok esta volviendo al feed.
+    if not nodes:
+        logging.info("Publicacion asumida OK: dump_ui vacio (animacion post-publicacion).")
+        return True
+
+    # Si todavia vemos el boton publicar activo, fallamos
+    match = find_match(nodes, POST_RE)
+    if match:
+        logging.error("Publicacion no confirmada: boton '%s' sigue visible.", match.get("label"))
+        return False
+
+    # Si vemos el boton "Borradores" o "Drafts", fallamos
+    drafts_re = re.compile(r"^(drafts|borradores)$", re.I)
+    if find_match(nodes, drafts_re):
+        logging.error("Publicacion no confirmada: el video se guardo en borradores en vez de publicar.")
+        return False
+
+    logging.info("Publicacion confirmada: la UI avanzo correctamente despues del clic.")
     return True
 
 
@@ -1080,17 +894,16 @@ def automate_tiktok_publish_coords(caption: str, folder_name: str) -> bool:
         publish_ok = save_as_draft()
         required_steps.append(("Guardar borrador", publish_ok))
     else:
-        video_settle = settle_seconds(video)
         publish_ok = tap_scaled(608, 80, "Publicar top", pause=5)
         if publish_ok:
             time.sleep(15)
-            upload_deadline = time.time() + video_settle
+            upload_deadline = time.time() + POST_SETTLE_SECONDS
             while time.time() < upload_deadline:
-                if publish_confirmed(video_settle):
+                if publish_confirmed():
                     break
                 time.sleep(15)
             else:
-                publish_ok = publish_confirmed(video_settle)
+                publish_ok = publish_confirmed()
 
         required_steps.append(("Publicar", publish_ok))
         if publish_ok:
@@ -1108,13 +921,6 @@ def automate_tiktok_publish_coords(caption: str, folder_name: str) -> bool:
 
 
 def move_to_done(video: Path, record: dict) -> None:
-    if not video.exists():
-        logging.warning("Archivo ya no existe en origen (otra instancia lo movio?): %s", video.name)
-        record["status"] = "already_moved"
-        record["finished_at"] = now_str()
-        append_history(record)
-        print(f"[TIKTOK_OK] {video.name} (ya publicado por otra instancia)")
-        return
     dest = unique_dest(DONE_DIR, video.name)
     shutil.move(str(video), str(dest))
     record["status"] = "published_moved"
@@ -1181,34 +987,9 @@ def open_next(args: argparse.Namespace) -> int:
 
         time.sleep(25)  # Dar tiempo a TikTok para cargarse completamente
 
-        # Verificar que TikTok efectivamente se abrió después del share intent
-        # Nota: dumpsys window no funciona desde Termux (pkg==""), así que
-        # siempre intentamos seleccionar TikTok en el chooser por si acaso.
-        pkg = current_package()
-        if pkg == "android" or not pkg:
-            if not pkg:
-                logging.info("Foreground desconocido (dumpsys no funciona). Intentando chooser...")
+        if current_package() == "android":
             chooser_select_tiktok()
             time.sleep(10)
-        elif pkg != TIKTOK_PACKAGE:
-            logging.warning("TikTok no en foreground (%s). Reintentando share intent via ADB...", pkg)
-            retry_uri = _content_uris.get(video.name, "")
-            if retry_uri:
-                SHARE_REQUEST_FILE.write_text(
-                    " ".join(shlex.quote(a) for a in [
-                        "adb", "shell", "am", "start", "-W",
-                        "-a", "android.intent.action.SEND",
-                        "-t", "video/mp4",
-                        "--eu", "android.intent.extra.STREAM", retry_uri,
-                        "-f", "0x10000000",
-                    ]) + "\n",
-                    encoding="utf-8",
-                )
-                for _ in range(15):
-                    time.sleep(1)
-                    if not SHARE_REQUEST_FILE.exists():
-                        break
-                time.sleep(10)
 
         required_steps: list[tuple[str, bool]] = []
 
@@ -1274,16 +1055,6 @@ def open_next(args: argparse.Namespace) -> int:
 
     else:
         # Metodo monkey: navegacion completa por UI
-        if not video.exists():
-            logging.error("Video ya no existe en disco: %s", video.name)
-            record["status"] = "file_not_found"
-            record["finished_at"] = now_str()
-            append_history(record)
-            return 1
-
-        # Registrar en MediaStore para que TikTok lo vea en la galeria
-        _ensure_media_store(video)
-
         try:
             run_android(["touch", str(video)], timeout=5)
             logging.info("Touch aplicado a: %s", video.name)
@@ -1350,10 +1121,10 @@ def main() -> int:
         ret = 3
         
     if getattr(args, "open_next", False) and not getattr(args, "dry_run", False):
-        logging.info("Ciclo terminado. Esperando 20 segundos para regresar a HOME...")
-        time.sleep(20)
+        logging.info("Ciclo terminado. Esperando 45 segundos para asentar TikTok...")
+        time.sleep(45)
         logging.info("Enviando evento HOME para evitar reproduccion infinita de videos.")
-        run_android(["input", "keyevent", "KEYCODE_HOME"], timeout=5)
+        os.system(f"adb -s {ADB_SERIAL} shell input keyevent KEYCODE_HOME")
         
     return ret
 
