@@ -230,6 +230,22 @@ bash vivo/sync_to_vivo.sh
 # Copia solo archivos en vivo/ y el tiktok_evacuador_720.py compartido
 ```
 
+### Caption desactivado (2026-07-24)
+- El caption complica la publicación: `input text` + teclado abierto interfieren con el tap de Publicar.
+- Se desactivó tras `CAPTION_ENABLED` (default `False`). Para reactivar: `TIKTOK_CAPTION_ENABLED=1`.
+- El código NO se borró — está envuelto en `if CAPTION_ENABLED:` en ambos métodos
+  (`automate_tiktok_publish_coords` y `open_next`).
+- `build_caption()` y `write_caption()` siguen activos (solo string + archivo, no tocan UI).
+- Cuando la API se apruebe, cambiar `CAPTION_ENABLED` a `True` (o pasar env var).
+
 ### Rama Git
-- `linux-arm64` — todo el código de agentes
+- `linux-arm64` — rama principal para Note9. `tiktok_evacuador_720.py` limpio (commit `10305849`).
+  VIVO files en `vivo/` se quedan como referencia pero NO contaminan el Note9.
+- `vivo-tiktok` — rama aislada para VIVO V2058. Contiene `tiktok_evacuador_720.py` con
+  `settle_seconds`, `_ImmediateFileHandler`, `CONTENT_URIS_CACHE`, ADB flexible.
+  Creada desde `10305849` + archivos VIVO TikTok.
 - Origin: `https://github.com/zerausn/agentes.git`
+
+### ⚠️ Regla crítica
+No mezclar código entre ramas. `linux-arm64` = Note9. `vivo-tiktok` = VIVO.
+El shared `tiktok_evacuador_720.py` existe en ambas ramas pero con versiones diferentes.

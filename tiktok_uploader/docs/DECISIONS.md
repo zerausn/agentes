@@ -55,6 +55,16 @@
 - **Decisión**: Usar `adb shell run-as com.termux cp` para crear shortcuts. El widget corre como `u0_a291`, los archivos deben tener ese contexto.
 - **Consecuencia**: Los shortcuts siempre deben crearse desde `run-as com.termux`, no desde SSH.
 
+## 2026-07-24: Caption desactivado tras CAPTION_ENABLED flag
+- **Contexto**: El caption (`input text`) insertaba texto en el campo de descripción pero dejaba el teclado Gboard abierto. `close_caption_editor()` era no-op, entonces el teclado interfería con el tap de Publicar, causando que `publish_confirmed()` detectara Gboard en foreground y fallara.
+- **Decisión**: Envolver los 3 pasos del caption (`tocar campo`, `type_caption`, `close_caption_editor`) tras `if CAPTION_ENABLED:`. Default desactivado (False). El código no se borra.
+- **Consecuencia**: Publicación más rápida y confiable sin caption. Para reactivar: `TIKTOK_CAPTION_ENABLED=1` o cambiar la constante a True cuando la API esté aprobada.
+
+## 2026-07-24: Rama vivo-tiktok separada de linux-arm64
+- **Contexto**: Las features VIVO (`settle_seconds`, `_ImmediateFileHandler`, `CONTENT_URIS_CACHE`) contaminaban `tiktok_evacuador_720.py` compartido. El Note9 no debía recibir código VIVO.
+- **Decisión**: Crear rama `vivo-tiktok` desde commit `10305849` (Note9 limpio) con solo el `.py` VIVO-modificado + archivos TikTok-VIVO. En `linux-arm64`, revertir el `.py` a `10305849`.
+- **Consecuencia**: `linux-arm64` es solo Note9. `vivo-tiktok` es solo VIVO TikTok. No hay contaminación cruzada.
+
 ## 2026-06-18: _proot_bind.sh para montar /sdcard y ADB keys
 - **Contexto**: El proot Debian no tiene acceso a `/sdcard` (bind mount manual) ni a las claves ADB de Termux.
 - **Decisión**: Script `_proot_bind.sh` que detecta la ruta real del almacenamiento externo y bind-mounta `/sdcard` y `~/.android` dentro del proot.

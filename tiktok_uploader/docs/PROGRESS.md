@@ -65,11 +65,22 @@ La API de TikTok sigue sin aprobarse; el método UI es la estrategia de producci
 | Control | ADB vía USB o scripts en `/sdcard/Antigravity/` |
 | Repo | `agentes/` rama `linux-arm64` en GitHub |
 
+## 2026-07-24: Caption desactivado + Rama vivo-tiktok aislada
+
+- **Caption**: Envuelto tras `CAPTION_ENABLED` (default `False`). Para activar: `TIKTOK_CAPTION_ENABLED=1`.
+  El código NO se borró — solo no se ejecuta. Pendiente de aprobación de API.
+- **Rama `vivo-tiktok`**: Creada desde commit `10305849` con el `tiktok_evacuador_720.py` VIVO-modificado
+  (`settle_seconds`, `_ImmediateFileHandler`, `CONTENT_URIS_CACHE`, ADB flexible).
+- **Rama `linux-arm64`**: Limpia para Note9. `tiktok_evacuador_720.py` revertido a commit `10305849`.
+  VIVO files en `vivo/` se quedan (referencia). Nada del VIVO TikTok contamina.
+- **Problema Note9 detectado (NO por contaminación)**: Teclado Gboard queda abierto tras "Publicar".
+  `close_caption_editor()` era no-op. Al desactivar caption, ese problema desaparece.
+
 ## Próximos Pasos
 
-1. Probar método `intent` como default y mantener `monkey` como fallback.
-2. Agregar notificación Termux cuando un video se publique exitosamente.
+1. ~~Probar método `intent` como default y mantener `monkey` como fallback.~~ ✅
+2. ~~Agregar notificación Termux cuando un video se publique exitosamente.~~
 3. Implementar cola de reintentos con backoff (máximo 3 intentos, luego mover a `fallidos_tiktok`).
 4. Agregar verificación real: abrir TikTok y revisar perfil para confirmar publicación.
 5. Probar estabilidad del widget 720s en ejecución continua 24h+.
-6. Si la API se aprueba, migrar a Content Posting API y dejar UI automation como respaldo.
+6. Si la API se aprueba, migrar a Content Posting API, reactivar caption con `CAPTION_ENABLED=1`.
