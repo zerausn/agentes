@@ -60,6 +60,21 @@
 - **Decisión**: Envolver los 3 pasos del caption (`tocar campo`, `type_caption`, `close_caption_editor`) tras `if CAPTION_ENABLED:`. Default desactivado (False). El código no se borra.
 - **Consecuencia**: Publicación más rápida y confiable sin caption. Para reactivar: `TIKTOK_CAPTION_ENABLED=1` o cambiar la constante a True cuando la API esté aprobada.
 
+## 2026-07-25: PIPESTATUS[0] en vez de $? tras pipe con tee
+- **Contexto**: `comando | tee archivo.log` — el `$?` posterior captura el exit code de `tee` (siempre 0), no del comando real.
+- **Decisión**: Usar `${PIPESTATUS[0]}` que retorna el exit code del primer segmento del pipeline.
+- **Consecuencia**: El vigía ahora detecta correctamente cuando el evacuador falla (exit 3 = otra instancia, exit 1 = error, exit 2 = sin videos).
+
+## 2026-07-25: setsid + nohup para vigía via ADB
+- **Contexto**: Al lanzar `vigia_tiktok720_termux.sh` via `adb shell`, el proceso recibía SIGHUP al cerrarse la sesión ADB (cuando el comando timeout expiraba o la shell terminaba).
+- **Decisión**: Usar `adb shell "nohup setsid bash script.sh > /dev/null 2>&1 &"` para que el proceso herede PID 1 (init) y sobreviva a la desconexión ADB.
+- **Consecuencia**: El vigía corre como proceso init-child independiente de la sesión ADB. No se muere al cerrar la conexión.
+
+## 2026-07-25: Stale lock — eliminación manual
+- **Contexto**: Un crash (PID 19740, 2026-07-24 10:26:09) dejó el lock file `/sdcard/Antigravity/.state/tiktok_evacuador.lock` sin liberar. `fcntl.flock` no se libera automáticamente si el proceso no ejecuta el `finally` (lock release explícito).
+- **Decisión**: Eliminar manualmente el archivo `.lock`. El lock no tiene protección contra stale locks (no hay heartbeat ni timeout).
+- **Consecuencia**: El ciclos posteriores pueden ejecutarse de nuevo. Para prevenir recurrencia, considerar agregar un heartbeat timestamp al lock file y un cleanup automático si el PID ya no existe.
+
 ## 2026-07-24: Rama vivo-tiktok separada de linux-arm64
 - **Contexto**: Las features VIVO (`settle_seconds`, `_ImmediateFileHandler`, `CONTENT_URIS_CACHE`) contaminaban `tiktok_evacuador_720.py` compartido. El Note9 no debía recibir código VIVO.
 - **Decisión**: Crear rama `vivo-tiktok` desde commit `10305849` (Note9 limpio) con solo el `.py` VIVO-modificado + archivos TikTok-VIVO. En `linux-arm64`, revertir el `.py` a `10305849`.

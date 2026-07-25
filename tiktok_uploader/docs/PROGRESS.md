@@ -65,6 +65,15 @@ La API de TikTok sigue sin aprobarse; el método UI es la estrategia de producci
 | Control | ADB vía USB o scripts en `/sdcard/Antigravity/` |
 | Repo | `agentes/` rama `linux-arm64` en GitHub |
 
+## 2026-07-25: Stale lock + Pipestatus fix + setsid
+
+- **Stale lock**: `/sdcard/Antigravity/.state/tiktok_evacuador.lock` con PID 19740 (crash 2026-07-24 10:26:09). `finally` nunca ejecutó → lock persistió. Cada ciclo fallaba con "Otra instancia". Lock eliminado manualmente.
+- **`$?` bug**: `vigia_tiktok720_termux.sh` capturaba `$?` después de `| tee`, que siempre es 0. Corregido a `${PIPESTATUS[0]}` en línea 160.
+- **Vigía muerto sin motivo**: Android mató el proceso Termux del widget. El vigía no se reanuda solo. Se relanzó con `nohup setsid` para desenganchar de la sesión ADB. PID 2142 (parent=1).
+- **Ciclo #1 (11:06)**: OK — publicado/movido en 124s (caption activo porque el script en Note9 era la versión vieja). Pendientes: 555.
+- **Script actualizado en Note9**: `tiktok_evacuador_720.py` copiado con `CAPTION_ENABLED` al dispositivo.
+- **Pipestatus también corregido en repo**: `vigia_tiktok720_termux.sh` linea 160 en `linux-arm64`.
+
 ## 2026-07-24: Caption desactivado + Rama vivo-tiktok aislada
 
 - **Caption**: Envuelto tras `CAPTION_ENABLED` (default `False`). Para activar: `TIKTOK_CAPTION_ENABLED=1`.

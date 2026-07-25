@@ -152,6 +152,29 @@ cat /sdcard/Antigravity/.state/tiktok_queue.json | python3 -m json.tool
 
 ---
 
+## 2026-07-25: Stale lock + PIPESTATUS + setsid
+
+### Stale lock (CRÍTICO — ya corregido)
+- **Síntoma**: Cada ciclo fallaba con "Otra instancia de TikTok evacuador esta corriendo".
+- **Causa**: PID 19740 (del 2026-07-24 10:26:09) dejó el lock file por un crash. `fcntl.flock` no libera el archivo si el proceso muere sin ejecutar `finally`.
+- **Solución**: Eliminar `/sdcard/Antigravity/.state/tiktok_evacuador.lock` manualmente.
+
+### `$?` con tee (CRÍTICO — ya corregido)
+- **Síntoma**: El vigía reportaba "OK" incluso cuando el Python fallaba (exit != 0).
+- **Causa**: `comando | tee` → `$?` captura el exit de `tee` (siempre 0), no del comando.
+- **Solución**: Usar `${PIPESTATUS[0]}` que captura el exit del primer segmento del pipe.
+
+### Vigía no sobrevive a desconexión ADB
+- **Síntoma**: Al lanzar el vigía via `adb shell`, el proceso muere cuando la sesión ADB termina (SIGHUP).
+- **Solución**: Usar `nohup setsid` para desenganchar: `nohup setsid bash script.sh > /dev/null 2>&1 &`.
+- **Alternativa**: El widget Termux (que corre como app) sí mantiene el proceso vivo. Si se usa widget, no hay este problema.
+
+### Script Note9 desactualizado
+- El Note9 (commit `10305849`) no tenía `CAPTION_ENABLED`. Se copió manualmente la versión del repo con `adb push`.
+- Para futuras actualizaciones: `adb push tiktok_evacuador_720.py /sdcard/Antigravity/ && adb shell run-as com.termux cp /sdcard/Antigravity/tiktok_evacuador_720.py /data/data/com.termux/files/home/agentes/tiktok_uploader/tiktok_evacuador_720.py`
+
+---
+
 ## Problemas Conocidos
 
 ### ADB local perdido

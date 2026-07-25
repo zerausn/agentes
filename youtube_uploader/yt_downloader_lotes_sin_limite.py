@@ -27,8 +27,8 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
 # ─── Rutas ────────────────────────────────────────────────────────────────────
-BASE_DIR        = Path("/root/agentes/youtube_uploader")
-REPO_DIR        = Path("/root/agentes")
+BASE_DIR        = Path(__file__).resolve().parent
+REPO_DIR        = BASE_DIR.parent
 CREDENTIALS_DIR = BASE_DIR / "credentials"
 REGISTRY_FILE   = BASE_DIR / "yt_lotes_registro_sin_limite.json"
 LOG_FILE        = BASE_DIR / "yt_lotes_sin_limite.log"
@@ -307,10 +307,10 @@ def sync_push(commit_msg: str):
     _preserve_remote_downloads("crear commit")
 
     # Solo agregar el archivo de registro, forzando porque *.json suele estar en .gitignore
-    ok1, _ = _git("add", "-f", str(rel_registry), capture=True)
+    ok1, out1 = _git("add", "-f", str(rel_registry), capture=True)
     if not ok1:
-        log.warning("[SYNC] ⚠️  git add falló.")
-        print("[SYNC] ⚠️  git add falló. Se omite el push.")
+        log.warning("[SYNC] ⚠️  git add falló: %s", out1)
+        print(f"[SYNC] ⚠️  git add falló: {out1[:120]}. Se omite el push.")
         return
 
     # Verificar si hay algo para commitear
@@ -350,10 +350,10 @@ def sync_push(commit_msg: str):
 
     preserved_after_rebase = _preserve_remote_downloads("push")
     if preserved_after_rebase:
-        ok_add2, _ = _git("add", "-f", str(rel_registry), capture=True)
+        ok_add2, out_add2 = _git("add", "-f", str(rel_registry), capture=True)
         if not ok_add2:
-            log.warning("[SYNC] ⚠️  git add falló tras preservar descargados remotos.")
-            print("[SYNC] ⚠️  git add falló tras preservar descargados remotos. Se omite el push.")
+            log.warning("[SYNC] ⚠️  git add falló tras preservar descargados remotos: %s", out_add2)
+            print(f"[SYNC] ⚠️  git add falló tras preservar descargados remotos: {out_add2[:120]}. Se omite el push.")
             return
         ok_amend, out_amend = _git("commit", "--amend", "--no-edit", capture=True)
         if not ok_amend:
