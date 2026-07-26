@@ -778,8 +778,15 @@ def dump_ui() -> list[dict]:
     global _uiautomator_available
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     # Borrar siempre el XML anterior para evitar leer estado rancio
-    run_android(["rm", "-f", str(UI_DUMP_FILE)], timeout=5)
-    result = run_android(["uiautomator", "dump", str(UI_DUMP_FILE)], timeout=20)
+    try:
+        run_android(["rm", "-f", str(UI_DUMP_FILE)], timeout=5)
+    except subprocess.TimeoutExpired:
+        pass
+    try:
+        result = run_android(["uiautomator", "dump", str(UI_DUMP_FILE)], timeout=20)
+    except subprocess.TimeoutExpired:
+        _uiautomator_available = False
+        return []
     if result.returncode == 0 and UI_DUMP_FILE.exists():
         _uiautomator_available = True
         try:
