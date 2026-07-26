@@ -157,7 +157,7 @@ while true; do
     TIKTOK_PUBLISH_MODE=direct \
     "$PREFIX/bin/python3" "$EVACUADOR" \
         --open-next 2>&1 | tee -a "$LOG_DIR/tiktok_evacuador.log"
-    EXIT_CODE=$?
+    EXIT_CODE=${PIPESTATUS[0]}
 
     T_FIN=$(date +%s)
     DURACION=$((T_FIN - T_INICIO))

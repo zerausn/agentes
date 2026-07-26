@@ -120,6 +120,7 @@ AUTOMATION_TIMEOUT = int(os.environ.get("TIKTOK_AUTOMATION_TIMEOUT", "240"))
 PUBLISH_MODE = os.environ.get("TIKTOK_PUBLISH_MODE", "direct").strip().lower()
 SHARE_METHOD = os.environ.get("TIKTOK_SHARE_METHOD", "intent").strip().lower()
 POST_SETTLE_SECONDS = int(os.environ.get("TIKTOK_POST_SETTLE_SECONDS", "90"))
+CAPTION_ENABLED = os.environ.get("TIKTOK_CAPTION_ENABLED", "").strip() == "1"
 
 def settle_seconds(video: Path) -> int:
     try:
@@ -1071,10 +1072,11 @@ def automate_tiktok_publish_coords(caption: str, folder_name: str) -> bool:
     required_steps.append(("Siguiente editor", tap_scaled(531, 1341, "Siguiente editor", pause=10)))
 
     # Pantalla de descripcion: caption
-    required_steps.append(("campo descripcion", tap_scaled(178, 152, "campo descripcion", pause=1)))
-    required_steps.append(("caption", type_caption(caption)))
-    required_steps.append(("cerrar teclado", close_caption_editor()))
-    time.sleep(2)
+    if CAPTION_ENABLED:
+        required_steps.append(("campo descripcion", tap_scaled(178, 152, "campo descripcion", pause=1)))
+        required_steps.append(("caption", type_caption(caption)))
+        required_steps.append(("cerrar teclado", close_caption_editor()))
+        time.sleep(2)
 
     if PUBLISH_MODE == "draft":
         publish_ok = save_as_draft()
@@ -1227,10 +1229,11 @@ def open_next(args: argparse.Namespace) -> int:
                 tap_scaled(531, 1341, f"Siguiente editor coord (step {_editor_step + 1})", pause=6)
 
         # Pantalla de caption: tocar campo y escribir
-        required_steps.append(("campo descripcion", tap_scaled(178, 152, "campo descripcion", pause=2)))
-        required_steps.append(("caption", type_caption(caption)))
-        required_steps.append(("cerrar teclado", close_caption_editor()))
-        time.sleep(2)
+        if CAPTION_ENABLED:
+            required_steps.append(("campo descripcion", tap_scaled(178, 152, "campo descripcion", pause=2)))
+            required_steps.append(("caption", type_caption(caption)))
+            required_steps.append(("cerrar teclado", close_caption_editor()))
+            time.sleep(2)
 
         if PUBLISH_MODE == "draft":
             publish_ok = save_as_draft()
