@@ -308,3 +308,18 @@ Estado confirmado en esta revision:
 | S24 Ultra | SM-S928B | RFCX91HV4GD | Reparado y alineado en `a3104f2e`; proceso viejo cerrado antes del pull |
 | Note 9 | SM-N9600 | 29396e8c1e3f7ece | Tenia `--autostash`; debe recibir `a3104f2e` antes de escoger otro lote |
 | Vivo | pendiente de conexion | pendiente | Debe revisarse antes de usar si corre este descargador |
+
+## Troubleshooting (Problemas Comunes)
+
+### Git trabado por `index.lock` (Ej. `git add falló`)
+Cuando un proceso de Termux se interrumpe de forma abrupta (por ejemplo, porque Android mata la aplicación por políticas de batería) justo en medio de una sincronización de Git, puede dejar abandonado el archivo `.git/index.lock`. 
+
+Esto causa que posteriores ejecuciones del descargador fallen en la fase `sync_pull` o `sync_push` con el mensaje genérico "git add falló", sin poder subir ni bajar el registro `yt_lotes_registro_sin_limite.json`.
+
+**Solución:**
+Conectarse al nodo por ADB y ejecutar `run-as com.termux` para eliminar el archivo de bloqueo:
+```bash
+# Ejemplo de solución para el Note 9:
+adb -s 29396e8c1e3f7ece shell "run-as com.termux rm files/home/agentes/.git/index.lock"
+```
+*(Nota: Hemos mejorado el script `yt_downloader_lotes_sin_limite.py` para capturar e imprimir el output del error real de `git add` en los logs y facilitar su detección en el futuro).*
