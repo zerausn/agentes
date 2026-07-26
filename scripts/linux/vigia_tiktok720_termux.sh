@@ -79,8 +79,9 @@ ensure_adb_local() {
 
 mkdir -p "$LOG_DIR"
 
-# Log all output to session log file
-exec >> "$SESSION_LOG" 2>&1
+# Log all output to session log file AND terminal
+# Tee keeps terminal alive (Termux Widget kills idle sessions)
+exec > >(tee -a "$SESSION_LOG") 2>&1
 
 echo ""
 echo "=============================================="
@@ -157,7 +158,7 @@ while true; do
     TIKTOK_ADB_SERIAL=127.0.0.1:5555 \
     TIKTOK_SHARE_METHOD=intent \
     TIKTOK_PUBLISH_MODE=direct \
-    "$PREFIX/bin/python3" "$EVACUADOR" \
+    "$PREFIX/bin/python3" -u "$EVACUADOR" \
         --open-next 2>&1
     EXIT_CODE=$?
 
