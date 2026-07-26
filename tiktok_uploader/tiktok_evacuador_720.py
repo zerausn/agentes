@@ -728,7 +728,12 @@ def tap_scaled(x: int, y: int, label: str, pause: float = 1.0) -> bool:
 
 
 def keyevent(key: str, label: str, pause: float = 1.0) -> bool:
-    result = run_android(["input", "keyevent", key], timeout=10)
+    try:
+        result = run_android(["input", "keyevent", key], timeout=10)
+    except subprocess.TimeoutExpired:
+        logging.warning("input keyevent timed out para %s (%s)", label, key)
+        time.sleep(pause)
+        return False
     if result.returncode == 0:
         logging.info("Keyevent: %s (%s)", key, label)
         time.sleep(pause)
@@ -812,7 +817,11 @@ def _parse_ui_nodes(root: ET.Element) -> list[dict]:
 
 def tap(center: tuple[int, int], label: str) -> bool:
     x, y = center
-    result = run_android(["input", "tap", str(x), str(y)], timeout=10)
+    try:
+        result = run_android(["input", "tap", str(x), str(y)], timeout=10)
+    except subprocess.TimeoutExpired:
+        logging.warning("input tap timed out para %s en (%s,%s)", label, x, y)
+        return False
     if result.returncode == 0:
         logging.info("Tap: %s en (%s,%s)", label, x, y)
         return True
