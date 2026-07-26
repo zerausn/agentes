@@ -78,7 +78,9 @@ ensure_adb_local() {
 }
 
 mkdir -p "$LOG_DIR"
-exec > >(tee -a "$SESSION_LOG") 2>&1
+
+# Log all output to session log file
+exec >> "$SESSION_LOG" 2>&1
 
 echo ""
 echo "=============================================="
@@ -156,8 +158,8 @@ while true; do
     TIKTOK_SHARE_METHOD=intent \
     TIKTOK_PUBLISH_MODE=direct \
     "$PREFIX/bin/python3" "$EVACUADOR" \
-        --open-next 2>&1 | tee -a "$LOG_DIR/tiktok_evacuador.log"
-    EXIT_CODE=${PIPESTATUS[0]}
+        --open-next 2>&1
+    EXIT_CODE=$?
 
     T_FIN=$(date +%s)
     DURACION=$((T_FIN - T_INICIO))
