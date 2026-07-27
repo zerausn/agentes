@@ -6709,7 +6709,7 @@
     "IsvKVmwUNfY": {
       "title": "20250423 180627",
       "publishedAt": "2025-09-14T22:49:55Z",
-      "status": "pendiente",
+      "status": "fallido",
       "file": null,
       "downloaded_at": null,
       "downloaded_by": null
@@ -6717,10 +6717,10 @@
     "BYoqp5ERJok": {
       "title": "20250425 182046",
       "publishedAt": "2025-09-14T22:49:38Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/20250425 182046.mp4",
+      "downloaded_at": "2026-07-27 19:40",
+      "downloaded_by": "Note9"
     },
     "Skfq7Lqh6r0": {
       "title": "20250503 180143",
