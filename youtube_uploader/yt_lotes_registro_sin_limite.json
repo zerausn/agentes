@@ -6557,10 +6557,10 @@
     "LcdutntEFCE": {
       "title": "20250814 230728",
       "publishedAt": "2025-09-30T08:00:06Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/20250814 230728.mp4",
+      "downloaded_at": "2026-07-27 14:42",
+      "downloaded_by": "Note9"
     },
     "BJ40zo3B6Rw": {
       "title": "20250808 162247",
