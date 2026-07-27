@@ -6605,7 +6605,7 @@
     "HslsaLCBA4w": {
       "title": "20250613 183835",
       "publishedAt": "2025-09-14T22:32:09Z",
-      "status": "pendiente",
+      "status": "fallido",
       "file": null,
       "downloaded_at": null,
       "downloaded_by": null
@@ -6613,7 +6613,7 @@
     "LoXXnYPbR8o": {
       "title": "20250613 182711",
       "publishedAt": "2025-09-14T22:31:29Z",
-      "status": "pendiente",
+      "status": "fallido",
       "file": null,
       "downloaded_at": null,
       "downloaded_by": null
@@ -6621,7 +6621,7 @@
     "um3cI0jWi-Q": {
       "title": "20250613 182457",
       "publishedAt": "2025-09-14T22:30:41Z",
-      "status": "pendiente",
+      "status": "fallido",
       "file": null,
       "downloaded_at": null,
       "downloaded_by": null
@@ -6629,7 +6629,7 @@
     "dGYAg3sTRio": {
       "title": "20250613 182049",
       "publishedAt": "2025-09-14T22:30:18Z",
-      "status": "pendiente",
+      "status": "fallido",
       "file": null,
       "downloaded_at": null,
       "downloaded_by": null
@@ -6637,7 +6637,7 @@
     "ryfn1qqv_Rw": {
       "title": "20250613 181317",
       "publishedAt": "2025-09-14T22:29:44Z",
-      "status": "pendiente",
+      "status": "fallido",
       "file": null,
       "downloaded_at": null,
       "downloaded_by": null
@@ -6645,10 +6645,10 @@
     "lGzQeQ93XMM": {
       "title": "20250531 204047",
       "publishedAt": "2025-09-14T22:29:19Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/20250531 204047.mp4",
+      "downloaded_at": "2026-07-27 16:27",
+      "downloaded_by": "Note9"
     },
     "2hsxanM7N1A": {
       "title": "20250531 182116",
