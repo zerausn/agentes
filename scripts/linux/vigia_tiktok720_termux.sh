@@ -128,7 +128,13 @@ else
     echo "[WAKE-LOCK] AVISO: instala termux-api para habilitar wake-lock."
 fi
 
-trap 'printf "\n"; echo "[SALIDA] $(date "+%H:%M:%S") — liberando wake-lock"; termux-wake-unlock 2>/dev/null || true; exit' INT TERM EXIT
+_cleanup() {
+    printf "\n"
+    echo "[SALIDA] $(date "+%H:%M:%S") — liberando wake-lock"
+    termux-wake-unlock 2>/dev/null || true
+}
+trap '_cleanup; exit' INT TERM
+trap '_cleanup' EXIT
 
 if [ ! -f "$EVACUADOR" ]; then
     echo "[ERROR] No existe tiktok_evacuador_720.py"
