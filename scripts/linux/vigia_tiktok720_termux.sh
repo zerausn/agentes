@@ -52,6 +52,38 @@ count_pending() {
     find "$SOURCE_DIR" -maxdepth 1 -type f \( -iname '*.mp4' -o -iname '*.mov' -o -iname '*.mkv' \) 2>/dev/null | wc -l
 }
 
+_adb_reconnect() {
+    adb kill-server >/dev/null 2>&1 || true
+    sleep 1
+    adb start-server >/dev/null 2>&1 || true
+    sleep 2
+    adb connect 127.0.0.1:5555 2>&1
+    sleep 1
+    if adb devices | awk '$1 == "127.0.0.1:5555" && $2 == "device" {found=1} END {exit(found ? 0 : 1)}'; then
+        return 0
+    fi
+    return 1
+}
+
+_adb_self_repair() {
+    echo "[ADB] Intentando autoreparar adbd TCP en el dispositivo..."
+    local result
+    result=$(su -c 'setprop service.adb.tcp.port 5555 && stop adbd && start adbd && echo OK' 2>/dev/null)
+    if [ "$result" = "OK" ]; then
+        sleep 3
+        adb connect 127.0.0.1:5555 >/dev/null 2>&1
+        sleep 1
+        if adb devices | awk '$1 == "127.0.0.1:5555" && $2 == "device" {found=1} END {exit(found ? 0 : 1)}'; then
+            echo "[ADB] Reparacion exitosa: adbd TCP activado."
+            return 0
+        fi
+        echo "[ADB] Reparacion parcial: adbd reiniciado, pero aun no conecta."
+    else
+        echo "[ADB] No se pudo autoreparar (sin root o adbd no coopera)."
+    fi
+    return 1
+}
+
 ensure_adb_local() {
     if ! command -v adb >/dev/null 2>&1; then
         echo "[ERROR] Falta android-tools en Termux. Instala: pkg install android-tools"
@@ -63,17 +95,14 @@ ensure_adb_local() {
         return 0
     fi
     echo "[ADB] Reconectando..."
-    adb kill-server >/dev/null 2>&1 || true
-    sleep 1
-    adb start-server >/dev/null 2>&1 || true
-    sleep 2
-    adb connect 127.0.0.1:5555 2>&1
-    sleep 1
-    if adb devices | awk '$1 == "127.0.0.1:5555" && $2 == "device" {found=1} END {exit(found ? 0 : 1)}'; then
+    if _adb_reconnect; then
         echo "[ADB] Local OK tras reconexion."
         return 0
     fi
-    echo "[ERROR] ADB local no disponible. Revisa 'adb tcpip 5555' en Note9."
+    if _adb_self_repair; then
+        return 0
+    fi
+    echo "[AVISO] ADB no disponible. Se usara fallback accessibility."
     return 1
 }
 
@@ -111,7 +140,10 @@ fi
 
 [ -f "$ENV_FILE" ] && . "$ENV_FILE"
 
-ensure_adb_local || exit 1
+if ! ensure_adb_local; then
+    echo "[ADB] AVISO: ADB no disponible al arranque. Reintentando cada ciclo."
+    echo "[ADB] El fallback accessibility se usara si ADB no responde."
+fi
 
 echo "[MODO] Sin proot-distro. Python directo desde Termux + ADB local."
 
@@ -121,16 +153,13 @@ adb_wake() {
         return 0
     fi
     echo "[ADB-WAKE] Caido. Reconectando..."
-    adb kill-server >/dev/null 2>&1 || true
-    sleep 1
-    adb start-server >/dev/null 2>&1 || true
-    sleep 2
-    adb connect 127.0.0.1:5555 >/dev/null 2>&1
-    sleep 1
-    if adb devices | awk '$1 == "127.0.0.1:5555" && $2 == "device" {found=1} END {exit(found ? 0 : 1)}'; then
+    if _adb_reconnect; then
         return 0
     fi
-    echo "[ADB-WAKE] AVISO: ADB no disponible. Intentando con accessibility fallback."
+    if _adb_self_repair; then
+        return 0
+    fi
+    echo "[ADB-WAKE] ADB no disponible. Usando accessibility fallback."
     return 1
 }
 
