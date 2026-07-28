@@ -1555,10 +1555,10 @@
     "UBDZ1ARoCHc": {
       "title": "20250905 221938",
       "publishedAt": "2026-07-27T22:45:35Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/20250905 221938.mp4",
+      "downloaded_at": "2026-07-28 03:48",
+      "downloaded_by": "Note9"
     }
   },
   "2026-06": {
