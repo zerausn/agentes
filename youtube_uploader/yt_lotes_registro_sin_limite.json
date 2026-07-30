@@ -3911,10 +3911,10 @@
     "30HTOL8_XRM": {
       "title": "PW | (20260509_211929)",
       "publishedAt": "2026-05-28T22:45:19Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/PW  (20260509_211929).mp4",
+      "downloaded_at": "2026-07-30 19:46",
+      "downloaded_by": "localhost"
     },
     "hf9xQOx5oTk": {
       "title": "PW | (20260513_184054)",
