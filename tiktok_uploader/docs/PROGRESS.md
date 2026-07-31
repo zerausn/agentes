@@ -3,10 +3,17 @@
 ## Meta
 Publicar videos en TikTok desde un nodo Android Note9 sin usar la Content Posting API (no aprobada).
 
-## Estado Actual (2026-07-20): FUNCIONAL — Widget 720s con Share Intent + ADB local
+## Estado Actual (2026-07-31): FUNCIONAL — Widget 720s con Share Intent + ADB local + autoreparación
 
 El sistema produce publicaciones reales en TikTok usando UI automation sobre la app Android.
 La API de TikTok sigue sin aprobarse; el método UI es la estrategia de producción.
+
+### Fixes 2026-07-31 (sesión: wiget se cerraba solo, ADB caído, stale locks)
+- **Widget muere**: `exec bash vigia...` hacía al vigía hijo del terminal del widget → SIGHUP al cerrarse. Fix: `nohup setsid` en el widget + `tail -f` del log en vivo.
+- **ADB caído**: `ensure_adb_local || exit 1` mataba el vigía. Fix: ya no sale; `_adb_reconnect` + `_adb_self_repair` (`su -c setprop`) y fallback accessibility + reintento cada ciclo.
+- **Stale lock evacuador**: `O_EXCL` sin chequeo de PID dejaba locks eternos tras crash/kill. Fix: `_lock_is_stale()` — si el PID del lock está muerto, se remueve y se reintenta.
+- **Vigía duplicado**: lock propio `vigia_tiktok720.lock` evita dos instancias si se toca el widget dos veces.
+- **Widget LIMPIAR_LOCKS_STALE**: borra solo locks con PID muerto; mantiene los vivos (a diferencia de LIMPIAR_LOCKS que borra todo).
 
 ---
 

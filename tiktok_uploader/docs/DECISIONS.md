@@ -84,3 +84,23 @@
 - **Contexto**: El proot Debian no tiene acceso a `/sdcard` (bind mount manual) ni a las claves ADB de Termux.
 - **Decisión**: Script `_proot_bind.sh` que detecta la ruta real del almacenamiento externo y bind-mounta `/sdcard` y `~/.android` dentro del proot.
 - **Consecuencia**: El evacuador Python dentro del proot puede acceder a archivos en `/sdcard` y conectar ADB local sin re-autorizar.
+
+## 2026-07-31: Widget lanza vigía con nohup setsid (sobrevive al cierre del widget)
+- **Contexto**: El widget usaba `exec bash vigia...` → el vigía moría con SIGHUP al cerrarse el terminal del widget (pantalla apagada, Android kill). El sistema "se cerraba solo" repetidamente.
+- **Decisión**: El widget lanza `nohup setsid bash vigia... >> launcher.log 2>&1 &` y abre `tail -f` del session log para verlo en vivo. El vigía se desengancha del terminal y sobrevive.
+- **Consecuencia**: El widget ya no es requisito de vida del vigía. Tocar el widget dos veces crea el riesgo de duplicados → se agregó lock propio del vigía.
+
+## 2026-07-31: Vigía no muere si ADB falla (autoreparación)
+- **Contexto**: `ensure_adb_local || exit 1` mataba el vigía cuando `adb connect 127.0.0.1:5555` fallaba (ej: tras reinicio, `adb tcpip 5555` se pierde).
+- **Decisión**: El vigía ya no sale. Intenta `_adb_reconnect` (kill/start server + connect), luego `_adb_self_repair` (`su -c 'setprop service.adb.tcp.port 5555 && stop adbd && start adbd'`), y si nada funciona usa fallback `accessibility` para ese ciclo, reintentando en cada ciclo.
+- **Consecuencia**: El sistema es autónomo ante ADB caído. En el Note9 sin ADB el share intent no puede resolver content URI → los ciclos fallan (exit=1) hasta que ADB vuelve; la autoreparación por `su` requiere root.
+
+## 2026-07-31: Stale lock del evacuador — PID check en vez de O_EXCL ciego
+- **Contexto**: `process_lock()` usaba `os.O_CREAT | os.O_EXCL` sin verificar si el PID del lock existía. Un crash/kill dejaba el lock eterno y TODOS los ciclos siguientes fallaban con "Otra instancia" hasta limpieza manual.
+- **Decisión**: `_lock_is_stale()` — si el PID en el lock está muerto, se remueve y se reintenta tomar el lock. Si el PID está vivo, sí es "Otra instancia".
+- **Consecuencia**: Crash de proceso ya no bloquea el sistema. Complemento manual: widget `LIMPIAR_LOCKS_STALE` (borra solo locks con PID muerto).
+
+## 2026-07-31: Widget LIMPIAR_LOCKS_STALE (borrado selectivo de locks)
+- **Contexto**: `LIMPIAR_LOCKS` borra TODOS los locks sin verificar procesos vivos — puede romper una ejecución en curso.
+- **Decisión**: Nuevo widget que lee el PID de cada lock y solo borra si está muerto. Mantiene locks de procesos vivos.
+- **Consecuencia**: Limpieza segura, sin riesgo de doble ejecución.

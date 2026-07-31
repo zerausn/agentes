@@ -234,14 +234,43 @@ def shell_text_arg(text: str) -> str:
     return text.replace(" ", "%s")[:240]
 
 
+def _lock_is_stale(lock_path: str) -> bool:
+    """True si el lock existe pero su PID ya no esta vivo (crash/kill)."""
+    try:
+        with open(lock_path, "r", encoding="utf-8") as fh:
+            content = fh.read().strip()
+    except OSError:
+        return True
+    pid_str = content.split()[0] if content else ""
+    if not pid_str.isdigit():
+        return True
+    try:
+        os.kill(int(pid_str), 0)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+    return False
+
+
 @contextlib.contextmanager
 def process_lock():
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     lock_path = str(LOCK_FILE)
 
-    try:
-        fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError:
+    for _ in range(2):
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            break
+        except FileExistsError:
+            if not _lock_is_stale(lock_path):
+                raise RuntimeError("Otra instancia de TikTok evacuador esta corriendo")
+            logging.warning("Lock stale detectado, removiendo %s", lock_path)
+            try:
+                os.unlink(lock_path)
+            except OSError:
+                pass
+    else:
         raise RuntimeError("Otra instancia de TikTok evacuador esta corriendo")
 
     try:

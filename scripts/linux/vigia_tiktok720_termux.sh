@@ -21,6 +21,18 @@ LOG_DIR="/sdcard/Antigravity/widget_logs"
 SESSION_LOG="$LOG_DIR/6_SUBIR_TIKTOK720.log"
 SOURCE_DIR="/sdcard/Antigravity/subidos a facebbok"
 ADB_SERIAL="127.0.0.1:5555"
+VIGIA_LOCK="$TERMUX_HOME/vigia_tiktok720.lock"
+
+# Evitar instancias duplicadas del vigia
+if [ -f "$VIGIA_LOCK" ]; then
+    LOCK_PID=$(cat "$VIGIA_LOCK" 2>/dev/null)
+    if [ -n "$LOCK_PID" ] && kill -0 "$LOCK_PID" 2>/dev/null; then
+        echo "[LOCK] Vigia ya corriendo (PID $LOCK_PID). Saliendo."
+        exit 0
+    fi
+    rm -f "$VIGIA_LOCK"
+fi
+echo $$ > "$VIGIA_LOCK"
 
 INTERVALO=720
 CHECK_INTERVAL=15
@@ -52,6 +64,38 @@ count_pending() {
     find "$SOURCE_DIR" -maxdepth 1 -type f \( -iname '*.mp4' -o -iname '*.mov' -o -iname '*.mkv' \) 2>/dev/null | wc -l
 }
 
+_adb_reconnect() {
+    adb kill-server >/dev/null 2>&1 || true
+    sleep 1
+    adb start-server >/dev/null 2>&1 || true
+    sleep 2
+    adb connect 127.0.0.1:5555 2>&1
+    sleep 1
+    if adb devices | awk '$1 == "127.0.0.1:5555" && $2 == "device" {found=1} END {exit(found ? 0 : 1)}'; then
+        return 0
+    fi
+    return 1
+}
+
+_adb_self_repair() {
+    echo "[ADB] Intentando autoreparar adbd TCP en el dispositivo..."
+    local result
+    result=$(su -c 'setprop service.adb.tcp.port 5555 && stop adbd && start adbd && echo OK' 2>/dev/null)
+    if [ "$result" = "OK" ]; then
+        sleep 3
+        adb connect 127.0.0.1:5555 >/dev/null 2>&1
+        sleep 1
+        if adb devices | awk '$1 == "127.0.0.1:5555" && $2 == "device" {found=1} END {exit(found ? 0 : 1)}'; then
+            echo "[ADB] Reparacion exitosa: adbd TCP activado."
+            return 0
+        fi
+        echo "[ADB] Reparacion parcial: adbd reiniciado, pero aun no conecta."
+    else
+        echo "[ADB] No se pudo autoreparar (sin root o adbd no coopera)."
+    fi
+    return 1
+}
+
 ensure_adb_local() {
     if ! command -v adb >/dev/null 2>&1; then
         echo "[ERROR] Falta android-tools en Termux. Instala: pkg install android-tools"
@@ -63,21 +107,21 @@ ensure_adb_local() {
         return 0
     fi
     echo "[ADB] Reconectando..."
-    adb kill-server >/dev/null 2>&1 || true
-    sleep 1
-    adb start-server >/dev/null 2>&1 || true
-    sleep 2
-    adb connect 127.0.0.1:5555 2>&1
-    sleep 1
-    if adb devices | awk '$1 == "127.0.0.1:5555" && $2 == "device" {found=1} END {exit(found ? 0 : 1)}'; then
+    if _adb_reconnect; then
         echo "[ADB] Local OK tras reconexion."
         return 0
     fi
-    echo "[ERROR] ADB local no disponible. Revisa 'adb tcpip 5555' en Note9."
+    if _adb_self_repair; then
+        return 0
+    fi
+    echo "[AVISO] ADB no disponible. Se usara fallback accessibility."
     return 1
 }
 
 mkdir -p "$LOG_DIR"
+
+# Log all output to session log file AND terminal
+# Tee keeps terminal alive (Termux Widget kills idle sessions)
 exec > >(tee -a "$SESSION_LOG") 2>&1
 
 echo ""
@@ -96,7 +140,14 @@ else
     echo "[WAKE-LOCK] AVISO: instala termux-api para habilitar wake-lock."
 fi
 
-trap 'printf "\n"; echo "[SALIDA] $(date "+%H:%M:%S") — liberando wake-lock"; termux-wake-unlock 2>/dev/null || true; exit' INT TERM EXIT
+_cleanup() {
+    printf "\n"
+    echo "[SALIDA] $(date "+%H:%M:%S") — liberando wake-lock"
+    rm -f "$VIGIA_LOCK" 2>/dev/null || true
+    termux-wake-unlock 2>/dev/null || true
+}
+trap '_cleanup; exit' INT TERM
+trap '_cleanup' EXIT
 
 if [ ! -f "$EVACUADOR" ]; then
     echo "[ERROR] No existe tiktok_evacuador_720.py"
@@ -108,7 +159,10 @@ fi
 
 [ -f "$ENV_FILE" ] && . "$ENV_FILE"
 
-ensure_adb_local || exit 1
+if ! ensure_adb_local; then
+    echo "[ADB] AVISO: ADB no disponible al arranque. Reintentando cada ciclo."
+    echo "[ADB] El fallback accessibility se usara si ADB no responde."
+fi
 
 echo "[MODO] Sin proot-distro. Python directo desde Termux + ADB local."
 
@@ -118,16 +172,13 @@ adb_wake() {
         return 0
     fi
     echo "[ADB-WAKE] Caido. Reconectando..."
-    adb kill-server >/dev/null 2>&1 || true
-    sleep 1
-    adb start-server >/dev/null 2>&1 || true
-    sleep 2
-    adb connect 127.0.0.1:5555 >/dev/null 2>&1
-    sleep 1
-    if adb devices | awk '$1 == "127.0.0.1:5555" && $2 == "device" {found=1} END {exit(found ? 0 : 1)}'; then
+    if _adb_reconnect; then
         return 0
     fi
-    echo "[ADB-WAKE] AVISO: ADB no disponible. Intentando con accessibility fallback."
+    if _adb_self_repair; then
+        return 0
+    fi
+    echo "[ADB-WAKE] ADB no disponible. Usando accessibility fallback."
     return 1
 }
 
@@ -155,9 +206,9 @@ while true; do
     TIKTOK_ADB_SERIAL=127.0.0.1:5555 \
     TIKTOK_SHARE_METHOD=intent \
     TIKTOK_PUBLISH_MODE=direct \
-    "$PREFIX/bin/python3" "$EVACUADOR" \
-        --open-next 2>&1 | tee -a "$LOG_DIR/tiktok_evacuador.log"
-    EXIT_CODE=${PIPESTATUS[0]}
+    "$PREFIX/bin/python3" -u "$EVACUADOR" \
+        --open-next 2>&1
+    EXIT_CODE=$?
 
     T_FIN=$(date +%s)
     DURACION=$((T_FIN - T_INICIO))

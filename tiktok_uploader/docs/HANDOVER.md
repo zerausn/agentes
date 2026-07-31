@@ -1,6 +1,6 @@
 # TikTok Uploader — Handover
 
-## Estado Actual (2026-07-21): PRODUCCIÓN CON UI AUTOMATION (BLOQUEADO PARA NOTE9)
+## Estado Actual (2026-07-31): PRODUCCIÓN CON UI AUTOMATION (BLOQUEADO PARA NOTE9)
 
 El sistema está publicando videos reales en TikTok usando Share Intent + ADB local.
 La Content Posting API no está aprobada; no hay plazo estimado.
@@ -8,6 +8,28 @@ La Content Posting API no está aprobada; no hay plazo estimado.
 > [!WARNING]
 > **VERSIÓN BLOQUEADA PARA NOTE9 (SM-N9600, Android 10).**
 > Este código está probado y funciona perfectamente en el Note9. Intentos pasados de adaptarlo o probarlo en el Samsung Galaxy S24 (Android 14) introdujeron errores y rompieron la estabilidad en el Note9. **Bajo ninguna circunstancia se debe modificar o "contaminar" este código funcional para intentar dar soporte al S24**, a menos que haya una petición explícita del usuario para revisar ese caso específico. Si funciona en el Note9, se queda así.
+
+---
+
+## 2026-07-31 — Autoreparación completa (vigía + widget + locks)
+
+### Problema 1: el vigía se cerraba solo
+- **Causa**: el widget lanzaba con `exec bash vigia...` → el vigía era hijo del terminal del widget. Al cerrarse el terminal (pantalla apagada, Android kill), el vigía moría con SIGHUP.
+- **Fix**: el widget `6_SUBIR_TIKTOK720.sh` ahora lanza con `nohup setsid bash vigia... >> launcher.log 2>&1 &` y muestra el session log en vivo con `tail -f`. El vigía sobrevive al cierre del widget.
+- **Ver log después**: `tail -f /sdcard/Antigravity/widget_logs/6_SUBIR_TIKTOK720.log` (desde Termux, no `run-as`).
+
+### Problema 2: ADB local caído mataba el vigía
+- **Causa**: `ensure_adb_local || exit 1` — si `adb connect 127.0.0.1:5555` fallaba, el vigía salía con error.
+- **Fix**: ya no sale. Secuencia: `_adb_reconnect` (kill/start server) → `_adb_self_repair` (`su -c 'setprop service.adb.tcp.port 5555 && stop adbd && start adbd'`) → fallback `accessibility` para ese ciclo → reintento en cada ciclo. La autoreparación con `su` solo funciona si el dispositivo tiene root.
+- **Nota Note9**: sin ADB, el share intent no puede resolver content URI del MediaStore → los ciclos fallan con exit=1. ADB local es REQUERIDO en el Note9 para publicar (el fallback accessibility solo cubre taps).
+
+### Problema 3: stale lock del evacuador (`tiktok_evacuador.lock`)
+- **Causa**: `process_lock()` usa `O_EXCL` sin chequear si el PID del lock está vivo. Crash o `kill -9` deja el lock eterno → todos los ciclos fallan con "Otra instancia".
+- **Fix (en `tiktok_evacuador_720.py`)**: `_lock_is_stale()` — si el PID del lock está muerto, se remueve y se reintenta. Si el PID está vivo, sí es "Otra instancia".
+- **Nota**: el `LIMPIAR_LOCKS_STALE` widget (nuevo) borra manualmente solo locks con PID muerto.
+
+### Problema 4: instancias duplicadas del vigía
+- **Fix**: lock propio `vigia_tiktok720.lock` en Termux home. Si el usuario toca el widget dos veces, la segunda instancia detecta el PID vivo y sale.
 
 ---
 
