@@ -21,6 +21,18 @@ LOG_DIR="/sdcard/Antigravity/widget_logs"
 SESSION_LOG="$LOG_DIR/6_SUBIR_TIKTOK720.log"
 SOURCE_DIR="/sdcard/Antigravity/subidos a facebbok"
 ADB_SERIAL="127.0.0.1:5555"
+VIGIA_LOCK="$TERMUX_HOME/vigia_tiktok720.lock"
+
+# Evitar instancias duplicadas del vigia
+if [ -f "$VIGIA_LOCK" ]; then
+    LOCK_PID=$(cat "$VIGIA_LOCK" 2>/dev/null)
+    if [ -n "$LOCK_PID" ] && kill -0 "$LOCK_PID" 2>/dev/null; then
+        echo "[LOCK] Vigia ya corriendo (PID $LOCK_PID). Saliendo."
+        exit 0
+    fi
+    rm -f "$VIGIA_LOCK"
+fi
+echo $$ > "$VIGIA_LOCK"
 
 INTERVALO=720
 CHECK_INTERVAL=15
@@ -131,6 +143,7 @@ fi
 _cleanup() {
     printf "\n"
     echo "[SALIDA] $(date "+%H:%M:%S") — liberando wake-lock"
+    rm -f "$VIGIA_LOCK" 2>/dev/null || true
     termux-wake-unlock 2>/dev/null || true
 }
 trap '_cleanup; exit' INT TERM
