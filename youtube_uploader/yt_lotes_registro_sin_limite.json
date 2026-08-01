@@ -1739,10 +1739,10 @@
     "EpECRf9xa_A": {
       "title": "PW | 2026-04-13 | (20250907_175411)",
       "publishedAt": "2026-07-31T19:00:06Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/PW  2026-04-13  (20250907_175411).mp4",
+      "downloaded_at": "2026-08-01 16:31",
+      "downloaded_by": "Note9"
     },
     "91vjBDS20Kg": {
       "title": "PW | 2025-12-11 | (20251018_201525)",
