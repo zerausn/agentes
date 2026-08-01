@@ -1707,7 +1707,7 @@
     "iyZDGp0t_WY": {
       "title": "PW | (20260718_190757)",
       "publishedAt": "2026-07-19T02:04:34Z",
-      "status": "pendiente",
+      "status": "fallido",
       "file": null,
       "downloaded_at": null,
       "downloaded_by": null
@@ -1715,10 +1715,10 @@
     "y5E-OTLv1Q8": {
       "title": "PW | (20260611_121020)",
       "publishedAt": "2026-07-31T22:45:14Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/PW  (20260611_121020).mp4",
+      "downloaded_at": "2026-08-01 15:57",
+      "downloaded_by": "Note9"
     },
     "2o5BhrMuLcw": {
       "title": "PW | (20260606_194503)",
