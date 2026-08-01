@@ -1747,10 +1747,10 @@
     "91vjBDS20Kg": {
       "title": "PW | 2025-12-11 | (20251018_201525)",
       "publishedAt": "2026-07-31T19:00:01Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/PW  2025-12-11  (20251018_201525).mp4",
+      "downloaded_at": "2026-08-01 16:35",
+      "downloaded_by": "Note9"
     }
   },
   "2026-06": {
