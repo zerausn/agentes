@@ -79,6 +79,7 @@ _adb_reconnect() {
 
 _adb_self_repair() {
     echo "[ADB] Intentando autoreparar adbd TCP en el dispositivo..."
+    # Metodo 1: root directo
     local result
     result=$(su -c 'setprop service.adb.tcp.port 5555 && stop adbd && start adbd && echo OK' 2>/dev/null)
     if [ "$result" = "OK" ]; then
@@ -90,9 +91,17 @@ _adb_self_repair() {
             return 0
         fi
         echo "[ADB] Reparacion parcial: adbd reiniciado, pero aun no conecta."
-    else
-        echo "[ADB] No se pudo autoreparar (sin root o adbd no coopera)."
     fi
+    # Metodo 2: setprop sin root (funciona en algunos Note9 con permisos relajados)
+    setprop service.adb.tcp.port 5555 2>/dev/null || true
+    sleep 2
+    adb connect 127.0.0.1:5555 >/dev/null 2>&1 || true
+    sleep 1
+    if adb devices | awk '$1 == "127.0.0.1:5555" && $2 == "device" {found=1} END {exit(found ? 0 : 1)}'; then
+        echo "[ADB] Reparacion OK via setprop."
+        return 0
+    fi
+    echo "[ADB] No se pudo autoreparar (sin root o adbd no coopera)."
     return 1
 }
 
@@ -140,11 +149,27 @@ else
     echo "[WAKE-LOCK] AVISO: instala termux-api para habilitar wake-lock."
 fi
 
+# [ANTI-KILL] Heartbeat en segundo plano: reaplica wake-lock cada 60s
+# para resistir los ciclos de App Standby de Samsung.
+# Nota: oom_score_adj no funciona sin root bajo SELinux — omitido.
+_heartbeat() {
+    while true; do
+        termux-wake-lock 2>/dev/null || true
+        # Mantener pantalla encendida con carga via ADB si esta disponible
+        adb -s 127.0.0.1:5555 shell 'svc power stayon true' >/dev/null 2>&1 || true
+        sleep 60
+    done
+}
+_heartbeat &
+HEARTBEAT_PID=$!
+echo "[ANTI-KILL] Heartbeat wakelock PID $HEARTBEAT_PID (cada 60s)."
+
 _cleanup() {
     printf "\n"
     echo "[SALIDA] $(date "+%H:%M:%S") — liberando wake-lock"
     rm -f "$VIGIA_LOCK" 2>/dev/null || true
     termux-wake-unlock 2>/dev/null || true
+    kill "$HEARTBEAT_PID" 2>/dev/null || true
 }
 trap '_cleanup; exit' INT TERM
 trap '_cleanup' EXIT
@@ -220,6 +245,15 @@ while true; do
         3) echo "[CICLO #${CICLO}] Otra instancia esta corriendo. | Pendientes: ${PENDIENTES}" ;;
         *) echo "[CICLO #${CICLO}] Error exit=$EXIT_CODE (${DURACION}s). Archivo queda en cola. | Pendientes: ${PENDIENTES}" ;;
     esac
+
+    # [ANTI-KILL B3] Matar TikTok despues de cada ciclo para liberar RAM
+    # y reducir la presion sobre el LMK durante el sleep de 720s.
+    adb -s 127.0.0.1:5555 shell 'am kill com.zhiliaoapp.musically' >/dev/null 2>&1 \
+        && echo "[RAM] TikTok liberado de memoria." || true
+
+    # [ANTI-KILL A1] Reactivar standby bucket → ACTIVE cada ciclo
+    # (Samsung lo vuelve a bajar con el tiempo)
+    adb -s 127.0.0.1:5555 shell 'am set-standby-bucket com.termux active' >/dev/null 2>&1 || true
 
     NEXT_EPOCH=$(( T_FIN + INTERVALO ))
     echo "[RELOJ] Ciclo termino: $(date '+%H:%M:%S') | Siguiente en ${INTERVALO}s"

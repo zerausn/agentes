@@ -101,3 +101,13 @@ La API de TikTok sigue sin aprobarse; el método UI es la estrategia de producci
 4. Agregar verificación real: abrir TikTok y revisar perfil para confirmar publicación.
 5. Probar estabilidad del widget 720s en ejecución continua 24h+.
 6. Si la API se aprueba, migrar a Content Posting API, reactivar caption con `CAPTION_ENABLED=1`.
+
+## 2026-08-04: Protección Anti-Kill Brutal y Watchdog
+
+- **Problema de Samsung OOM (Low Memory Killer)**: Android mataba el proceso de Bash y Python durante los picos de memoria (especialmente al generar UI dumps o capturas XML). TikTok Lite se sugirió como alternativa pero se descartó para evitar reescribir coordenadas UI.
+- **Solución implementada en `vigia_tiktok720_termux.sh`**:
+  - `am kill com.zhiliaoapp.musically`: Se mata la aplicación de TikTok inmediatamente después de publicar para liberar ~500MB de RAM durante los 720 segundos de espera.
+  - `_heartbeat`: Bucle infinito en background que mantiene un `termux-wake-lock` vivo cada 60 segundos.
+  - El Python ahora se lanza de manera síncrona (inline) para evitar `race conditions` y que Bash pierda el exit code si lo mata el sistema.
+- **Capa Extra de Protección (Watchdog)**:
+  - Creado `WATCHDOG_TIKTOK.sh` en `termux_widgets/`. Si el sistema operativo logra vencer el wake-lock y matar al vigía, este widget externo lo detecta tras 2 minutos de inactividad, limpia los lockfiles estancados y lo relanza automáticamente.
