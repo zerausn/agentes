@@ -20,13 +20,15 @@ import websocket
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 META_DIR = SCRIPT_DIR.parent
-DESKTOP_DIR = Path.home() / "Desktop"
+DESKTOP_DIR = Path.home() / "Desktop" / "subir fotos"
+DESKTOP_DIR.mkdir(parents=True, exist_ok=True)
 
 PHOTO_DIR = Path("/media/zerausn/D69493CF9493B08B/Users/ZN-/Documents/ADM/Carpeta 1/Fotos")
 ENV_PATH = META_DIR / ".env"
 MISSING_OUT = DESKTOP_DIR / "albumes_faltantes_facebook.txt"
 ALL_OUT = DESKTOP_DIR / "albumes_por_fecha_detectados.txt"
 PROGRESS_OUT = DESKTOP_DIR / "albumes_creados_web_progress.json"
+ALBUMS_WEB_OUT = DESKTOP_DIR / "albumes_remotos_web.json"
 PLACEHOLDER = Path("/tmp/facebook_album_placeholder.jpg")
 GRAPH = "https://graph.facebook.com/v19.0"
 SUPPORTED = {".jpg", ".jpeg", ".png", ".webp", ".dng"}
@@ -266,6 +268,7 @@ def launch_browser(command, kind, port, page_url, restart_edge):
             )
         print("Edge esta abierto sin DevTools; lo reinicio para poder automatizar albumes.")
         subprocess.call(["flatpak", "kill", "com.microsoft.Edge"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.call(["killall", "-9", "msedge"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(4)
 
     profile_dir = os.environ.get("FB_ALBUM_BROWSER_PROFILE", str(Path.home() / ".config/google-chrome"))
@@ -277,7 +280,9 @@ def launch_browser(command, kind, port, page_url, restart_edge):
         page_url,
     ]
     if profile_dir and kind != "edge-flatpak":
-        args.insert(1, f"--user-data-dir={profile_dir}")
+        args.append(f"--user-data-dir={profile_dir}")
+    elif kind == "edge-flatpak":
+        args.append(f"--user-data-dir={Path.home()}/.var/app/com.microsoft.Edge/config/microsoft-edge-auto")
     return subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
@@ -449,6 +454,21 @@ JS_HELPERS = r"""
     const body = (document.body.innerText || '').toLowerCase();
     return !(body.includes('log in') || body.includes('iniciar sesión') || body.includes('iniciar sesion'));
   };
+  window.__ag.dismissPopups = () => {
+    const texts = ['ahora no', 'not now', 'cerrar', 'close', 'aceptar', 'accept'];
+    const nodes = Array.from(document.querySelectorAll('[role="button"], button, div[aria-label="Cerrar"], div[aria-label="Close"], i[aria-label="Cerrar"], i[aria-label="Close"]'))
+      .filter(window.__ag.visible);
+    let clicked = false;
+    for (const node of nodes) {
+      const text = window.__ag.text(node).toLowerCase();
+      const aria = (node.getAttribute('aria-label') || '').toLowerCase();
+      if (texts.includes(text) || texts.includes(aria)) {
+        node.click();
+        clicked = true;
+      }
+    }
+    return clicked;
+  };
   return true;
 })()
 """
@@ -505,6 +525,74 @@ def wait_remote_album(name, page_id, token, timeout=300, min_count=None):
     return None
 
 
+def scrape_albums_web(cdp, page_id, port, timeout=60):
+    """Navega a la pagina de albumes de Facebook via navegador y extrae nombre+id de cada album."""
+    albums_url = f"https://www.facebook.com/profile.php?id={page_id}&sk=photos_albums"
+    print("[web] Navegando a pagina de albumes para inventario completo...")
+
+    # Abrir nueva pestaña y navegar
+    try:
+        new_tab_info = requests.put(f"http://127.0.0.1:{port}/json/new?{albums_url}", timeout=10).json()
+        ws_url2 = new_tab_info.get("webSocketDebuggerUrl")
+        if not ws_url2:
+            print("[web] WARNING: No se pudo abrir nueva pestaña para scraping.")
+            return {}
+        cdp2 = Cdp(ws_url2)
+    except Exception as exc:
+        print(f"[web] WARNING: Error abriendo pestaña de albumes: {exc}")
+        return {}
+
+    try:
+        cdp2.call("Page.enable")
+        cdp2.call("Runtime.enable")
+        time.sleep(5)  # esperar carga inicial
+
+        # Scroll para cargar todos los albumes (Facebook carga lazy)
+        for _ in range(8):
+            cdp2.eval("window.scrollBy(0, 1500)")
+            time.sleep(1.5)
+
+        # Extraer todos los albums de la pagina
+        JS_SCRAPE = r"""
+        (() => {
+          const results = {};
+          // Buscar links con media/set o albums en la URL
+          const links = Array.from(document.querySelectorAll('a[href]'));
+          for (const a of links) {
+            const href = a.href || '';
+            // Formato 1: /media/set/?set=a.ALBUMID
+            let m = href.match(/set=a\.([0-9]+)/);
+            if (!m) m = href.match(/\/photos\/album\/([0-9]+)/);
+            if (!m) continue;
+            const album_id = m[1];
+            // Buscar el nombre: texto visible del link o elemento hijo con texto
+            let name = '';
+            const spans = a.querySelectorAll('span');
+            for (const s of spans) {
+              const t = (s.innerText || s.textContent || '').trim();
+              if (t && t.length > 1 && t.length < 120) { name = t; break; }
+            }
+            if (!name) name = (a.innerText || a.textContent || '').trim().split('\n')[0];
+            if (!name || name.length > 120) continue;
+            results[name] = album_id;
+          }
+          return JSON.stringify(results);
+        })()
+        """
+        raw = cdp2.eval(JS_SCRAPE)
+        albums = json.loads(raw) if raw else {}
+        print(f"[web] Encontrados {len(albums)} album(s) en pagina: {list(albums.keys())[:10]}{'...' if len(albums) > 10 else ''}")
+        return albums
+    except Exception as exc:
+        print(f"[web] WARNING: Error durante scraping de albumes: {exc}")
+        return {}
+    finally:
+        try:
+            cdp2.close()
+        except Exception:
+            pass
+
+
 def delete_album_placeholder_photos(album_id, token):
     body = graph_get(album_id + "/photos", token, {"fields": "id,created_time,name", "limit": "25"})
     if "error" in body:
@@ -528,6 +616,10 @@ def create_album_web(cdp, name, page_id, token, allow_placeholder):
     cdp.eval(JS_HELPERS)
     if not cdp.eval("window.__ag.hasLogin()"):
         raise RuntimeError("Facebook no esta logueado en este perfil del navegador.")
+
+    # Try to dismiss any popups or warnings
+    cdp.eval("window.__ag.dismissPopups()")
+    time.sleep(1)
 
     cdp.eval(JS_HELPERS)
     set_result = cdp.eval(f"window.__ag.setAlbumName({js_literal(name)})")
@@ -624,6 +716,37 @@ def run(args):
     remote = list_remote_albums(page_id, token)
     _, missing_after = write_album_lists(counts, remote)
     print(f"Albumes faltantes despues: {len(missing_after)}")
+
+    # Scraping web para inventario completo (independiente de la API)
+    try:
+        cdp_scan = Cdp(ws_url)
+    except Exception:
+        cdp_scan = None
+
+    web_albums = {}
+    if cdp_scan:
+        try:
+            web_albums = scrape_albums_web(cdp_scan, page_id, args.port)
+        finally:
+            try:
+                cdp_scan.close()
+            except Exception:
+                pass
+
+    # Fusionar API + web y guardar inventario completo
+    merged = {name: album.get("id") for name, album in remote.items() if album.get("id")}
+    for name, album_id in web_albums.items():
+        if name not in merged:
+            print(f"[web] Album encontrado en browser pero no en API: '{name}' -> {album_id}")
+        merged[name] = album_id  # el ID web tiene prioridad
+    merged.update({e["name"]: e["id"] for e in progress["created"] if e.get("id")})
+    ALBUMS_WEB_OUT.write_text(json.dumps(
+        {"albumes": [{"name": n, "id": i} for n, i in sorted(merged.items())],
+         "total": len(merged)},
+        indent=2, ensure_ascii=False
+    ), encoding="utf-8")
+    print(f"[web] Inventario completo guardado: {len(merged)} albumes -> {ALBUMS_WEB_OUT}")
+
     if limited_run:
         return 0 if not progress["failed"] else 2
     return 0 if not missing_after else 2

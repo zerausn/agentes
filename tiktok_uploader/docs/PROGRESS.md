@@ -28,7 +28,8 @@ La API de TikTok sigue sin aprobarse; el método UI es la estrategia de producci
 - **Publicar**: Botón rojo arriba a la derecha en coordenada `(608, 80)` escalada.
 - **Modo Draft**: Alternativa que toca "Borradores" en vez de Publicar.
 - **Confirmación post-publicación**: Detecta dump UI vacío (animación) o ausencia de botón Publicar.
-- **Lock**: `fcntl.flock` evita ejecución concurrente.
+- **Lock seguro y autorecuperable**: `os.O_CREAT | os.O_EXCL` previene condición de carrera, y la nueva función `_lock_is_stale()` detecta procesos huérfanos/muertos (zombies) liberando el candado si el PID murió o superó 30 mins, restaurando la autonomía.
+- **Widget limpiador de locks**: `LIMPIAR_LOCK_TIKTOK.sh` para forzar limpieza manual y matar procesos colgados del script evacuador y el vigía.
 - **Queue state**: `tiktok_queue.json` guarda historial de últimos 500 intentos.
 - **touch en modo monkey**: Asegura que el video seleccionado aparezca primero en galería.
 - **Ciclo 720s**: `vigia_tiktok720_termux.sh` con wake-lock y loop anti-Doze.

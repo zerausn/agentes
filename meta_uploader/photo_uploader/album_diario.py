@@ -33,6 +33,7 @@ PARENT_DIR = BASE_DIR.parent
 
 LOG_FILE = BASE_DIR / "album_diario.log"
 HISTORIAL_FILE = BASE_DIR / "album_diario_historial.json"
+WEB_INVENTORY_FILE = Path.home() / "Desktop" / "subir fotos" / "albumes_remotos_web.json"
 
 DIR_FOTOS = Path(r"/media/zerausn/D69493CF9493B08B/Users/ZN-/Documents/ADM/Carpeta 1/Fotos")
 DIR_PROCESADAS = Path(r"/media/zerausn/D69493CF9493B08B/Users/ZN-/Documents/ADM/Carpeta 1/fotos_subidas_album")
@@ -230,6 +231,26 @@ def extraer_fecha(nombre):
     return None
 
 
+def cargar_albumes_web():
+    """Lee el inventario completo de albumes guardado por Fase 1 (Edge + API)."""
+    if not WEB_INVENTORY_FILE.exists():
+        return {}
+    try:
+        data = json.loads(WEB_INVENTORY_FILE.read_text(encoding="utf-8"))
+        result = {}
+        for entry in data.get("albumes", []):
+            name = entry.get("name")
+            album_id = entry.get("id")
+            if name and album_id:
+                result[name] = album_id
+        if result:
+            logging.info("[album.web] %s album(s) cargados desde inventario de Fase 1 (API+Edge)", len(result))
+        return result
+    except Exception as e:
+        logging.warning("[album.web] No se pudo leer %s: %s", WEB_INVENTORY_FILE.name, e)
+        return {}
+
+
 def convertir_dng_a_jpeg(dng_path, jpeg_path):
     logging.info("[dng] Convirtiendo %s ...", dng_path.name)
     try:
@@ -247,7 +268,13 @@ def convertir_dng_a_jpeg(dng_path, jpeg_path):
     return False
 
 
+_albumes_fallidos: set = set()
+
+
 def crear_album(nombre):
+    if nombre in _albumes_fallidos:
+        logging.warning("[album] Saltando '%s' (ya falló anteriormente en esta sesión).", nombre)
+        return None
     logging.info("[album] Creando '%s' ...", nombre)
     url = f"{GRAPH_URL}/{FB_PAGE_ID}/albums"
     payload = {"name": nombre, "access_token": FB_TOKEN}
@@ -268,6 +295,8 @@ def crear_album(nombre):
         except Exception as e:
             logging.warning("[album] Exception (intento %s/3): %s", i + 1, e)
         time.sleep(3 * (i + 1))
+    logging.error("[album] Falló crear '%s' 3 veces. No se reintentará en esta sesión.", nombre)
+    _albumes_fallidos.add(nombre)
     return None
 
 
@@ -485,8 +514,17 @@ def procesar():
 
     albumes = listar_albumes()
 
+    # Fusionar con los IDs confirmados por la Fase 1 (Edge web)
+    albumes_web = cargar_albumes_web()
+    for nombre, wid in albumes_web.items():
+        if nombre not in albumes:
+            logging.info("[album.web] Usando ID de Fase 1 para '%s': %s", nombre, wid)
+        albumes[nombre] = wid
+
     for fecha in sorted(por_fecha.keys()):
-        nombre_album = f"Fotos {fecha}"
+
+        fotos = por_fecha[fecha]
+        nombre_album = "Fotos sueltas" if len(fotos) == 1 else f"Fotos {fecha}"
         album_id = albumes.get(nombre_album)
         if not album_id:
             album_id = crear_album(nombre_album)

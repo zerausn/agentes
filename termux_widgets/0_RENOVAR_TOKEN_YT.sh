@@ -61,7 +61,10 @@ except ImportError:
     print("Ejecuta: pip install google-auth-oauthlib google-auth-httplib2 google-api-python-client")
     sys.exit(1)
 
-SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"]
+SCOPES = [
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube.readonly",
+]
 
 for i, secret_file in enumerate(secrets):
     token_file = creds_dir / f"token_{i}.json"
