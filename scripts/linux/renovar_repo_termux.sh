@@ -27,18 +27,22 @@ fi
 echo "[1/2] Actualizando repo desde GitHub..."
 cd "$REPO_DIR"
 
+# Auto-detectar la rama actual (funciona en cualquier dispositivo: vivo-tiktok, linux-arm64, etc.)
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "linux-arm64")
+echo "  Rama actual: $CURRENT_BRANCH"
+
 # Guardar los cambios locales si los hay (credentials, .env, etc. están en .gitignore)
-git fetch origin linux-arm64
+git fetch origin "$CURRENT_BRANCH"
 
 # Verificar si hay commits nuevos
 LOCAL=$(git rev-parse HEAD)
-REMOTE=$(git rev-parse origin/linux-arm64)
+REMOTE=$(git rev-parse "origin/$CURRENT_BRANCH")
 
 if [ "$LOCAL" = "$REMOTE" ]; then
     echo "  Ya estás al día ($(git rev-parse --short HEAD))."
 else
     echo "  Aplicando cambios: $LOCAL -> $REMOTE"
-    git pull --ff-only origin linux-arm64
+    git pull --ff-only "origin" "$CURRENT_BRANCH"
     echo "  [OK] Repo actualizado a $(git rev-parse --short HEAD)"
 fi
 
