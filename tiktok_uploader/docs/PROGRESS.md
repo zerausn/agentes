@@ -76,3 +76,10 @@ La API de TikTok sigue sin aprobarse; el método UI es la estrategia de producci
   - El Python se lanza de manera síncrona (inline) para evitar `race conditions` con el exit code.
 - **Capa Extra de Protección (Watchdog)**:
   - Portado `WATCHDOG_TIKTOK.sh` a `termux_widgets/`. Si Android logra matar al vigía, el Watchdog lo detecta en 2 minutos y lo relanza automáticamente.
+
+## 2026-08-04: Corrección de Seguridad Multi-rama (Widget RENOVAR_REPO)
+
+- **Bug detectado**: El widget `0_RENOVAR_REPO.sh` (`renovar_repo_termux.sh`) tenía hardcodeado un `git pull origin linux-arm64`. Al ejecutarlo en el Vivo, sobreescribía los scripts especiales de la rama `vivo-tiktok` (arruinando la automatización del Vivo).
+- **Solución implementada**:
+  - Se modificó el script para detectar dinámicamente la rama actual mediante `git rev-parse --abbrev-ref HEAD`.
+  - Ahora el widget hace `git pull origin <rama-actual>`. Es universalmente seguro y se puede ejecutar en cualquier dispositivo (Vivo, Note9, S24) sin riesgo de mezclar o dañar ramas.
