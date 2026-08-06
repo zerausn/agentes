@@ -91,9 +91,12 @@ LOG_FILE = BASE_DIR / "tiktok_evacuador.log"
 
 ROOT_ENV = os.environ.get("AGENTES_STORAGE_ROOT", "").strip()
 ROOT = Path(ROOT_ENV) if ROOT_ENV else Path("/sdcard/Antigravity")
-SOURCE_DIR = ROOT / "subidos a facebbok"
-DONE_DIR = ROOT / "subidos a tiktok"
-FAILED_DIR = ROOT / "fallidos_tiktok"
+SOURCE_DIR_ENV = os.environ.get("TIKTOK_SOURCE_DIR", "").strip()
+SOURCE_DIR = Path(SOURCE_DIR_ENV) if SOURCE_DIR_ENV else (ROOT / "subidos a facebbok")
+DONE_DIR_ENV = os.environ.get("TIKTOK_DONE_DIR", "").strip()
+DONE_DIR = Path(DONE_DIR_ENV) if DONE_DIR_ENV else (ROOT / "subidos a tiktok")
+FAILED_DIR_ENV = os.environ.get("TIKTOK_FAILED_DIR", "").strip()
+FAILED_DIR = Path(FAILED_DIR_ENV) if FAILED_DIR_ENV else (ROOT / "fallidos_tiktok")
 STATE_DIR_OVERRIDE = os.environ.get("TIKTOK_STATE_DIR", "").strip()
 STATE_DIR = Path(STATE_DIR_OVERRIDE) if STATE_DIR_OVERRIDE else (ROOT / ".state")
 STATE_FILE = STATE_DIR / "tiktok_queue.json"

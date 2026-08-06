@@ -20,6 +20,7 @@ EVACUADOR="$TERMUX_HOME/agentes/tiktok_uploader/tiktok_evacuador_720.py"
 LOG_DIR="/sdcard/Antigravity/widget_logs"
 SESSION_LOG="$LOG_DIR/6_SUBIR_TIKTOK_SHIRABYOSHI.log"
 SOURCE_DIR="/sdcard/Antigravity/subidos a tiktok"
+DONE_DIR="/sdcard/Antigravity/completados_shirabyoshi"
 ADB_SERIAL="127.0.0.1:5555"
 VIGIA_LOCK="$TERMUX_HOME/vigia_tiktok_shirabyoshi.lock"
 
@@ -227,6 +228,8 @@ while true; do
 
     PATH=$PATH TMPDIR=$TMPDIR \
     AGENTES_STORAGE_ROOT=/sdcard/Antigravity \
+    TIKTOK_SOURCE_DIR="$SOURCE_DIR" \
+    TIKTOK_DONE_DIR="$DONE_DIR" \
     TIKTOK_UI_BACKEND=$UI_BACKEND_VAL \
     TIKTOK_ADB_SERIAL=127.0.0.1:5555 \
     TIKTOK_SHARE_METHOD=intent \
