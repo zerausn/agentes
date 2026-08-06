@@ -16,6 +16,7 @@ cp -f "$SHORTCUTS_DIR/4_VIGIA_FACEBOOK.sh" "$BACKUP_DIR/4_VIGIA_FACEBOOK.sh" 2>/
 cp -f "$SHORTCUTS_DIR/0_PIPELINE_COMPLETO.sh" "$BACKUP_DIR/0_PIPELINE_COMPLETO.sh" 2>/dev/null || true
 cp -f "$SHORTCUTS_DIR/0_RENOVAR_REPO.sh" "$BACKUP_DIR/0_RENOVAR_REPO.sh" 2>/dev/null || true
 cp -f "$SHORTCUTS_DIR/0_RENOVAR_TOKEN_YT.sh" "$BACKUP_DIR/0_RENOVAR_TOKEN_YT.sh" 2>/dev/null || true
+cp -f "$SHORTCUTS_DIR/6_SUBIR_TIKTOK_SHIRABYOSHI.sh" "$BACKUP_DIR/6_SUBIR_TIKTOK_SHIRABYOSHI.sh" 2>/dev/null || true
 
 # Copy new widgets
 cp -f "$STAGING_DIR/1_CORTAR_TEASERS.sh" "$SHORTCUTS_DIR/1_CORTAR_TEASERS.sh"
@@ -36,6 +37,8 @@ cp -f "$STAGING_DIR/RECORTAR_TODO.sh" "$SHORTCUTS_DIR/RECORTAR_TODO.sh"
 cp -f "$STAGING_DIR/vigia_meta.sh" "$SHORTCUTS_DIR/vigia_meta.sh"
 cp -f "$STAGING_DIR/auto_accept_mtp.sh" "$SHORTCUTS_DIR/auto_accept_mtp.sh"
 cp -f "$STAGING_DIR/cortar teasers .sh" "$SHORTCUTS_DIR/cortar teasers .sh"
+# Cuenta Shirabyoshi TikTok (vivo-tiktok branch)
+cp -f "$STAGING_DIR/6_SUBIR_TIKTOK_SHIRABYOSHI.sh" "$SHORTCUTS_DIR/6_SUBIR_TIKTOK_SHIRABYOSHI.sh"
 
 chmod 755 \
   "$SHORTCUTS_DIR/1_CORTAR_TEASERS.sh" \
@@ -55,7 +58,8 @@ chmod 755 \
   "$SHORTCUTS_DIR/RECORTAR_TODO.sh" \
   "$SHORTCUTS_DIR/vigia_meta.sh" \
   "$SHORTCUTS_DIR/auto_accept_mtp.sh" \
-  "$SHORTCUTS_DIR/cortar teasers .sh"
+  "$SHORTCUTS_DIR/cortar teasers .sh" \
+  "$SHORTCUTS_DIR/6_SUBIR_TIKTOK_SHIRABYOSHI.sh"
 
 printf 'backup=%s\n' "$BACKUP_DIR"
 ls -lb "$SHORTCUTS_DIR"
