@@ -108,5 +108,9 @@ for i, secret_file in enumerate(secrets):
     print()
 
 print()
+print("Sincronizando tokens con el entorno Debian (Termux home)...")
+os.system("cp /sdcard/Antigravity/agentes/youtube_uploader/credentials/token_*.json /data/data/com.termux/files/home/agentes/youtube_uploader/credentials/")
+print("Tokens sincronizados.")
+print()
 print("✅ Proceso de renovacion completado.")
 PYEOF
