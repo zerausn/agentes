@@ -54,7 +54,7 @@ YTDLP_BIN = _env_text("AGENTES_YTDLP_BIN", shutil.which("yt-dlp") or "/usr/local
 SCOPES = ["https://www.googleapis.com/auth/youtube.readonly"]
 YTDLP_BASE_ARGS = [
     "/usr/bin/python3", YTDLP_BIN,
-    "--js-runtimes", "node", "--force-ipv4",
+    "--js-runtimes", "node",
     "--concurrent-fragments", YTDLP_CONCURRENT_FRAGMENTS, "--no-part",
 ]
 

@@ -35,7 +35,6 @@ YTDLP_BASE_ARGS = [
     YT_DLP_BIN if Path(YT_DLP_BIN).exists() else "yt-dlp",
     "--js-runtimes",
     "node",
-    "--force-ipv4",
     "--concurrent-fragments",
     "1",
     "--no-part",

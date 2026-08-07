@@ -649,7 +649,6 @@ def download_video(vid_id: str, title: str) -> str | None:
         ytdlp_cmd_base = [
             "/usr/bin/python3", YTDLP_BIN,
             "--js-runtimes", "node",
-            "--force-ipv4",
             "--no-part",
             "--merge-output-format", "mkv",
             "--newline", "--quiet", "--no-warnings", "--progress",
