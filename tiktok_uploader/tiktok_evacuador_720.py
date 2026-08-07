@@ -143,6 +143,11 @@ IME_PACKAGES = {
     "com.samsung.android.honeyboard",
     "com.google.android.inputmethod.latin",
 }
+SUCCESS_FOREGROUND_PACKAGES = {
+    pkg.strip()
+    for pkg in os.environ.get("TIKTOK_SUCCESS_FOREGROUND_PACKAGES", "").split(",")
+    if pkg.strip()
+}
 
 
 class _ImmediateFileHandler(logging.FileHandler):
@@ -920,24 +925,53 @@ def publish_confirmed(settle: int | None = None) -> bool:
     """
     Verifica que la publicacion haya sido exitosa.
     Despues de tocar "Publicar", esperamos hasta POST_SETTLE_SECONDS.
-    No podemos confiar en dump_ui() (falla intermitente) ni en 
-    keyboard_visible() (Gboard no se cierra en TikTok).
+    No marcamos como exito paquetes inesperados: antes cualquier app que no
+    fuera teclado podia mover el video aunque TikTok no hubiera publicado.
     Tomamos screenshot al final para verificacion manual.
     """
     effective_settle = settle if settle is not None else POST_SETTLE_SECONDS
     time.sleep(15)
     deadline = time.time() + effective_settle
+    empty_tiktok_dumps = 0
+    last_pkg = ""
     while time.time() < deadline:
         pkg = current_package() or ""
-        if pkg not in IME_PACKAGES:
-            logging.info("Publicacion confirmada: pkg=%s", pkg)
+        last_pkg = pkg
+
+        if pkg in IME_PACKAGES:
+            logging.info("Publicacion aun no confirmada: teclado en foreground (%s).", pkg)
+            time.sleep(15)
+            continue
+
+        if pkg in SUCCESS_FOREGROUND_PACKAGES:
+            logging.info("Publicacion confirmada por paquete permitido: pkg=%s", pkg)
             return True
+
+        if not pkg or pkg == TIKTOK_PACKAGE:
+            nodes = dump_ui()
+            if nodes:
+                empty_tiktok_dumps = 0
+                if find_match(nodes, PUBLICAR_RE) or find_match(nodes, POST_RE):
+                    logging.info("Publicacion aun no confirmada: boton Publicar/Post visible.")
+                else:
+                    logging.info("Publicacion confirmada: TikTok ya no muestra boton Publicar/Post.")
+                    return True
+            elif pkg == TIKTOK_PACKAGE:
+                empty_tiktok_dumps += 1
+                logging.info("UI dump vacio en TikTok tras publicar (%d/2).", empty_tiktok_dumps)
+                if empty_tiktok_dumps >= 2:
+                    logging.info("Publicacion confirmada: dump UI vacio repetido en TikTok.")
+                    return True
+            else:
+                logging.info("Publicacion no confirmada: pkg desconocido y dump UI vacio.")
+        else:
+            logging.warning("Publicacion no confirmada: foreground inesperado pkg=%s", pkg)
         time.sleep(15)
 
     pkg = current_package() or ""
-    logging.info("Publicacion asumida OK tras %ds: pkg=%s", effective_settle, pkg)
+    logging.error("No se pudo confirmar publicacion tras %ds: pkg=%s last_pkg=%s", effective_settle, pkg, last_pkg)
     run_android(["screencap", "-p", STATE_DIR / "post_publish.png"], timeout=5)
-    return True
+    return False
 
 
 def automate_tiktok_publish() -> bool:
@@ -1033,7 +1067,7 @@ def save_as_draft() -> bool:
     return False
 
 
-def automate_tiktok_publish_coords(caption: str, folder_name: str) -> bool:
+def automate_tiktok_publish_coords(video: Path, caption: str, folder_name: str) -> bool:
     """
     Flujo probado en Note9 con override 720x1480.
     Usa deteccion de UI para elementos dinámicos y coordenadas escaladas para el resto.
@@ -1243,12 +1277,22 @@ def open_next(args: argparse.Namespace) -> int:
                 tap(nxt["center"], nxt["label"])
                 time.sleep(8)
             else:
-                logging.info("Editor step %d: Siguiente no detectado por UI, probando multiples coordenadas...", _editor_step + 1)
+                logging.info("Editor step %d: Siguiente no detectado por UI, probando coordenadas fallback una por una...", _editor_step + 1)
                 # Fallbacks: 1) Nueva coord S24/Vivo abajo-derecha, 2) Antigua coord arriba-derecha
                 fallback_coords = [(531, 1341), (665, 77), (600, 1352)]
+                fallback_advanced = False
                 for fx, fy in fallback_coords:
-                    tap_scaled(fx, fy, f"Siguiente coord {fx},{fy} (step {_editor_step + 1})", pause=4)
-                    # No sabemos cual funciono, pero probar varias ayuda si la UI cambia
+                    if not tap_scaled(fx, fy, f"Siguiente coord {fx},{fy} (step {_editor_step + 1})", pause=4):
+                        continue
+                    nodes_after = dump_ui()
+                    if find_match(nodes_after, NEXT_RE):
+                        logging.info("Siguiente sigue visible tras %s,%s; probando siguiente fallback.", fx, fy)
+                        continue
+                    fallback_advanced = True
+                    logging.info("Siguiente fallback %s,%s produjo cambio de pantalla; no se tocaran mas coordenadas.", fx, fy)
+                    break
+                if not fallback_advanced:
+                    logging.warning("No hubo cambio claro tras fallback de Siguiente en step %d.", _editor_step + 1)
 
         # Pantalla de caption: tocar campo y escribir
         if CAPTION_ENABLED:
@@ -1270,11 +1314,19 @@ def open_next(args: argparse.Namespace) -> int:
                 publish_ok = tap(pub_node["center"], pub_node["label"])
             else:
                 # Fallback: intentar varias coordenadas comunes para boton Publicar
-                logging.info("Publicar no detectado por UI; probando multiples coordenadas fallback...")
+                logging.info("Publicar no detectado por UI; probando coordenadas fallback una por una...")
                 fallback_pub = [(608, 80), (665, 77), (600, 1350)]
                 for px, py in fallback_pub:
                     publish_ok = tap_scaled(px, py, f"Publicar coord {px},{py}", pause=3)
-                    # Si el primer tap funciona, TikTok cambiara de pantalla. Los siguientes taps caeran en la nada.
+                    if not publish_ok:
+                        continue
+                    nodes_after = dump_ui()
+                    if find_match(nodes_after, PUBLICAR_RE) or find_match(nodes_after, POST_RE):
+                        logging.info("Publicar sigue visible tras %s,%s; probando siguiente fallback.", px, py)
+                        publish_ok = False
+                        continue
+                    logging.info("Publicar fallback %s,%s produjo cambio de pantalla; no se tocaran mas coordenadas.", px, py)
+                    break
 
             if publish_ok:
                 # Esperar a que TikTok procese y suba el video (poll cada 15s)
@@ -1326,7 +1378,7 @@ def open_next(args: argparse.Namespace) -> int:
 
         time.sleep(8)
         folder_name = video.parent.name
-        if not automate_tiktok_publish_coords(caption, folder_name):
+        if not automate_tiktok_publish_coords(video, caption, folder_name):
             record["status"] = "ui_automation_failed"
             record["finished_at"] = now_str()
             append_history(record)

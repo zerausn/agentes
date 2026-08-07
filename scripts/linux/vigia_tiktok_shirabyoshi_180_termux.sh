@@ -23,17 +23,21 @@ SOURCE_DIR="/sdcard/Antigravity/subidos a tiktok"
 DONE_DIR="/sdcard/Antigravity/completados_shirabyoshi"
 ADB_SERIAL="127.0.0.1:5555"
 VIGIA_LOCK="$TERMUX_HOME/vigia_tiktok_shirabyoshi_180.lock"
+TIKTOK_GLOBAL_LOCK="$TERMUX_HOME/vigia_tiktok_global.lock"
+TIKTOK_VIGIA_NAME="6_SUBIR_TIKTOK_SHIRABYOSHI_180"
+COMMON_LIB="$TERMUX_HOME/agentes/scripts/linux/tiktok_vigia_common.sh"
 
-# Evitar instancias duplicadas del vigia
-if [ -f "$VIGIA_LOCK" ]; then
-    LOCK_PID=$(cat "$VIGIA_LOCK" 2>/dev/null)
-    if [ -n "$LOCK_PID" ] && kill -0 "$LOCK_PID" 2>/dev/null; then
-        echo "[LOCK] Vigia ya corriendo (PID $LOCK_PID). Saliendo."
-        exit 0
-    fi
-    rm -f "$VIGIA_LOCK"
+if [ ! -f "$COMMON_LIB" ]; then
+    echo "[ERROR] Falta libreria comun: $COMMON_LIB"
+    echo "        Sincroniza el repo antes de lanzar el widget."
+    exit 1
 fi
-echo $$ > "$VIGIA_LOCK"
+. "$COMMON_LIB"
+
+# Evitar instancias duplicadas y cruces entre widgets TikTok.
+if ! acquire_tiktok_vigia_locks "$VIGIA_LOCK" "$TIKTOK_VIGIA_NAME"; then
+    exit 0
+fi
 
 INTERVALO=180
 CHECK_INTERVAL=15
@@ -168,7 +172,7 @@ echo "[ANTI-KILL] Heartbeat wakelock PID $HEARTBEAT_PID (cada 60s)."
 _cleanup() {
     printf "\n"
     echo "[SALIDA] $(date "+%H:%M:%S") — liberando wake-lock"
-    rm -f "$VIGIA_LOCK" 2>/dev/null || true
+    release_tiktok_vigia_locks "$VIGIA_LOCK"
     termux-wake-unlock 2>/dev/null || true
     kill "$HEARTBEAT_PID" 2>/dev/null || true
 }

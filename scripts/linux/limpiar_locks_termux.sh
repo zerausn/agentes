@@ -28,11 +28,24 @@ else
 fi
 
 # 2. Locks y done markers del .state/ (teaser_generator)
+# El lock de TikTok se maneja aparte para no borrar una ejecucion viva.
 STATE_DIR="/sdcard/Antigravity/.state"
 if [ -d "$STATE_DIR" ]; then
-    COUNT=$(find "$STATE_DIR" -type f | wc -l)
-    rm -f "$STATE_DIR"/*.lock "$STATE_DIR"/*.done 2>/dev/null || true
-    echo "[OK] Borrados $COUNT archivo(s) en $STATE_DIR/.lock .done"
+    COUNT=$(find "$STATE_DIR" -maxdepth 1 -type f \( -name '*.lock' -o -name '*.done' \) ! -name 'tiktok_evacuador.lock' 2>/dev/null | wc -l)
+    find "$STATE_DIR" -maxdepth 1 -type f \( -name '*.lock' -o -name '*.done' \) ! -name 'tiktok_evacuador.lock' -exec rm -f {} + 2>/dev/null || true
+    echo "[OK] Borrados $COUNT archivo(s) .lock/.done no-TikTok en $STATE_DIR"
+
+    TIKTOK_LOCK="$STATE_DIR/tiktok_evacuador.lock"
+    if [ -f "$TIKTOK_LOCK" ]; then
+        TIKTOK_PID=$(awk 'NR == 1 {print $1}' "$TIKTOK_LOCK" 2>/dev/null || true)
+        if [ -n "$TIKTOK_PID" ] && kill -0 "$TIKTOK_PID" 2>/dev/null; then
+            echo "[SKIP] TikTok activo (PID $TIKTOK_PID); no borro $TIKTOK_LOCK."
+            echo "       Usa PARAR_TIKTOK si quieres detenerlo y limpiar sus locks."
+        else
+            rm -f "$TIKTOK_LOCK" 2>/dev/null || true
+            echo "[OK] Borrado lock TikTok viejo: $TIKTOK_LOCK"
+        fi
+    fi
 else
     echo "[--] No existe: $STATE_DIR"
 fi
