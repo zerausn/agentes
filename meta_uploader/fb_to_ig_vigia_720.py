@@ -132,14 +132,14 @@ def extract_content_keys(text):
     raw = str(text or "")
     keys = set()
 
-    marker = _normalize_marker(raw)
-    if marker:
-        keys.add(f"text:{marker}")
+#     marker = _normalize_marker(raw)
+#     if marker:
+#         keys.add(f"text:{marker}")
 
     normalized_raw = _strip_accents(raw)
-    for pattern in STEM_PATTERNS:
-        for match in pattern.findall(normalized_raw):
-            keys.add(f"stem:{_normalize_stem(match)}")
+#     for pattern in STEM_PATTERNS:
+#         for match in pattern.findall(normalized_raw):
+#             keys.add(f"stem:{_normalize_stem(match)}")
 
     return keys
 
