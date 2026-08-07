@@ -1243,9 +1243,12 @@ def open_next(args: argparse.Namespace) -> int:
                 tap(nxt["center"], nxt["label"])
                 time.sleep(8)
             else:
-                # Intentar coordenada fallback del boton Siguiente editor
-                logging.info("Editor step %d: Siguiente no detectado por UI, probando coordenada.", _editor_step + 1)
-                tap_scaled(531, 1341, f"Siguiente editor coord (step {_editor_step + 1})", pause=6)
+                logging.info("Editor step %d: Siguiente no detectado por UI, probando multiples coordenadas...", _editor_step + 1)
+                # Fallbacks: 1) Nueva coord S24/Vivo abajo-derecha, 2) Antigua coord arriba-derecha
+                fallback_coords = [(531, 1341), (665, 77), (600, 1352)]
+                for fx, fy in fallback_coords:
+                    tap_scaled(fx, fy, f"Siguiente coord {fx},{fy} (step {_editor_step + 1})", pause=4)
+                    # No sabemos cual funciono, pero probar varias ayuda si la UI cambia
 
         # Pantalla de caption: tocar campo y escribir
         if CAPTION_ENABLED:
@@ -1266,9 +1269,12 @@ def open_next(args: argparse.Namespace) -> int:
                 logging.info("Boton Publicar detectado por UI: %s en %s", pub_node["label"], pub_node["center"])
                 publish_ok = tap(pub_node["center"], pub_node["label"])
             else:
-                # Fallback: coordenada fija del boton rojo arriba a la derecha
-                logging.info("Publicar no detectado por UI; usando coordenada (608, 80).")
-                publish_ok = tap_scaled(608, 80, "Publicar top coord", pause=3)
+                # Fallback: intentar varias coordenadas comunes para boton Publicar
+                logging.info("Publicar no detectado por UI; probando multiples coordenadas fallback...")
+                fallback_pub = [(608, 80), (665, 77), (600, 1350)]
+                for px, py in fallback_pub:
+                    publish_ok = tap_scaled(px, py, f"Publicar coord {px},{py}", pause=3)
+                    # Si el primer tap funciona, TikTok cambiara de pantalla. Los siguientes taps caeran en la nada.
 
             if publish_ok:
                 # Esperar a que TikTok procese y suba el video (poll cada 15s)
