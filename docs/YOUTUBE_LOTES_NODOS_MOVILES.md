@@ -237,6 +237,41 @@ Validaciones realizadas:
 - `bash -n bajar_youtube_sin_limite_termux.sh` OK;
 - `git status` limpio.
 
+## Incidente Note 9 (bot-check por `--force-ipv4`)
+
+Fecha: 2026-08-07
+
+Sintomas observados:
+
+- Todos los lotes seleccionados fallaban: `✅ 0 nuevos ⏭️ 0 omitidos ❌ 5` (lote 2026-08).
+- El log del script solo mostraba `Falló la descarga de: ...` porque `--quiet --no-warnings` ocultaba el error real de yt-dlp.
+- No era problema de versión: el yt-dlp del Debian (2026.07.04) es el más reciente y soporta `--js-runtimes node`.
+
+Causa raíz (reproducida en PC y dentro del proot del Note 9):
+
+```text
+ERROR: [youtube] <id>: Sign in to confirm you're not a bot.
+       Use --cookies-from-browser or --cookies for the authentication.
+HTTP Error 429: Too Many Requests
+```
+
+- El flag `--force-ipv4`, agregado el 2026-07-07 (commit `cb83eebf`), pasó a disparar el bot-check de YouTube. Sin el flag, la misma descarga funciona en el Note 9 (2160p, 168 MB en 75s) y en PC.
+
+Correccion aplicada (commit `7bcb06bf`):
+
+- Se eliminó `--force-ipv4` de:
+  - `youtube_uploader/yt_downloader_lotes_sin_limite.py`
+  - `youtube_uploader/yt_downloader_lotes.py`
+  - `youtube_uploader/youtube_to_fb_watcher.py`
+  - `youtube_uploader/youtube_to_fb_watcher_termux.py`
+- Se conservó `--js-runtimes node`.
+- No fue necesario actualizar yt-dlp ni usar cookies.
+
+Estado verificado:
+
+- `python3 -m py_compile` OK en los 4 archivos.
+- Descarga de prueba en el Note 9 sin `--force-ipv4`: exitosa a 2160p.
+
 ## Procedimiento para reparar otro nodo
 
 1. Ver dispositivos:

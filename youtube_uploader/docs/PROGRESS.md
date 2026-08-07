@@ -102,3 +102,11 @@ Estado actual del proyecto al **15 de Abril de 2026**.
   - S24 Ultra (SM-S928B): funcionando sin errores
   - Vivo V2058: funcionando sin errores
 - [x] Commit `651080d2` en `linux-arm64` de GitHub.
+
+### 2026-08-07: Fix bot-check de YouTube (`--force-ipv4`)
+- [x] Todos los lotes del descargador fallaban en el Note 9: `Sign in to confirm you're not a bot` + `HTTP 429`.
+- [x] Causa raíz: el flag `--force-ipv4` (añadido el 2026-07-07) pasó a disparar el bot-check de YouTube.
+- [x] Reproducido en PC y Note 9 con yt-dlp 2026.07.04; sin el flag la descarga 2160p funciona en ambos.
+- [x] Se eliminó `--force-ipv4` de `yt_downloader_lotes_sin_limite.py`, `yt_downloader_lotes.py`, `youtube_to_fb_watcher.py` y `youtube_to_fb_watcher_termux.py`.
+- [x] No fue necesario actualizar yt-dlp ni añadir cookies.
+- [x] Commit `7bcb06bf` en `linux-arm64` de GitHub.
