@@ -2061,6 +2061,72 @@ def create_ig_media_container_from_url(media_url, media_type="IMAGE", caption=""
     return creation_id
 
 
+def create_ig_carousel_item(media_url, media_type="IMAGE"):
+    """
+    Crea un contenedor de un item unitario para un carrusel de Instagram (is_carousel_item=true).
+    Soporta IMAGE o VIDEO.
+    """
+    if not IG_USER_ID or not IG_ACCESS_TOKEN:
+        logging.error("Faltan IG_USER_ID o token de Instagram para crear item de carrusel.")
+        return None
+
+    payload = {
+        "is_carousel_item": "true",
+        "access_token": IG_ACCESS_TOKEN
+    }
+
+    if media_type.upper() == "VIDEO":
+        payload["media_type"] = "VIDEO"
+        payload["video_url"] = media_url
+    else:
+        payload["image_url"] = media_url
+
+    result = _request_json("POST", graph_url(f"{IG_USER_ID}/media"), data=payload)
+    if not result:
+        return None
+
+    creation_id = result.get("id")
+    if not creation_id:
+        logging.error("No se recibio creation_id al crear item de carrusel: %s", result)
+        return None
+
+    logging.info("Contenedor de item para carrusel creado: %s (tipo %s)", creation_id, media_type)
+    return creation_id
+
+
+def create_ig_carousel(children_ids, caption=""):
+    """
+    Crea el contenedor maestro del carrusel de Instagram agrupando los items creados previamente.
+    children_ids: lista de strings con los IDs de los contenedores hijos.
+    """
+    if not IG_USER_ID or not IG_ACCESS_TOKEN:
+        logging.error("Faltan IG_USER_ID o token de Instagram para crear carrusel maestro.")
+        return None
+
+    if not children_ids:
+        logging.error("No se proporcionaron children_ids para el carrusel.")
+        return None
+
+    payload = {
+        "media_type": "CAROUSEL",
+        "children": ",".join(children_ids),
+        "caption": caption,
+        "access_token": IG_ACCESS_TOKEN
+    }
+
+    result = _request_json("POST", graph_url(f"{IG_USER_ID}/media"), data=payload)
+    if not result:
+        return None
+
+    creation_id = result.get("id")
+    if not creation_id:
+        logging.error("No se recibio creation_id al crear carrusel maestro: %s", result)
+        return None
+
+    logging.info("Contenedor maestro de carrusel creado: %s con %s items", creation_id, len(children_ids))
+    return creation_id
+
+
 def get_instagram_user_feed(limit=5):
     """
     Obtiene las ultimas publicaciones del feed de Instagram para procesos de reconciliacion.

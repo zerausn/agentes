@@ -254,8 +254,90 @@ def try_crosspost_one(post, registry, ig_catalog_keys, history, dry_run=False):
 
     final_caption = (original_caption or "").strip() + CAPTION_SIGNATURE
 
+    final_caption = (original_caption or "").strip() + CAPTION_SIGNATURE
+
     at_least_one_success = False
-    for idx, item in enumerate(media_items):
+
+    # Funcion auxiliar para limpiar temporales
+    def cleanup_temps(temps):
+        for path in temps:
+            if path and os.path.exists(path):
+                try: os.remove(path)
+                except: pass
+
+    # --- LOGICA DE CARRUSEL (Si hay multiples items) ---
+    if len(media_items) > 1:
+        logging.info("Multiples items detectados (%s). Agrupando en carruseles (max 20 items)...", len(media_items))
+        from meta_uploader import create_ig_carousel_item, create_ig_carousel
+        
+        # Agrupar en chunks de maximo 20 items (limite extendido de IG API, o al menos 10 si la API rechaza 20)
+        CHUNK_SIZE = 20
+        chunks = [media_items[i:i + CHUNK_SIZE] for i in range(0, len(media_items), CHUNK_SIZE)]
+        
+        for chunk_idx, chunk in enumerate(chunks):
+            if not check_ig_publish_limit():
+                logging.error("Limite oficial de Instagram alcanzado. Abortando carruseles restantes.")
+                break
+                
+            logging.info("Procesando chunk de carrusel %s/%s con %s items...", chunk_idx + 1, len(chunks), len(chunk))
+            
+            children_ids = []
+            temps_to_cleanup = []
+            chunk_success = True
+            
+            for idx, item in enumerate(chunk):
+                item_url = item["url"]
+                # Para carruseles con video, la API pide alojar el video y enviar la URL directa.
+                # Afortunadamente, Facebook URLs ('source') son publicas y funcionan directamente con Graph API.
+                # No necesitamos descargar y re-codificar localmente para carruseles, a menos que 
+                # la URL caduque o sea rechazada. Intentaremos la via directa de URL primero para ahorrar I/O.
+                
+                logging.info("  -> Creando contenedor item %s/%s (tipo: %s)", idx + 1, len(chunk), item["type"])
+                child_id = create_ig_carousel_item(item_url, media_type=item["type"])
+                
+                if child_id:
+                    children_ids.append(child_id)
+                else:
+                    logging.warning("  -> Fallo al crear item %s/%s de carrusel.", idx + 1, len(chunk))
+                    chunk_success = False
+                    break
+                    
+            if not chunk_success or not children_ids:
+                logging.error("No se pudieron crear todos los items del carrusel %s. Abortando este carrusel.", chunk_idx + 1)
+                cleanup_temps(temps_to_cleanup)
+                continue
+                
+            # Esperar a que los contenedores hijos procesen
+            logging.info("Esperando estabilizacion de contenedores hijos...")
+            all_children_ready = True
+            for child_id in children_ids:
+                if not wait_for_ig_container(child_id):
+                    all_children_ready = False
+                    break
+                    
+            if not all_children_ready:
+                logging.error("Al menos un contenedor hijo no se proceso. Abortando carrusel.")
+                continue
+                
+            # Crear y publicar contenedor maestro
+            logging.info("Creando contenedor maestro de carrusel con %s hijos...", len(children_ids))
+            carousel_id = create_ig_carousel(children_ids, final_caption)
+            
+            if carousel_id and wait_for_ig_container(carousel_id):
+                ig_id = publish_ig_container(carousel_id)
+                if ig_id:
+                    logging.info("Carrusel publicado en IG: %s", ig_id)
+                    at_least_one_success = True
+                else:
+                    logging.error("Fallo la publicacion final del carrusel.")
+            else:
+                logging.error("Fallo la creacion del contenedor maestro de carrusel.")
+                
+            cleanup_temps(temps_to_cleanup)
+
+    # --- LOGICA ORIGINAL (Solo 1 item) ---
+    else:
+        item = media_items[0]
         targets = ["FEED"]
         if item["type"] == "VIDEO":
             targets = ["REELS"]
@@ -263,12 +345,13 @@ def try_crosspost_one(post, registry, ig_catalog_keys, history, dry_run=False):
         local_path = None
         try:
             logging.info("Descargando media para optimizacion local...")
-            temp_file = BASE_DIR / f"temp_vigia_{post_id}_{idx}.mp4"
+            temp_file = BASE_DIR / f"temp_vigia_{post_id}_0.mp4"
+            import requests
             resp = requests.get(item["url"], stream=True, timeout=30)
 
             with open(temp_file, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=8192):
-                    f.write(chunk)
+                for chunk_data in resp.iter_content(chunk_size=8192):
+                    f.write(chunk_data)
 
             local_path = ensure_ig_compatibility(str(temp_file), force_recode=False)
             vinfo = probe_video(local_path)
@@ -281,17 +364,14 @@ def try_crosspost_one(post, registry, ig_catalog_keys, history, dry_run=False):
                     active_targets.append("FEED")
         except Exception as e:
             logging.error("Fallo descarga/optimizacion local: %s", e)
-            continue
+            active_targets = []
 
         for target_type in active_targets:
             if not check_ig_publish_limit():
                 logging.error("Limite oficial de Instagram de la API alcanzado.")
-                if local_path and os.path.exists(local_path):
-                    try: os.remove(local_path)
-                    except: pass
-                return False
+                break
 
-            logging.info("Subiendo item %s/%s a IG %s (Binario)...", idx + 1, len(media_items), target_type)
+            logging.info("Subiendo unico item a IG %s (Binario)...", target_type)
             path_for_target = local_path
 
             if target_type == "STORIES" and item["type"] == "VIDEO":
@@ -303,6 +383,8 @@ def try_crosspost_one(post, registry, ig_catalog_keys, history, dry_run=False):
                 path_for_target = local_path
 
             creation_id = None
+            from meta_uploader import _create_ig_video_container, upload_ig_binary, create_ig_media_container_from_url
+            
             if target_type == "REELS":
                 creation_id = _create_ig_video_container("REELS", caption=final_caption, share_to_feed=True)
             elif target_type == "STORIES":
@@ -351,13 +433,13 @@ def try_crosspost_one(post, registry, ig_catalog_keys, history, dry_run=False):
                     if path_for_target != local_path and os.path.exists(path_for_target):
                         try: os.remove(path_for_target)
                         except: pass
-                else:
-                    creation_id = create_ig_media_container_from_url(item["url"], "IMAGE", final_caption, target=target_type)
-                    if creation_id and wait_for_ig_container(creation_id):
-                        ig_id = publish_ig_container(creation_id)
-                        if ig_id:
-                            logging.info("Imagen %s publicada en IG %s", post_id, target_type)
-                            at_least_one_success = True
+            else:
+                creation_id = create_ig_media_container_from_url(item["url"], "IMAGE", final_caption, target=target_type)
+                if creation_id and wait_for_ig_container(creation_id):
+                    ig_id = publish_ig_container(creation_id)
+                    if ig_id:
+                        logging.info("Imagen %s publicada en IG %s", post_id, target_type)
+                        at_least_one_success = True
 
         if local_path and os.path.exists(local_path):
             try: os.remove(local_path)
