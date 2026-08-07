@@ -538,20 +538,22 @@ def write_caption(caption: str) -> None:
 
 
 def _media_scan_broadcast(video: Path) -> bool:
-    """Envía MEDIA_SCANNER_SCAN_FILE broadcast para que el sistema indexe el video.
-    Usa os.system (shell directa) para evitar rc=255 de subprocess con capture_output.
-    No requiere permisos especiales — el sistema MediaScanner tiene acceso completo.
-    Retorna True si el broadcast se envió (no garantiza que el scan termine)."""
+    """Envia MEDIA_SCANNER_SCAN_FILE broadcast via ADB (127.0.0.1:5555).
+    os.system() falla desde Termux con rc=256 (permiso denegado).
+    Usando run_android -> adb shell el broadcast si se ejecuta con permisos de sistema.
+    Retorna True si el broadcast se ejecuto (no garantiza que el scan termine)."""
     try:
-        file_path = str(video.resolve())
-        quoted = file_path.replace("'", "'\\''")
-        cmd = f"am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d 'file://{quoted}'"
-        rc = os.system(f"/system/bin/sh -c '{cmd}'")
-        ok = os.WIFEXITED(rc) and os.WEXITSTATUS(rc) == 0
+        file_uri = "file://" + str(video.resolve())
+        result = run_android([
+            "am", "broadcast",
+            "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
+            "-d", file_uri,
+        ], timeout=10)
+        ok = result.returncode == 0
         if ok:
-            logging.info("MediaScanner broadcast enviado: %s", video.name)
+            logging.info("MediaScanner broadcast enviado via ADB: %s", video.name)
         else:
-            logging.warning("MediaScanner broadcast fallo (rc=%s)", rc)
+            logging.warning("MediaScanner broadcast fallo via ADB (rc=%s): %s", result.returncode, result.stderr.strip())
         return ok
     except Exception as exc:
         logging.warning("MediaScanner broadcast exception: %s", exc)
@@ -560,36 +562,38 @@ def _media_scan_broadcast(video: Path) -> bool:
 
 def insert_media_store(video: Path) -> str | None:
     """Inserta un video en MediaStore si no tiene entrada.
-    Primero intenta broadcast MEDIA_SCANNER_SCAN_FILE (funciona en Android 13
-    sin permisos especiales), luego content insert como fallback.
+    Envia MEDIA_SCANNER_SCAN_FILE via ADB y espera hasta 15s a que el scan termine.
     Retorna la content:// URI o None si falla."""
     _media_scan_broadcast(video)
-    time.sleep(3)
-    # Re-query MediaStore para obtener la URI
-    try:
-        data_path = str(video.resolve())
-        result = run_android([
-            "content", "query",
-            "--uri", "content://media/external/video/media",
-            "--projection", "_data:_id",
-        ], timeout=10)
-        if result.returncode == 0:
-            for line in result.stdout.strip().split("\n"):
-                if not line.strip():
-                    continue
-                raw_match = re.search(r"_data=(.*?)(?:,\s|$)", line)
-                id_match = re.search(r"_id=(\d+)", line)
-                if raw_match and id_match:
-                    raw_path = raw_match.group(1).strip()
-                    raw_sdcard = raw_path.replace("/storage/emulated/0/", "/sdcard/")
-                    if Path(raw_sdcard) == video:
-                        uri = f"content://media/external/video/media/{id_match.group(1)}"
-                        _content_uris[video.name] = uri
-                        logging.info("MediaStore URI tras scan: %s -> %s", video.name, uri)
-                        return uri
-        logging.warning("MediaStore re-query no encontro el archivo tras scan")
-    except Exception as exc:
-        logging.warning("MediaStore re-query exception: %s", exc)
+
+    # Normalizar ambas rutas para comparacion consistente
+    video_normalized = str(video.resolve()).replace("/sdcard/", "/storage/emulated/0/")
+
+    for attempt in range(3):
+        time.sleep(5)  # dar tiempo al MediaScanner a indexar el archivo
+        try:
+            result = run_android([
+                "content", "query",
+                "--uri", "content://media/external/video/media",
+                "--projection", "_data:_id",
+            ], timeout=10)
+            if result.returncode == 0:
+                for line in result.stdout.strip().split("\n"):
+                    if not line.strip():
+                        continue
+                    raw_match = re.search(r"_data=(.*?)(?:,\s|$)", line)
+                    id_match = re.search(r"_id=(\d+)", line)
+                    if raw_match and id_match:
+                        raw_path = raw_match.group(1).strip()
+                        raw_normalized = raw_path.replace("/sdcard/", "/storage/emulated/0/")
+                        if raw_normalized == video_normalized:
+                            uri = f"content://media/external/video/media/{id_match.group(1)}"
+                            _content_uris[video.name] = uri
+                            logging.info("MediaStore URI tras scan (intento %d): %s -> %s", attempt + 1, video.name, uri)
+                            return uri
+        except Exception as exc:
+            logging.warning("MediaStore re-query exception (intento %d): %s", attempt + 1, exc)
+        logging.warning("MediaStore re-query no encontro el archivo tras scan (intento %d/3)", attempt + 1)
     return None
 
 
