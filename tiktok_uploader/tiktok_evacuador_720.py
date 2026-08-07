@@ -639,33 +639,27 @@ def launch_share_intent(video: Path) -> bool:
             logging.info("Share intent local OK")
             return True
 
-    # Fallback: broadcast al TermuxOpenReceiver (fire-and-forget)
-    _am_broadcast([
-        "-a", "android.intent.action.SEND",
-        "-n", "com.termux/com.termux.app.TermuxOpenReceiver",
-        "--es", "content-type", "video/mp4",
-        "--ez", "chooser", "true",
-        "-d", video_path,
-    ])
-    time.sleep(3)
+    # Fallback: si no hay content URI no podemos compartir el video de forma fiable.
+    # Retornar False para que el ciclo se marque como fallido y no se mueva el archivo.
+    if not content_uri:
+        logging.error("No hay content URI disponible para %s. Abortando share intent.", video.name)
+        return False
 
-    # Fallback: ADB request para PC watcher
-    content_uri = get_content_uri(video) or content_uri
-    if content_uri:
-        STATE_DIR.mkdir(parents=True, exist_ok=True)
-        adb_cmd = (
-            ["adb", "shell"]
-            + ["am", "start", "-W",
-               "-a", "android.intent.action.SEND",
-               "-t", "video/mp4",
-               "--eu", "android.intent.extra.STREAM", content_uri,
-               "-f", "0x10000000",
-               "-n", f"{TIKTOK_PACKAGE}/{TIKTOK_ACTIVITY}",
-               ]
-        )
-        SHARE_REQUEST_FILE.write_text(" ".join(shlex.quote(a) for a in adb_cmd) + "\n", encoding="utf-8")
-        logging.info("Share request escrita para PC watcher.")
-    return True
+    # Ultimo intento: ADB request para PC watcher (solo si hay content_uri)
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    adb_cmd = (
+        ["adb", "shell"]
+        + ["am", "start", "-W",
+           "-a", "android.intent.action.SEND",
+           "-t", "video/mp4",
+           "--eu", "android.intent.extra.STREAM", content_uri,
+           "-f", "0x10000000",
+           "-n", f"{TIKTOK_PACKAGE}/{TIKTOK_ACTIVITY}",
+           ]
+    )
+    SHARE_REQUEST_FILE.write_text(" ".join(shlex.quote(a) for a in adb_cmd) + "\n", encoding="utf-8")
+    logging.warning("Share intent local fallo. Se dejo request para PC watcher, pero no se puede confirmar publicacion desde el dispositivo.")
+    return False
 
 
 def launch_tiktok_home() -> bool:
@@ -958,10 +952,15 @@ def publish_confirmed(settle: int | None = None) -> bool:
                     return True
             elif pkg == TIKTOK_PACKAGE:
                 empty_tiktok_dumps += 1
-                logging.info("UI dump vacio en TikTok tras publicar (%d/2).", empty_tiktok_dumps)
-                if empty_tiktok_dumps >= 2:
-                    logging.info("Publicacion confirmada: dump UI vacio repetido en TikTok.")
-                    return True
+                logging.info("UI dump vacio en TikTok tras publicar (%d/3).", empty_tiktok_dumps)
+                if empty_tiktok_dumps >= 3:
+                    # 3 dumps vacios seguidos en TikTok puede indicar pantalla de
+                    # carga post-publicacion, pero tambien puede ser estado incorrecto.
+                    # Tomamos screenshot para evidencia y retornamos False para no
+                    # mover el archivo por un falso positivo.
+                    logging.warning("Dump UI vacio repetido en TikTok: posible estado incorrecto o splash. NO se confirma publicacion automaticamente.")
+                    run_android(["screencap", "-p", STATE_DIR / "post_publish_empty_dump.png"], timeout=5)
+                    return False
             else:
                 logging.info("Publicacion no confirmada: pkg desconocido y dump UI vacio.")
         else:
