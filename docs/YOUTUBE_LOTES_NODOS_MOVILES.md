@@ -272,6 +272,20 @@ Estado verificado:
 - `python3 -m py_compile` OK en los 4 archivos.
 - Descarga de prueba en el Note 9 sin `--force-ipv4`: exitosa a 2160p.
 
+### Verificacion en produccion (2026-08-07)
+
+- Se lanzo el descargador en el Note 9 seleccionando el lote 12 (2026-08, 5 videos).
+- La primera descarga (1pMhT-v6imk) completo `Descarga OK (288.4 MB) | selector: bestvideo[height>=2160]+bestaudio[ext=m4a` y paso a transcodificar a MP4.
+- La prueba se detuvo a mitad de transcodificacion por peticion del usuario; se limpiaron los temporales y el MP4 parcial.
+- El registro no quedo corrupto: 404 `descargado`, 19 `fallido`, sin cambios de estado erroneos.
+- El fix quedo confirmado: el problema era `--force-ipv4`, no la version de yt-dlp.
+
+### Incidente colateral: registro viejo del Note 9 (2026-08-07)
+
+- Al subir su escaneo, el Note 9 empujo su registro local que no incluia 81 videos `pendiente` que el auto-merge `6ca083e` habia agregado.
+- Verificacion: los 81 perdidos eran todos `pendiente`, ninguno `descargado` (no se perdio historial de descargas).
+- Correccion: restaurados en el PC desde `6ca083e` (commit `9ca23b04`) y empujados a `linux-arm64`.
+
 ## Procedimiento para reparar otro nodo
 
 1. Ver dispositivos:

@@ -110,3 +110,5 @@ Estado actual del proyecto al **15 de Abril de 2026**.
 - [x] Se eliminó `--force-ipv4` de `yt_downloader_lotes_sin_limite.py`, `yt_downloader_lotes.py`, `youtube_to_fb_watcher.py` y `youtube_to_fb_watcher_termux.py`.
 - [x] No fue necesario actualizar yt-dlp ni añadir cookies.
 - [x] Commit `7bcb06bf` en `linux-arm64` de GitHub.
+- [x] Verificado en producción en el Note 9: lote 2026-08, descarga 4K completa (`Descarga OK 288.4 MB`) antes de detener la prueba.
+- [x] Incidencia colateral resuelta: el Note 9 sobrescribió 81 `pendiente` al subir un registro viejo; restaurados en `9ca23b04`.
