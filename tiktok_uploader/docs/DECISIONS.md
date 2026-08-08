@@ -59,3 +59,9 @@
 - **Contexto**: El proot Debian no tiene acceso a `/sdcard` (bind mount manual) ni a las claves ADB de Termux.
 - **Decisión**: Script `_proot_bind.sh` que detecta la ruta real del almacenamiento externo y bind-mounta `/sdcard` y `~/.android` dentro del proot.
 - **Consecuencia**: El evacuador Python dentro del proot puede acceder a archivos en `/sdcard` y conectar ADB local sin re-autorizar.
+
+## 2026-08-07: Confirmación de publicación por cambio de pantalla (método simple)
+- **Contexto**: El VIVO publica de forma fiable al tocar Publicar, pero ningún método de verificación posterior funcionaba: (a) notificación "Cargando..." (canal `com.ss.android.ugc.trill.publish`) permanecía activa/persistía en `dumpsys` incluso tras matar TikTok; (b) el foreground tras publicar era `com.termux` (inesperado); (c) `dump_ui()` es intermitente en el VIVO.
+- **Decisión**: El cambio de pantalla tras el tap de Publicar (botón Publicar deja de aparecer en la UI) ES la confirmación de que TikTok salió del editor hacia "Para ti". Tras el tap se espera `TIKTOK_PUBLISH_UPLOAD_WAIT_SECONDS` (default 20s) para que la app suba el video y se mueve el archivo.
+- **Consecuencia**: No hay verificación independiente post-publicación; se acepta el riesgo de falso positivo si el tap fallara, pero en el VIVO el tap en (912,130) publica consistentemente (los videos sí aparecen en TikTok).
+- **Nota**: Se descartó el uso de `TIKTOK_SUCCESS_FOREGROUND_PACKAGES` (p. ej. `com.termux`) porque el código dejó de leerlo; la señal de foreground inesperado se eliminó de `publish_confirmed()`.

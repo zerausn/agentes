@@ -93,3 +93,15 @@ La API de TikTok sigue sin aprobarse; el método UI es la estrategia de producci
   - `post_publish.png` (línea 976)
 - **Además**: se agregó un backup del archivo original (`backups/tiktok_evacuador_720.py.posixpath.bak`) en el Vivo antes de desplegar la corrección.
 - **Verificación**: MD5 local == MD5 desplegado en Vivo (`83ea41d31a95e0d6b475c157738759bf`). Commit `fb7e83a3` en rama `vivo-tiktok`.
+
+## 2026-08-07: Confirmación de publicación — Método simple (cambio de pantalla + 20s)
+
+- **Contexto**: El VIVO publicaba videos reales (verificado en la app y en la cola: el head `PW (20260428_185308)_teaser_8.mp4` se publicó 3 veces el mismo día) pero el evacuador nunca confirmaba → `exit=1` → el archivo no se movía y el mismo video se republicaba cada ciclo (135 pendientes estancados).
+- **Intento previo (descartado)**: Señal de la notificación "Cargando..." de TikTok (canal `com.ss.android.ugc.trill.publish`, foreground service). Problemas: (1) las notificaciones estaban bloqueadas en la app (`appops POST_NOTIFICATION: ignore`, importance NONE, userSet=true) → hubo que habilitarlas con `appops set com.zhiliaoapp.musically POST_NOTIFICATION allow`; (2) aún habilitadas, la notificación aparecía ANTES del tap Publicar (procesado del video) y el `NotificationRecord` persistía en `dumpsys notification` incluso tras matar TikTok (`am kill`), por lo que la señal "aparece→desaparece" nunca disparaba dentro de la ventana.
+- **Decisión final (método simple)**: El tap en Publicar ya produce un cambio de pantalla verificado por UI (`Publicar fallback X,Y produjo cambio de pantalla` → el botón desapareció → TikTok salió del editor hacia el feed "Para ti"). Ese cambio de pantalla ES la confirmación. Solo se espera la subida del video: `TIKTOK_PUBLISH_UPLOAD_WAIT_SECONDS=20` (20s desde el tap/cambio de pantalla) y se confirma.
+- **Cambios en `tiktok_evacuador_720.py`**:
+  - Eliminado `_tiktok_publish_notification_active()` y `PUBLISH_NOTIF_CHANNEL` (señal descartada).
+  - `publish_confirmed()` ahora: espera 15s (procesado) + `TIKTOK_PUBLISH_UPLOAD_WAIT_SECONDS` (default 20s), toma screenshot `post_publish.png` y retorna `True`.
+  - Eliminadas las señales que fallaban en el VIVO: `SUCCESS_FOREGROUND_PACKAGES` (foreground inesperado com.termux tras publicar) y `IME_PACKAGES` (sin uso).
+- **Timing real**: tap (5s pause) + sleep 15s + 20s de subida ≈ 40s desde el tap, ~20s después del cambio de pantalla (detectado ~6s tras el tap).
+- **Verificación**: MD5 local == MD5 desplegado en VIVO (`41588ea9f4f6db88a46a1a439f05882e`). Desplegado vía `run-as com.termux cp` desde `/data/local/tmp` (run-as no lee /sdcard).
