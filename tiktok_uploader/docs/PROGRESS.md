@@ -83,3 +83,13 @@ La API de TikTok sigue sin aprobarse; el método UI es la estrategia de producci
 - **Solución implementada**:
   - Se modificó el script para detectar dinámicamente la rama actual mediante `git rev-parse --abbrev-ref HEAD`.
   - Ahora el widget hace `git pull origin <rama-actual>`. Es universalmente seguro y se puede ejecutar en cualquier dispositivo (Vivo, Note9, S24) sin riesgo de mezclar o dañar ramas.
+
+## 2026-08-07: TypeError PosixPath en shlex.quote al capturar screenshot post-publicación
+
+- **Síntoma**: Ciclo terminaba con `exit=1` tras "Dump UI vacío repetido en TikTok (3/3)". El traceback mostraba `TypeError: expected string object, got 'PosixPath'` en `run_android()` (línea 258) vía `shlex.quote`.
+- **Causa raíz**: `publish_confirmed()` pasaba `STATE_DIR / "post_publish_empty_dump.png"` (un `PosixPath`) directamente a `run_android(["screencap", ...])`. `shlex.quote()` solo acepta strings y `run_android` lo llama sobre cada argumento cuando `UI_BACKEND == "adb"`.
+- **Solución**: Envolver el Path con `str()` en los 2 puntos que pasaban rutas de screenshot a `run_android`:
+  - `post_publish_empty_dump.png` (línea 966)
+  - `post_publish.png` (línea 976)
+- **Además**: se agregó un backup del archivo original (`backups/tiktok_evacuador_720.py.posixpath.bak`) en el Vivo antes de desplegar la corrección.
+- **Verificación**: MD5 local == MD5 desplegado en Vivo (`83ea41d31a95e0d6b475c157738759bf`). Commit `fb7e83a3` en rama `vivo-tiktok`.
