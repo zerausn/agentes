@@ -963,7 +963,7 @@ def publish_confirmed(settle: int | None = None) -> bool:
                     # Tomamos screenshot para evidencia y retornamos False para no
                     # mover el archivo por un falso positivo.
                     logging.warning("Dump UI vacio repetido en TikTok: posible estado incorrecto o splash. NO se confirma publicacion automaticamente.")
-                    run_android(["screencap", "-p", STATE_DIR / "post_publish_empty_dump.png"], timeout=5)
+                    run_android(["screencap", "-p", str(STATE_DIR / "post_publish_empty_dump.png")], timeout=5)
                     return False
             else:
                 logging.info("Publicacion no confirmada: pkg desconocido y dump UI vacio.")
@@ -973,7 +973,7 @@ def publish_confirmed(settle: int | None = None) -> bool:
 
     pkg = current_package() or ""
     logging.error("No se pudo confirmar publicacion tras %ds: pkg=%s last_pkg=%s", effective_settle, pkg, last_pkg)
-    run_android(["screencap", "-p", STATE_DIR / "post_publish.png"], timeout=5)
+    run_android(["screencap", "-p", str(STATE_DIR / "post_publish.png")], timeout=5)
     return False
 
 
