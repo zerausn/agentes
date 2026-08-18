@@ -105,3 +105,89 @@ La API de TikTok sigue sin aprobarse; el método UI es la estrategia de producci
   - Eliminadas las señales que fallaban en el VIVO: `SUCCESS_FOREGROUND_PACKAGES` (foreground inesperado com.termux tras publicar) y `IME_PACKAGES` (sin uso).
 - **Timing real**: tap (5s pause) + sleep 15s + 20s de subida ≈ 40s desde el tap, ~20s después del cambio de pantalla (detectado ~6s tras el tap).
 - **Verificación**: MD5 local == MD5 desplegado en VIVO (`41588ea9f4f6db88a46a1a439f05882e`). Desplegado vía `run-as com.termux cp` desde `/data/local/tmp` (run-as no lee /sdcard).
+
+## 2026-08-17: ADB TCP Auto-Repair sin Root — Vivo V2058
+
+### Problema
+El Vivo V2058 (MediaTek MT6768, Android 13) pierde el modo ADB TCP (`127.0.0.1:5555`) cada vez que se reinicia el dispositivo. `adbd` vuelve a modo USB y el widget `6_SUBIR_TIKTOK720` falla con `rc=255` al intentar ejecutar comandos vía ADB, bloqueando la publicación de TikTok.
+
+**Síntoma en logs** (`/sdcard/Antigravity/widget_logs/6_SUBIR_TIKTOK720.log`):
+```
+WARNING - MediaScanner broadcast fallo via ADB (rc=255):
+ERROR - No hay content URI disponible para <video>.mp4. Abortando share intent.
+[CICLO #1] Error exit=1. Archivo queda en cola.
+```
+
+### ¿Por qué no se puede rootear?
+El Vivo V2058 tiene el bootloader bloqueado a nivel de servidor (Vivo no permite desbloquearlo). El chip MediaTek MT6768 no tiene método verificado de root sin bootloader desbloqueado. El build `release-keys` confirma que es firmware de producción. Intentar rootear implica alto riesgo de brick permanente.
+
+### Solución implementada — 2 capas sin root
+
+#### Capa 1: Termux:Boot — Auto-reparación al encender el Vivo
+Archivo instalado en el Vivo:
+```
+~/.termux/boot/start_adb_tcpip.sh
+```
+**Fuente en repo**: `scripts/linux/start_adb_tcpip_boot.sh`
+
+Cada vez que el Vivo se reinicia, Termux:Boot ejecuta este script que:
+1. Espera 35s a que el sistema arranque completamente
+2. Inicia el servidor ADB local con `adb start-server`
+3. Activa el modo TCP con `adb tcpip 5555`
+4. Conecta `adb connect 127.0.0.1:5555`
+5. Reintenta hasta 2 veces si el primer intento falla
+6. Escribe logs en `/sdcard/Antigravity/widget_logs/boot_adb_tcpip.log`
+
+**Requisito**: Termux:Boot debe estar instalado (ya estaba instalado en el Vivo).
+
+**Despliegue inicial** (desde PC con USB):
+```bash
+cat scripts/linux/start_adb_tcpip_boot.sh | \
+  adb shell 'run-as com.termux tee /data/data/com.termux/files/home/.termux/boot/start_adb_tcpip.sh'
+adb shell 'run-as com.termux chmod +x /data/data/com.termux/files/home/.termux/boot/start_adb_tcpip.sh'
+```
+
+#### Capa 2: Widget REPARAR_ADB_VIVO — Reparación manual desde Termux
+Archivo: `termux_widgets/REPARAR_ADB_VIVO.sh`
+Instalado en `~/.shortcuts/REPARAR_ADB_VIVO.sh` vía `install_shortcuts.sh`.
+
+Úsalo desde Termux:Widget o terminal cuando el ADB se pierda y quieras arreglarlo sin conectar el USB al PC:
+1. Ejecuta `adb kill-server` + `adb start-server` + `adb tcpip 5555` + `adb connect 127.0.0.1:5555`
+2. Muestra el estado final de `adb devices`
+3. Si falla, te explica cómo repararlo desde el PC
+
+#### Capa 3 (opcional): PC Linux — Activación automática al conectar USB
+Archivo: `scripts/linux/vivo_adb_autorepair.sh` (corre en el PC, no en el Vivo)
+
+Instala un servicio `systemd --user` que detecta cuando el Vivo se conecta por USB al PC y automáticamente ejecuta `adb tcpip 5555`:
+```bash
+bash scripts/linux/vivo_adb_autorepair.sh --install
+```
+
+### Flujo completo tras reinicio del Vivo
+
+```
+Vivo se enciende
+    └─ Termux:Boot ejecuta start_adb_tcpip.sh (35s tras arrancar)
+          ├─ ADB TCP OK → 6_SUBIR_TIKTOK720 arranca sin problemas
+          └─ ADB TCP falla → ejecutar widget REPARAR_ADB_VIVO manualmente
+                               o conectar USB al PC (adb tcpip 5555 se activa automático)
+```
+
+### Archivos involucrados
+
+| Archivo | Rol |
+|---|---|
+| `scripts/linux/start_adb_tcpip_boot.sh` | Script de Termux:Boot (fuente en repo) |
+| `termux_widgets/REPARAR_ADB_VIVO.sh` | Widget de reparación manual |
+| `termux_widgets/install_shortcuts.sh` | Incluye REPARAR_ADB_VIVO en shortcuts |
+| `scripts/linux/vivo_adb_autorepair.sh` | Vigilante en PC Linux (opcional) |
+
+### Verificar reparación
+```bash
+# Desde el PC con USB:
+adb shell cat /sdcard/Antigravity/widget_logs/boot_adb_tcpip.log
+
+# Desde Termux en el Vivo:
+adb devices
+```
