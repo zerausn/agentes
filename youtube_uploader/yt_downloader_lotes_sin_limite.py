@@ -53,6 +53,8 @@ _COOKIE_CANDIDATES = [
     CREDENTIALS_DIR / "cookies.txt",
 ]
 COOKIES_FILE = next((c for c in _COOKIE_CANDIDATES if c.exists()), None)
+if COOKIES_FILE:
+    logging.getLogger(__name__).info("[COOKIES] yt-dlp usará cookies de: %s", COOKIES_FILE)
 
 # Nombre del dispositivo actual (para el registro de quién descargó qué).
 # Se puede configurar en ~/.agentes_termux_env como:
