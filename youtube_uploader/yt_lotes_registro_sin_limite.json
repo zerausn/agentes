@@ -8459,10 +8459,10 @@
     "287v9hEb9BE": {
       "title": "PW | 2025-12-11 | (20251011_230326)",
       "publishedAt": "2026-08-18T19:00:39Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/sdcard/Antigravity/crudos/PW  2025-12-11  (20251011_230326).mp4",
+      "downloaded_at": "2026-08-18 22:49",
+      "downloaded_by": "localhost"
     }
   }
 }
