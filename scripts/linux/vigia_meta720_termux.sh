@@ -16,7 +16,11 @@ export PATH="/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin"
 
 TERMUX_HOME="/data/data/com.termux/files/home"
 PROOT="/data/data/com.termux/files/usr/bin/proot-distro"
-PR_ROOT="/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/debian"
+if [ -d "/data/data/com.termux/files/usr/var/lib/proot-distro/containers/debian/rootfs" ]; then
+    PR_ROOT="/data/data/com.termux/files/usr/var/lib/proot-distro/containers/debian/rootfs"
+else
+    PR_ROOT="/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/debian"
+fi
 ENV_FILE="$TERMUX_HOME/.agentes_termux_env"
 VIGIA_PROOT="$PR_ROOT/root/agentes/meta_uploader/fb_to_ig_vigia_720.py"
 LOG_FILE="$PR_ROOT/root/agentes/meta_uploader/fb_to_ig_vigia.log"
