@@ -419,11 +419,7 @@ def get_youtube_service():
                 token_file.write_text(creds.to_json(), encoding="utf-8")
             if creds.valid:
                 log.info("Autenticado con: %s", token_file.name)
-                # Construir el cliente con timeout explícito para evitar bloqueos
-                # indefinidos cuando hay problemas de red.
-                http = httplib2.Http(timeout=API_TIMEOUT)
-                http = creds.authorize(http)
-                return build("youtube", "v3", http=http)
+                return build("youtube", "v3", credentials=creds)
         except Exception as e:
             log.warning("Token %s no válido: %s", token_file.name, e)
 
@@ -702,8 +698,7 @@ def download_video(vid_id: str, title: str) -> str | None:
         log.info("  [1/2] Descargando en 4K: %s", title)
         ytdlp_cmd_base = [
             "/usr/bin/python3", YTDLP_BIN,
-            "--js-runtimes", "deno",
-            "--extractor-args", "youtube:player_client=android",
+            "--js-runtimes", "node",
             "--no-part",
             "--merge-output-format", "mkv",
             "--newline", "--quiet", "--no-warnings", "--progress",
