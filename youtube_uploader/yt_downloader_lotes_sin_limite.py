@@ -46,6 +46,14 @@ FFMPEG_PRESET = os.getenv("AGENTES_FFMPEG_PRESET", "ultrafast")
 FFMPEG_CRF    = os.getenv("AGENTES_FFMPEG_CRF", "20")
 FFMPEG_AUDIO  = os.getenv("AGENTES_FFMPEG_AUDIO_BITRATE", "192k")
 
+# Cookies de YouTube (opcional): si hay una sesión iniciada en cookies.txt,
+# se pasa a yt-dlp para evitar el bot-check 403 y los videos age-restricted.
+_COOKIE_CANDIDATES = [
+    Path("/sdcard/Antigravity/cookies.txt"),
+    CREDENTIALS_DIR / "cookies.txt",
+]
+COOKIES_FILE = next((c for c in _COOKIE_CANDIDATES if c.exists()), None)
+
 # Nombre del dispositivo actual (para el registro de quién descargó qué).
 # Se puede configurar en ~/.agentes_termux_env como:
 #   export AGENTES_DEVICE_NAME="S24"
@@ -704,6 +712,8 @@ def download_video(vid_id: str, title: str) -> str | None:
             "--newline", "--quiet", "--no-warnings", "--progress",
             "-o", str(stub) + ".%(ext)s",
         ]
+        if COOKIES_FILE:
+            ytdlp_cmd_base += ["--cookies", str(COOKIES_FILE)]
 
         for selector in [
             "bestvideo[height>=2160]+bestaudio[ext=m4a]/bestvideo[height>=2160]+bestaudio/best[height>=2160]/bestvideo+bestaudio/best",
