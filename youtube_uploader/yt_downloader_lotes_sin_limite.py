@@ -19,9 +19,11 @@ import socket
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime, timezone
 from pathlib import Path
 
+import httplib2
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -397,6 +399,11 @@ def sync_push(commit_msg: str):
 # AUTENTICACIÓN
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# Timeout en segundos para cada llamada a la API de YouTube.
+# Si la red está lenta o cortada, no se bloquea indefinidamente.
+API_TIMEOUT = 45
+
+
 def get_youtube_service():
     """Intenta autenticarse con los tokens disponibles en orden."""
     token_candidates = sorted(CREDENTIALS_DIR.glob("token_*.json"))
@@ -412,7 +419,11 @@ def get_youtube_service():
                 token_file.write_text(creds.to_json(), encoding="utf-8")
             if creds.valid:
                 log.info("Autenticado con: %s", token_file.name)
-                return build("youtube", "v3", credentials=creds)
+                # Construir el cliente con timeout explícito para evitar bloqueos
+                # indefinidos cuando hay problemas de red.
+                http = httplib2.Http(timeout=API_TIMEOUT)
+                http = creds.authorize(http)
+                return build("youtube", "v3", http=http)
         except Exception as e:
             log.warning("Token %s no válido: %s", token_file.name, e)
 
@@ -455,6 +466,22 @@ def mark_video(registry: dict, month: str, vid_id: str, status: str, filepath: s
 # ESCANEO DE YOUTUBE
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _api_call_with_timeout(request, timeout: int = API_TIMEOUT):
+    """
+    Ejecuta una solicitud de la Google API con timeout.
+    Lanza TimeoutError si la API no responde en `timeout` segundos.
+    """
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(request.execute)
+        try:
+            return future.result(timeout=timeout)
+        except FuturesTimeoutError:
+            raise TimeoutError(
+                f"La API de YouTube no respondió en {timeout}s. "
+                "Comprueba la conexión a internet."
+            )
+
+
 def fetch_all_public_videos(youtube) -> list:
     """
     Descarga la lista COMPLETA de videos públicos del canal.
@@ -462,9 +489,23 @@ def fetch_all_public_videos(youtube) -> list:
     - Videos privados, ocultos o unlisted son ignorados.
     - Videos con "teaser" en el título son ignorados: son clips recortados
       de ~16 segundos, NO son crudos.
+    - Cada llamada a la API tiene un timeout de API_TIMEOUT segundos para
+      evitar bloqueos indefinidos cuando hay problemas de red.
     """
     log.info("Escaneando canal de YouTube (TODOS los crudos públicos, sin teasers)...")
-    channels_resp = youtube.channels().list(mine=True, part="contentDetails").execute()
+    try:
+        channels_resp = _api_call_with_timeout(
+            youtube.channels().list(mine=True, part="contentDetails")
+        )
+    except TimeoutError as e:
+        log.error("[API] %s", e)
+        print(f"\n[ERROR] {e}")
+        return []
+    except Exception as e:
+        log.error("[API] Error obteniendo canal: %s", e)
+        print(f"\n[ERROR] No se pudo obtener información del canal: {e}")
+        return []
+
     uploads_id = channels_resp["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
 
     videos = []
@@ -472,14 +513,27 @@ def fetch_all_public_videos(youtube) -> list:
     skipped_private = 0
     skipped_teaser  = 0
     next_page = None
+    page_num = 0
 
     while True:
-        resp = youtube.playlistItems().list(
-            playlistId=uploads_id,
-            part="snippet,status",
-            maxResults=50,
-            pageToken=next_page,
-        ).execute()
+        page_num += 1
+        try:
+            resp = _api_call_with_timeout(
+                youtube.playlistItems().list(
+                    playlistId=uploads_id,
+                    part="snippet,status",
+                    maxResults=50,
+                    pageToken=next_page,
+                )
+            )
+        except TimeoutError as e:
+            log.error("[API] Timeout en página %d: %s", page_num, e)
+            print(f"\n[ERROR] {e}")
+            break
+        except Exception as e:
+            log.error("[API] Error en página %d: %s", page_num, e)
+            print(f"\n[ERROR] Error inesperado en página {page_num}: {e}")
+            break
 
         for item in resp.get("items", []):
             vid_id = item["snippet"]["resourceId"]["videoId"]
@@ -648,7 +702,8 @@ def download_video(vid_id: str, title: str) -> str | None:
         log.info("  [1/2] Descargando en 4K: %s", title)
         ytdlp_cmd_base = [
             "/usr/bin/python3", YTDLP_BIN,
-            "--js-runtimes", "node",
+            "--js-runtimes", "deno",
+            "--extractor-args", "youtube:player_client=android",
             "--no-part",
             "--merge-output-format", "mkv",
             "--newline", "--quiet", "--no-warnings", "--progress",
