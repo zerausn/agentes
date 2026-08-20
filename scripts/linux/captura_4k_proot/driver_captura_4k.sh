@@ -47,7 +47,7 @@ fi
 start_mitm() {
     pkill -f "venv-mitm/bin/mitmdump" 2>/dev/null || true
     sleep 1
-    export CAPTURE_SEG="$SEG_DIR" CAPTURE_LOGS="$LOG_DIR"
+    export CAPTURE_SEG="$SEG_DIR" CAPTURE_LOGS="$LOG_DIR" PLAYBACK_RATE=0.5
     nohup "$MITM_VENV/bin/mitmdump" -q -s "$SRC_DIR/yt_capture_4k.py" \
         --listen-host 127.0.0.1 --listen-port 8080 >> "$LOG_DIR/mitmdump.log" 2>&1 &
     echo $! > "$LOG_DIR/mitmdump.pid"
