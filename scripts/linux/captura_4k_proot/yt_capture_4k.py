@@ -18,8 +18,12 @@ from mitmproxy import http
 SEG = os.environ.get("CAPTURE_SEG", "/sdcard/Antigravity/captura_4k/segments")
 LOG_DIR = os.environ.get("CAPTURE_LOGS", "/sdcard/Antigravity/captura_4k/logs")
 INJ = os.environ.get("INJECT_QUALITY", "") == "1"
+RATE = os.environ.get("PLAYBACK_RATE", "") or ""
 
 CSV_LOG = os.path.join(LOG_DIR, "captura.csv")
+
+RATE_SCRIPT = (b"<script>setTimeout(function(){var v=document.querySelector('video');" 
+               b"if(v){v.playbackRate=%s;}},4000)</script>" % RATE.encode()).strip() if RATE else b""
 
 INJECT_SCRIPT = b"""<script>
 (function () {
@@ -65,6 +69,8 @@ class YtCapture4k:
                         g.write(b"<!--= " + flow.request.path.encode() + b" =-->\n" + body + b"\n")
                 if "/watch" in flow.request.path and INJ and body and b"ytp-settings-button" not in body:
                     flow.response.content = body.replace(b"</body>", INJECT_SCRIPT + b"</body>")
+                elif "/watch" in flow.request.path and RATE_SCRIPT and body:
+                    flow.response.content = body.replace(b"</body>", RATE_SCRIPT + b"</body>")
             except Exception as e:
                 print(f"[HTML] error {e}")
         if "googlevideo.com" not in flow.request.host:
