@@ -57,13 +57,13 @@ class YtCapture4k:
 
     def response(self, flow: http.HTTPFlow):
         host = flow.request.pretty_host
-        if host == "www.youtube.com" and "/watch" in flow.request.path:
+        if host == "www.youtube.com" and ("/watch" in flow.request.path or "/youtubei/v1/player" in flow.request.path):
             try:
                 body = flow.response.content or b""
-                if b"ytInitialPlayerResponse" in body: 
-                    with open(os.path.join(SEG, "pagina.html"), "wb") as g:
-                        g.write(body)
-                if INJ and body and b"ytp-settings-button" not in body:
+                if b"ytInitialPlayerResponse" in body or b"streamingData" in body:
+                    with open(os.path.join(SEG, "pagina.html"), "ab") as g:
+                        g.write(b"<!--= " + flow.request.path.encode() + b" =-->\n" + body + b"\n")
+                if "/watch" in flow.request.path and INJ and body and b"ytp-settings-button" not in body:
                     flow.response.content = body.replace(b"</body>", INJECT_SCRIPT + b"</body>")
             except Exception as e:
                 print(f"[HTML] error {e}")
