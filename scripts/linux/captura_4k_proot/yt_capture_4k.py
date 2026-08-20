@@ -59,8 +59,8 @@ class YtCapture4k:
         host = flow.request.pretty_host
         if host == "www.youtube.com" and "/watch" in flow.request.path:
             try:
-                body = flow.response.raw_content or b""
-                if b"ytInitialPlayerResponse" in body:
+                body = flow.response.content or b""
+                if b"ytInitialPlayerResponse" in body: 
                     with open(os.path.join(SEG, "pagina.html"), "wb") as g:
                         g.write(body)
                 if INJ and body and b"ytp-settings-button" not in body:
