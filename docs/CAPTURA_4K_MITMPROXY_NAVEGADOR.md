@@ -117,6 +117,30 @@ la ventana puede quedar detrás, el tab se considera enfocado.)
   directamente desde el material completo (seguir flujo teaser_generator).
 - No depende del PC ni de cookies; usa la IP móvil con sesión Firefox propia.
 
+## Validación en el S24 (widget 6_BAJAR_YOUTUBE_4K_CAPTURA)
+
+Pipeline E2E probado en el propio teléfono (proot Debian, Xvfb + Firefox ESR
+140 + mitmproxy 12.2.3). Hechos medidos:
+
+- **`?` en nombres de segmento**: la FUSE de `/sdcard` rechaza `?` en nombres
+  (EPERM). El addon usa `na` cuando falta el range (commit `3ccda6d`).
+- **Inflado de epochs**: en el flujo del teléfono cada respuesta UMP trae su
+  propio `ftyp` → un epoch por chunk (~150 inits en 10 min). No es un bug:
+  cada epoch da un .mp4 válido; un epoch grande contiene el video entero.
+- **Churn del ABR**: la decodificación software de AV1 (sin GPU en proot) hace
+  que YouTube renegocie calidad continuamente (oscile 240↔480) y rompa las
+  tomas largas. **PLAYBACK_RATE=0.5** (inyección vía addon, `PLAYBACK_RATE`) lo
+  estabiliza: 8 epochs / 1080p en vez de 150 / 480p. Es el ajuste por defecto
+  del driver.
+- **Oferta real del teléfono**: el POST `/youtubei/v1/player` (capturado por el
+  addon en `pagina.html`) ofrece hasta 1080p60 AV1; 4K no se ofrece a sesión
+  anónima. Para 4K real, usar el PC (validado: 2160p60 AV1, 115 MB).
+- **Filtros que no sirven**: cookie `PREF=f6` (valores 4/8/22) no cambia nada;
+  CDP de Firefox ESR 140 eliminado (404) — la inyección UI se hace por HTML
+  (addon) con INJECT_QUALITY=1 (experimental, puede generar churn).
+- Salida validada con ffprobe: `epoch_0004.mp4` = 39 MB AV1 854x480 del video
+  completo (3:17), copiado a `crudos_4k_captura/` por el propio driver.
+
 ## Referencias
 
 - yt-dlp issues: #15796 (bloqueo por IP), #15865 (navegador sí / yt-dlp no),
