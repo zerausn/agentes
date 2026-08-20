@@ -31,7 +31,7 @@ fi
 
 echo "== setup_captura_4k: CA de mitmproxy =="
 if [ ! -f /root/.mitmproxy/mitmproxy-ca-cert.pem ]; then
-    timeout 5 "$MITM_VENV/bin/mitmdump" -q -p 18080 >/dev/null 2>&1 || true
+    timeout 20 "$MITM_VENV/bin/mitmdump" -q -p 18080 >/dev/null 2>&1 || true
 fi
 if [ ! -f /root/.mitmproxy/mitmproxy-ca-cert.pem ]; then
     echo "[ERROR] No se generó el CA de mitmproxy."
