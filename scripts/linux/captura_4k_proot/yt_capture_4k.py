@@ -58,7 +58,7 @@ class YtCapture4k:
         self.n += 1
         rng = flow.request.headers.get("range", "0")
         m = re.search(r"bytes=(\d+)-", rng)
-        start = m.group(1) if m else "?"
+        start = m.group(1) if m else "na"
         fname = f"seg_{self.n:06d}_{start}.ump"
         with open(os.path.join(self._epoch_dir(), fname), "wb") as f:
             f.write(body)
