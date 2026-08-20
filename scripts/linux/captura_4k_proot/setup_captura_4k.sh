@@ -18,7 +18,8 @@ exec > >(tee -a "$LOG_DIR/setup.log") 2>&1
 echo "== setup_captura_4k: actualizando paquetes =="
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq firefox-esr xvfb xauth libnss3-tools python3-venv curl
+apt-get install -y -qq firefox-esr || apt-get install -y -qq firefox xvfb xauth libnss3-tools python3-venv curl || true
+apt-get install -y -qq xvfb xauth libnss3-tools python3-venv curl
 
 echo "== setup_captura_4k: venv mitmproxy =="
 if [ ! -x "$MITM_VENV/bin/mitmdump" ]; then
