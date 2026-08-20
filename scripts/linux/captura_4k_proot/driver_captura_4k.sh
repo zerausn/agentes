@@ -85,6 +85,11 @@ run_capture() {
     echo "[CAPTURA] Firefox PID $FF_PID reproduciendo en Xvfb :99..."
 
     deadline=$(( $(date +%s) + 21600 ))   # tope de 6h por corrida
+    if [ "$LABEL" = "video" ]; then
+        MAX_SECS="${CAP_MAX_SECONDS:-1200}"
+        [ "$MAX_SECS" -lt 21600 ] && deadline=$(( $(date +%s) + MAX_SECS ))
+        echo "[CAPTURA] Tope por video: $MAX_SECS s (ajustable con CAP_MAX_SECONDS)"
+    fi
     while kill -0 "$FF_PID" 2>/dev/null && [ "$(date +%s)" -lt "$deadline" ]; do
         sleep 20
         sz="$(du -sb "$SEG_DIR" 2>/dev/null | cut -f1)"
