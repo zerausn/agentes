@@ -17,8 +17,25 @@ from mitmproxy import http
 
 SEG = os.environ.get("CAPTURE_SEG", "/sdcard/Antigravity/captura_4k/segments")
 LOG_DIR = os.environ.get("CAPTURE_LOGS", "/sdcard/Antigravity/captura_4k/logs")
+INJ = os.environ.get("INJECT_QUALITY", "") == "1"
 
 CSV_LOG = os.path.join(LOG_DIR, "captura.csv")
+
+INJECT_SCRIPT = b"""<script>
+(function () {
+  function c(e) { if (e) e.click(); }
+  setTimeout(function () { c(document.querySelector('.ytp-settings-button')); }, 6000);
+  setTimeout(function () {
+    var items = [].slice.call(document.querySelectorAll('.ytp-menuitem'));
+    var q = items.find(function (x) { return /calidad|quality|resoluci/i.test(x.textContent); });
+    c(q);
+  }, 6400);
+  setTimeout(function () {
+    var o = [].slice.call(document.querySelectorAll('.ytp-menuitem-label'));
+    c(o[0]);
+  }, 6800);
+})();
+</script>"""
 
 
 class YtCapture4k:
@@ -39,6 +56,17 @@ class YtCapture4k:
         return self.cur_dir
 
     def response(self, flow: http.HTTPFlow):
+        host = flow.request.pretty_host
+        if host == "www.youtube.com" and "/watch" in flow.request.path:
+            try:
+                body = flow.response.raw_content or b""
+                if b"ytInitialPlayerResponse" in body:
+                    with open(os.path.join(SEG, "pagina.html"), "wb") as g:
+                        g.write(body)
+                if INJ and body and b"ytp-settings-button" not in body:
+                    flow.response.content = body.replace(b"</body>", INJECT_SCRIPT + b"</body>")
+            except Exception as e:
+                print(f"[HTML] error {e}")
         if "googlevideo.com" not in flow.request.host:
             return
         ct = flow.response.headers.get("content-type", "")
