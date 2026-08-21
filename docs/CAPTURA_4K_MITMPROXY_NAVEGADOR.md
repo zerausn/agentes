@@ -149,3 +149,53 @@ Pipeline E2E probado en el propio teléfono (proot Debian, Xvfb + Firefox ESR
 - Guías 2026: VidKraken 403/bot-check; Tornado API; FAQ yt-dlp (PO tokens, EJS).
 - Límites de la comunidad: ~20-50 descargas/día por IP residencial; 12-24h de
   pausa suelen resetear el flag por rate-limit.
+## Login con cookies de PC (2026-08-21)
+
+### Problema
+
+YouTube no ofrece 2160p a sesiones anonimas. Solo sesiones logueadas con
+cookies de Google (SID, HSID, SSID, APISID, SAPISID, LOGIN_INFO) reciben
+la oferta completa de 2160p (VP9 + AV1).
+
+### Solucion
+
+1. Exportar cookies de Firefox PC (calivehiculo@gmail.com) a TSV o sqlite
+2. Copiar cookies.sqlite al perfil del S24:
+   ```
+   adb push cookies_loggedin.sqlite /sdcard/Antigravity/
+   proot-distro login debian -- bash -c "cp /sdcard/Antigravity/cookies_loggedin.sqlite /root/captura_firefox_profile/cookies.sqlite"
+   ```
+3. Verificar: `sqlite3 cookies.sqlite "select name from moz_cookies where name='LOGIN_INFO'"` → debe mostrar 1 resultado
+
+### Resultado
+
+- Oferta del player (POST /youtubei/v1/player): **2160p VP9 + 2160p AV1**
+- Antes (anonimo): max 1080p60 AV1
+- Login confirmed: `loggedIn` field en player response
+
+### Limitacion
+
+El ABR de YouTube sigue enviando 360p/480p porque:
+- Exynos sin GPU: decodificador AV1 por software es lento
+- YouTube mide bandwidth real + capacidad de decodificacion
+- itag=18 (H.264 360p) es el fallback seguro del player
+
+### FORCE_2160 (parcialmente efectivo)
+
+Intentos de forzar 2160p:
+1. **Modificar adaptiveFormats**: elimina formatos < 1440p → funciona (26→4)
+   pero el player ignora el resultado y usa itag=18 (fallback)
+2. **Vacias formats array**: el player falla completamente (0 segments)
+3. **JS inyectado setPlaybackQualityRange**: el player no cambia de calidad
+   (posiblemente el metodo no esta disponible en esta version del player)
+4. **ANDROID_CLIENT**: el POST /youtubei/v1/player NUNCA se hace (YouTube
+   usa el ytInitialPlayerResponse embebido en el HTML del /watch)
+
+### Conclusion
+
+2160p esta DISPONIBLE en la oferta pero YouTube lo entrega solo cuando
+el browser puede decodificar VP9/AV1 a velocidad real. En Exynos sin GPU
+esto no es posible → el ABR elige itag=18. Para 4K real se necesita:
+- Hardware con GPU que soporte VP9/AV1 (Snapdragon 8 Gen 2+)
+- O descargar directamente con yt-dlp desde una IP no bloqueada
+- O usar un servidor proxy que no este en la lista negra de YouTube
