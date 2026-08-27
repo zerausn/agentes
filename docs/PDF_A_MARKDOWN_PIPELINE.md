@@ -97,3 +97,9 @@ python limpiar.py  # aplica todos los fixes arriba
 - Añadir LLM post-corrector para tablas FODA con `rowspan` y palabras concatenadas largas (usar `qwen2.5-coder` local)
 - Integrar `MinerU` para CJK/tablas complejas si se dispone de GPU
 - Automatizar pipeline en `scripts/linux/pdf2md-ia.sh` con flags `--clean --columns --tables`
+
+## Híbrido (implementado 2026-08-27)
+- **Script:** `scripts/linux/pdf2md-hibrido.sh` (CPU 6 hilos, 50%)
+- **Lógica:** clasifica por `x0` (2 columnas), `imgs>2`, `texto<200`+imagen grande
+- **Fáciles → pymupdf** (4s/pág), **Difíciles → MinerU** (60s/pág, 300s timeout, página por página)
+- **Resultado:** Lewis 23 pág → 18 fáciles (1 min) + 5 difíciles (5 min) = 6 min con calidad MinerU donde importa, vs 23 min todo MinerU. No reprocesa lo ya hecho si no se pide.
