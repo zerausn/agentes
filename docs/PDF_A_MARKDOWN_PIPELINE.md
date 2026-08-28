@@ -103,3 +103,8 @@ python limpiar.py  # aplica todos los fixes arriba
 - **Lógica:** clasifica por `x0` (2 columnas), `imgs>2`, `texto<200`+imagen grande
 - **Fáciles → pymupdf** (4s/pág), **Difíciles → MinerU** (60s/pág, 300s timeout, página por página)
 - **Resultado:** Lewis 23 pág → 18 fáciles (1 min) + 5 difíciles (5 min) = 6 min con calidad MinerU donde importa, vs 23 min todo MinerU. No reprocesa lo ya hecho si no se pide.
+
+## Hallazgos y código general (2026-08-27, 2da pasada)
+- **Concatenados en mayúsculas sin espacio** (`OBJETIVOGENERAL`, `MARCODEORIGENDEUNPROYECTO`, `PROYECCIONDELASITUACION` etc.) detectados en headers escaneados. Fix general: diccionario español + segmentación greedy por `x0` para mayúsculas `>12 chars` sin espacio → `OBJETIVO GENERAL`, `MARCO DE ORIGEN...` (ver `scripts/linux/pdf2md-clean.py:segmentar_mayusculas`)
+- **Número pegado** `6MARCO`, `1.6MARCO`, `2.1EL` → regex `(\d+\.\d+)([A-Z])` y `(\d)([A-Z]{2,})`
+- **Código mejorado:** `pdf2md-clean.py` ahora aplica siempre: watermarks, headers repetidos, `<br>` tablas, guiones, y concatenados generales para que cualquier PDF futuro quede pulido sin casos manuales. Uso: `pdf2md-clean.py libro-LIMPIO.md`
