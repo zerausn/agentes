@@ -1,0 +1,10 @@
+*.json
+*.xlsx
+*.jpg
+*.webp
+*.png
+*.mp4
+Fotos/
+*_Fotos_*/
+.DS_Store
+.env
