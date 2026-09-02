@@ -27,6 +27,7 @@ Aquí se encuentran los arquivos para definir, revisar y mejorar el **sistema de
 | **configs/** | 🔧 Archivos de configuración YAML para cada agente |
 | **scripts/** | 🖥️ Scripts PowerShell para inicialización y automatización |
 | **historial/** | 📊 Registros de sesiones, decisiones y ejecuciones |
+| **docs/** | 📖 Memoria versionada del sistema |
 | **nemoclaw/** | 🦞 Contexto operativo, replicación, seguridad y Telegram para NVIDIA NemoClaw |
 | **comandos para linux/** | 🐧 Notas y scripts de soporte para Linux |
 

@@ -1,3 +1,5 @@
+# Datos de investigación (privacidad + tamaño) - no subir al repo
+output/
 *.json
 *.xlsx
 *.jpg
