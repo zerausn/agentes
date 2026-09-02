@@ -113,7 +113,7 @@ if not ig_final_path.exists():
 
 ig_data = json.loads(ig_final_path.read_text(encoding="utf-8"))
 # Muestra: primeros 15. Para todos: ig_data["media"] (sin slice)
-sample = ig_data["media"][:15]
+sample = ig_data["media"][:3]
 
 # ── 3. Extraer likes/comments/date por post ───────────────────────────────────
 results: list[dict] = []

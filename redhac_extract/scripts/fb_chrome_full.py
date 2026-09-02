@@ -45,7 +45,7 @@ OUT_DIR.mkdir(exist_ok=True)
 
 CDP_HOST = "http://127.0.0.1:9222"
 TARGET_URL_FRAGMENT = "Reddehuertosagroecologicosdecali"
-ITERATIONS = 60
+ITERATIONS = 3
 SLEEP_SCROLL = 4     # segundos entre scroll y extracción
 MAX_POSTS = 150      # límite conservador para este método
 

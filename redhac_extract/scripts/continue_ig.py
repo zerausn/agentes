@@ -46,7 +46,7 @@ OUT_DIR.mkdir(exist_ok=True)
 
 CDP_HOST = "http://127.0.0.1:9222"
 TARGET_URL_FRAGMENT = "instagram.com/redhuertosagroecali"
-ITERATIONS = 60
+ITERATIONS = 3
 SLEEP_BETWEEN = 4   # segundos entre scroll y lectura
 TARGET_POSTS = 469  # header IG verificado
 

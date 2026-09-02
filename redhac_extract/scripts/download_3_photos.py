@@ -182,7 +182,7 @@ def scrape_post(cdp: Cdp, href: str) -> dict:
     js = """
     (() => {
         const imgs = Array.from(document.querySelectorAll('img'))
-            .filter(i => i.naturalWidth >= """ + str(MIN_WIDTH) + """)
+            .filter(i => i.naturalWidth >= """ + str(MIN_WIDTH) + """ && !i.closest('a'))
             .map(i => i.src);
         return JSON.stringify({imgs});
     })()
@@ -218,9 +218,8 @@ def main():
         print("No hay posts en el JSON.")
         return
 
-    # Tomar los primeros 3 posts tipo /p/ (fotos/carruseles).
-    # Los reels (/reel/) también funcionan porque extraemos <video src>.
-    sample = media[:3]
+    # Procesar todos los posts (fotos/carruseles y reels).
+    sample = media
 
     # Abrir una sola pestaña reutilizable → evita contaminar el navegador
     r = requests.put(f"{CDP_HOST}/json/new?about:blank", timeout=10)
