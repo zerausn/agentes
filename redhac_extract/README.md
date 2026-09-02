@@ -43,7 +43,7 @@ Se usó **Chrome 152 + perfil Edge** (`~/.var/app/com.microsoft.Edge/config/micr
 |---|----------|----------|
 | 1 | **API Meta bloqueada `#10`** `Page Public Content Access` denegado | Chrome + perfil Edge + `Network.getAllCookies` + `ws://127.0.0.1:9222` |
 | 2 | **Facebook virtualizado**: solo 6 `[role="article"]` visibles, `window.scrollTo` no carga más | `body.innerText` split `"Red De Huertos"` + `U+034F` + 60 iteraciones × 6s |
-| 3 | **Instagram CDN 403 Bad URL hash** con `curl` directo a `scontent` | Navegar a cada `href` del post → extraer `og:image` fresco → `fetch()` con `credentials: include` dentro de la página (mismo origen) |
+| 3 | **Instagram CDN 403 Bad URL hash / Reels bloqueados** con `curl` directo | Navegar a post con CDP → Para fotos `/p/`: raspar `img` en viewport `> 500px`. Para `/reel/`: extraer `video_versions` mp4 del JSON interno. |
 | 4 | **Chrome mobile UA bloqueado**: "Este navegador no es compatible" | Desktop UA Chrome 152 + aceptar popup → header mobile muestra 714 posts |
 | 5 | **Surrogates `\ud800-\udfff`** en JSON causan `UnicodeEncodeError` | `re.sub(r'[\ud800-\udfff]', '', s)` + `json.dumps(..., ensure_ascii=True)` |
 

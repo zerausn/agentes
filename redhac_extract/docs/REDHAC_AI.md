@@ -74,9 +74,8 @@ dentro de la pestaña del navegador (ver `scripts/README_CORRECTO.md`).
 2. **Facebook virtualizado**: 6 `[role="article"]` visibles, `window.scrollTo` no carga más
    → `window.scrollTo` + `body.innerText` split `"Red De Huertos"` + regex `U+034F`, 60 iter × 6s
 
-3. **Instagram CDN 403 Bad URL hash**: curl directo a `scontent` → 403 (22 bytes)
-   → Navegar a cada `href` del post → extraer `og:image` fresco → `fetch()` con `credentials: include`
-   dentro de la página (mismo origen = sin CORS, sin 403)
+3. **Instagram CDN 403 Bad URL hash / Reels inaccesibles**: curl directo a `scontent` → 403 (22 bytes)
+   → Navegar al post con CDP. Para carruseles/fotos (`/p/`): extraer en full-page grid todos los `img` con `naturalWidth >= 500`. Para reels (`/reel/`): extraer el json embebido `video_versions` para obtener la URL directa `.mp4`. Luego descargar todo mediante Python `requests`.
 
 4. **Chrome mobile UA bloqueado**: "Este navegador no es compatible"
    → Desktop UA Chrome 152 + perfil Edge, aceptar popup → header mobile muestra 714 posts
