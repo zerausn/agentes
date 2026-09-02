@@ -4,9 +4,10 @@
 1. Navegar al post abriendo la URL completa en el navegador, e.g. `https://www.instagram.com/ccinec__/p/DcXM2P2p4Mf/`
 2. **Instagram en modo "full page" (no modal) renderiza todos los slides del carrusel en un grid vertical (1 imagen hero + 3 columnas debajo)**.
 3. No se requiere simular clicks en botones "Next" ni modificar la URL con `?img_index=N` (lo cual falla porque IG es un SPA).
-4. El método correcto es buscar todas las imágenes del DOM que tengan el tamaño original: `document.querySelectorAll('img')` y filtrar por `naturalWidth >= 500`. 
-5. Descargar cada `src` usando Python `requests` directamente. Las imágenes en este grid principal no están ofuscadas en blobs.
-
+4. **Filtro del Feed Inferior**: En el modo full page, Instagram carga también el feed sugerido "Más publicaciones de..." en la parte inferior. Si capturamos todos los `img`, descargaremos basura.
+5. El método definitivo es buscar todas las imágenes grandes pero **excluir las que sean enlaces** (las del feed inferior están envueltas en un `<a>`). 
+   - Selector JS correcto: `document.querySelectorAll('img').filter(i => i.naturalWidth >= 500 && !i.closest('a'))`.
+6. Descargar cada `src` resultante usando Python `requests` directamente. Las imágenes en este grid principal no están ofuscadas en blobs.
 ## Videos / Reels (/reel/)
 1. Los videos se renderizan usualmente como un `blob:https://` inalcanzable directamente.
 2. Usar Network Interception de chunks HLS (archivos CDN `/m86/`) genera descargas fallidas de fragmentos incompletos de 1 KB.

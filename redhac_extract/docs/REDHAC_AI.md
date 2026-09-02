@@ -75,7 +75,7 @@ dentro de la pestaña del navegador (ver `scripts/README_CORRECTO.md`).
    → `window.scrollTo` + `body.innerText` split `"Red De Huertos"` + regex `U+034F`, 60 iter × 6s
 
 3. **Instagram CDN 403 Bad URL hash / Reels inaccesibles**: curl directo a `scontent` → 403 (22 bytes)
-   → Navegar al post con CDP. Para carruseles/fotos (`/p/`): extraer en full-page grid todos los `img` con `naturalWidth >= 500`. Para reels (`/reel/`): extraer el json embebido `video_versions` para obtener la URL directa `.mp4`. Luego descargar todo mediante Python `requests`.
+   → Navegar al post con CDP. Para carruseles/fotos (`/p/`): extraer en full-page grid todos los `img` con `naturalWidth >= 500`, **excluyendo los envueltos en etiquetas `<a>`** (`!i.closest('a')`) para no capturar el feed sugerido. Para reels (`/reel/`): extraer el json embebido `video_versions` para obtener la URL directa `.mp4`. Luego descargar todo mediante Python `requests`.
 
 4. **Chrome mobile UA bloqueado**: "Este navegador no es compatible"
    → Desktop UA Chrome 152 + perfil Edge, aceptar popup → header mobile muestra 714 posts
