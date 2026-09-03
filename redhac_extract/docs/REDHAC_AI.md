@@ -86,6 +86,12 @@ dentro de la pestaña del navegador (ver `scripts/README_CORRECTO.md`).
 6. **Surrogates `\ud800-\udfff`** en JSON → `UnicodeEncodeError`
    → `re.sub(r'[\ud800-\udfff]', '', s)` y `json.dumps(..., ensure_ascii=True)`
 
+7. **Discrepancia en "Total Likes" y comentarios vacíos para algunos posts**: Los primeros scripts leían la página completa en busca de "X Me gusta", lo cual a veces tomaba números falsos de otros comentarios en lugar del conteo real del post principal, o ignoraban los comentarios si no cargaban a tiempo.
+   → Solución: Se integró el método preciso de `og:description` (como lo hacía `fetch_ig_likes.py`) dentro del scraper principal `scrape_ig_full.py`. Para reparar los posts que habían quedado con conteos erróneos o sin comentarios extraídos, se borraron del JSON base (`ig_full_data.json`) y se forzó una re-extracción limpiamente en segundo plano.
+
+8. **Dependencia de la web vs Descarga Local Permanente**: Mantener URLs web (CDN) en el Excel de investigación representa riesgo de pérdida de datos cuando los links caducan (el error "URL signature expired").
+   → Solución: `download_media.py` captura los mp4/jpg locales en paralelo, y `fill_docs_full.py` inserta **la ruta relativa local** (`media/REDHAC_codigo_foto1.jpg`) en el `.xlsx` y en el `.md` final.
+
 ---
 
 ## Scripts
@@ -95,10 +101,9 @@ Repositorio: rama `linux` en `zerausn/agentes` (carpeta `redhac_extract/`)
 | Script | Función | Tiempo |
 |--------|---------|--------|
 | `scripts/fb_slow_60.py` | SLOW 60×6s → Facebook 714 posts | ~6 min |
-| `scripts/fb_chrome_full.py` | Scroll div interno → FB alternativo | ~4 min |
-| `scripts/continue_ig.py` | 60×4s → Instagram 469 posts | ~4 min |
-| `scripts/fetch_ig_likes.py` | Likes/comments por post via og:description | ~47 min para 469 |
-| `scripts/generate_excel.py` | Excel 4 hojas: caracterización + propuesta ECACEN | <1 min |
+| `scripts/scrape_ig_full.py` | Navega 469 posts 1x1, extrae metadata + og:desc + API de likers | ~2 horas |
+| `scripts/download_media.py` | Daemon paralelo que descarga las fotos y videos del JSON de posts | en vivo |
+| `scripts/fill_docs_full.py` | Arma REDHAC_FINAL.xlsx y REDHAC_Instagram.md volcando links locales | <1 min |
 
 Scripts del repo que se complementan:
 - `agentes/meta_uploader/meta_uploader.py` → manejo Graph API y tokens
