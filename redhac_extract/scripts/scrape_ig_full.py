@@ -90,58 +90,59 @@ def scrape_post(cdp: Cdp, href: str) -> dict:
     # ── 1. Metadatos básicos del DOM ──────────────────────────────────────────
     meta_js = r"""
     (() => {
-        // Texto: og:description o primer meta description
+        // og:description tiene el formato: "X likes, Y comments - @usuario: caption"
         const og = document.querySelector('meta[property="og:description"]');
         const ogTitle = document.querySelector('meta[property="og:title"]');
+        const desc = og ? og.content : (ogTitle ? ogTitle.content : '');
 
         // Fecha: time[datetime]
         const timeEl = document.querySelector('time[datetime]');
         const fecha = timeEl ? timeEl.getAttribute('datetime') : null;
 
-        // Likes: buscar el número de likes en el texto de la página
-        const bodyText = document.body.innerText;
-
-        // Botón de likes (para luego hacer click)
-        const likeBtns = Array.from(document.querySelectorAll('a,button,span'))
-            .filter(el => {
-                const t = el.innerText || '';
-                return /^\d[\d,.]*\s*(likes?|Me gusta|[Gg]usta)/i.test(t.trim());
-            });
-
-        // Número de likes
+        // ── Likes: extraer de og:description PRIMERO (más confiable)
+        //    Formatos: "107 likes", "1,234 likes", "107 Me gusta"
         let likesCount = null;
-        const likesMatch = bodyText.match(/(\d[\d,]*)\s*(?:likes?|Me gusta)/i);
-        if (likesMatch) likesCount = parseInt(likesMatch[1].replace(/,/g, ''));
+        const ogLikesMatch = desc.match(/(\d[\d,.]*)\s*(?:likes?|Me gusta)/i);
+        if (ogLikesMatch) {
+            likesCount = parseInt(ogLikesMatch[1].replace(/[,.]/g, ''));
+        } else {
+            // Fallback: buscar en bodyText
+            const bodyText = document.body.innerText;
+            const bodyMatch = bodyText.match(/(\d[\d,.]*)\s*(?:likes?|Me gusta)/i);
+            if (bodyMatch) likesCount = parseInt(bodyMatch[1].replace(/[,.]/g, ''));
+        }
 
-        // Comentarios: buscar "N comments" o "N comentarios"
+        // ── Comentarios: extraer de og:description PRIMERO
+        //    Formato: "107 likes, 5 comments"
         let commentsCount = null;
-        const commMatch = bodyText.match(/(\d[\d,]*)\s*(?:comments?|comentarios?)/i);
-        if (commMatch) commentsCount = parseInt(commMatch[1].replace(/,/g, ''));
+        const ogCommMatch = desc.match(/(\d[\d,.]*)\s*(?:comments?|comentarios?)/i);
+        if (ogCommMatch) {
+            commentsCount = parseInt(ogCommMatch[1].replace(/[,.]/g, ''));
+        } else {
+            const bodyText2 = document.body.innerText;
+            const bodyCommMatch = bodyText2.match(/(\d[\d,.]*)\s*(?:comments?|comentarios?)/i);
+            if (bodyCommMatch) commentsCount = parseInt(bodyCommMatch[1].replace(/[,.]/g, ''));
+        }
 
-        // Menciones: @usuario en el texto del post
-        const desc = og ? og.content : (ogTitle ? ogTitle.content : '');
+        // ── Menciones: @usuario en el caption (de og:description)
         const mentions = [...new Set([...desc.matchAll(/@([\w.]+)/g)].map(m => m[1]))];
 
-        // Comentarios visibles en la página
+        // ── Comentarios visibles en el DOM (los que cargó la página)
         const commentEls = Array.from(document.querySelectorAll(
-            'ul li span, [role="listitem"] span'
-        )).filter(el => el.innerText && el.innerText.length > 5 && !el.closest('button'));
-        const comments = commentEls.slice(0, 30).map(el => {
+            'ul li span, [role="listitem"] span, article span'
+        )).filter(el => {
+            const t = el.innerText || '';
+            return t.length > 3 && t.length < 500 && !el.closest('button') && !el.closest('header');
+        });
+        const comments = commentEls.slice(0, 40).map(el => {
             const li = el.closest('li,[role="listitem"]');
             const authorEl = li ? li.querySelector('a[role="link"],a') : null;
-            const author = authorEl ? authorEl.innerText.trim() : '?';
-            return author + ': ' + el.innerText.trim().substring(0, 200);
-        }).filter((v, i, a) => a.indexOf(v) === i); // dedup
+            const author = authorEl ? authorEl.innerText.trim() : '';
+            const text = el.innerText.trim().substring(0, 300);
+            return author ? `${author}: ${text}` : text;
+        }).filter((v, i, a) => v.length > 3 && a.indexOf(v) === i);
 
-        // Likes button rect para luego hacer click
-        const likeBtn = likeBtns[0];
-        const likeRect = likeBtn ? likeBtn.getBoundingClientRect() : null;
-        const likeBtnPos = likeRect ? {x: likeRect.x + likeRect.width/2, y: likeRect.y + likeRect.height/2} : null;
-
-        return JSON.stringify({
-            desc, fecha, likesCount, commentsCount,
-            mentions, comments, likeBtnPos
-        });
+        return JSON.stringify({ desc, fecha, likesCount, commentsCount, mentions, comments });
     })()
     """
     raw = cdp.eval(meta_js)
@@ -153,7 +154,6 @@ def scrape_post(cdp: Cdp, href: str) -> dict:
     nro_comments = meta.get("commentsCount")
     mentions     = meta.get("mentions", [])
     comments     = meta.get("comments", [])
-    like_btn_pos = meta.get("likeBtnPos")
 
     # ── 2. Reposteo (heurística: si el caption empieza con @usuario) ──────────
     reposteo = ""
@@ -164,38 +164,35 @@ def scrape_post(cdp: Cdp, href: str) -> dict:
         else:
             reposteo = "Original"
 
-    # ── 3. Likers: llamar API nativa de Instagram ─────────────────────────────
-    likers = []
-    if likes_count and likes_count > 0:
-        api_js = f"""
-        (async () => {{
-            function shortcodeToMediaId(shortcode) {{
-                const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
-                let id = 0n;
-                for (let i = 0; i < shortcode.length; i++) {{
-                    id = (id * 64n) + BigInt(alphabet.indexOf(shortcode[i]));
-                }}
-                return id.toString();
+    # ── 3. Likers: API nativa de Instagram (siempre se llama, sin depender del count)
+    code_post = href.rstrip("/").split("/")[-1]
+    api_js = f"""
+    (async () => {{
+        function shortcodeToMediaId(shortcode) {{
+            const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+            let id = 0n;
+            for (let i = 0; i < shortcode.length; i++) {{
+                id = (id * 64n) + BigInt(alphabet.indexOf(shortcode[i]));
             }}
-            const code = '{href.rstrip("/").split("/")[-1]}';
-            const mediaId = shortcodeToMediaId(code);
-            const csrfMatch = document.cookie.match(/csrftoken=([^;]+)/);
-            const csrf = csrfMatch ? csrfMatch[1] : '';
-            if(!csrf) return '[]';
-            
-            try {{
-                const res = await fetch(`https://www.instagram.com/api/v1/media/${{mediaId}}/likers/`, {{
-                    headers: {{ 'x-ig-app-id': '936619743392459', 'x-csrftoken': csrf }}
-                }});
-                const data = await res.json();
-                return JSON.stringify(data.users ? data.users.map(u => u.username) : []);
-            }} catch(e) {{
-                return '[]';
-            }}
-        }})()
-        """
-        raw_likers = cdp.eval(api_js, await_promise=True)
-        likers = json.loads(raw_likers) if raw_likers else []
+            return id.toString();
+        }}
+        const mediaId = shortcodeToMediaId('{code_post}');
+        const csrfMatch = document.cookie.match(/csrftoken=([^;]+)/);
+        const csrf = csrfMatch ? csrfMatch[1] : '';
+        if(!csrf) return '[]';
+        try {{
+            const res = await fetch(`https://www.instagram.com/api/v1/media/${{mediaId}}/likers/`, {{
+                headers: {{ 'x-ig-app-id': '936619743392459', 'x-csrftoken': csrf }}
+            }});
+            const data = await res.json();
+            return JSON.stringify(data.users ? data.users.map(u => u.username) : []);
+        }} catch(e) {{
+            return '[]';
+        }}
+    }})()
+    """
+    raw_likers = cdp.eval(api_js, await_promise=True)
+    likers = json.loads(raw_likers) if raw_likers else []
 
     # ── 4. Imágenes / videos ──────────────────────────────────────────────────
     if is_reel:
