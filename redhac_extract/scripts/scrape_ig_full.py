@@ -128,19 +128,30 @@ def scrape_post(cdp: Cdp, href: str) -> dict:
         const mentions = [...new Set([...desc.matchAll(/@([\w.]+)/g)].map(m => m[1]))];
 
         // ── Comentarios visibles en el DOM (los que cargó la página)
-        const commentEls = Array.from(document.querySelectorAll(
-            'ul li span, [role="listitem"] span, article span'
-        )).filter(el => {
-            const t = el.innerText || '';
-            return t.length > 3 && t.length < 500 && !el.closest('button') && !el.closest('header');
+        // Seleccionar contenedores de comentario completos (li o [role=listitem])
+        // para no dividir menciones internas en entradas separadas
+        const commentContainers = Array.from(document.querySelectorAll(
+            'ul > li[role="listitem"], ul > li'
+        )).filter(li => {
+            const t = li.innerText || '';
+            // Excluir el caption del post (primera li normalmente) y botones
+            return t.length > 3 && t.length < 1000 && !li.querySelector('header');
         });
-        const comments = commentEls.slice(0, 40).map(el => {
-            const li = el.closest('li,[role="listitem"]');
-            const authorEl = li ? li.querySelector('a[role="link"],a') : null;
+        const seen = new Set();
+        const comments = commentContainers.slice(0, 40).map(li => {
+            const authorEl = li.querySelector('a[role="link"], h3 a, h2 a, a');
             const author = authorEl ? authorEl.innerText.trim() : '';
-            const text = el.innerText.trim().substring(0, 300);
-            return author ? `${author}: ${text}` : text;
-        }).filter((v, i, a) => v.length > 3 && a.indexOf(v) === i);
+            // El texto completo del li incluye author + texto. Limpiar el author del inicio.
+            let fullText = li.innerText.trim().replace(/\n+/g, ' ').substring(0, 400);
+            if (author && fullText.startsWith(author)) {
+                fullText = fullText.slice(author.length).trim();
+            }
+            return author && fullText ? `${author}: ${fullText}` : fullText;
+        }).filter(v => {
+            if (v.length < 4 || seen.has(v)) return false;
+            seen.add(v);
+            return true;
+        });
 
         return JSON.stringify({ desc, fecha, likesCount, commentsCount, mentions, comments });
     })()

@@ -92,6 +92,11 @@ dentro de la pestaña del navegador (ver `scripts/README_CORRECTO.md`).
 8. **Dependencia de la web vs Descarga Local Permanente**: Mantener URLs web (CDN) en el Excel de investigación representa riesgo de pérdida de datos cuando los links caducan (el error "URL signature expired").
    → Solución: `download_media.py` captura los mp4/jpg locales en paralelo, y `fill_docs_full.py` inserta **la ruta relativa local** (`media/REDHAC_codigo_foto1.jpg`) en el `.xlsx` y en el `.md` final.
 
+9. **Comentarios capturados incorrectamente (menciones como texto)**: El selector JS original usaba `ul li span` para encontrar el texto de cada comentario. Esto causaba que cada etiqueta (`@usuario`) dentro de un comentario fuera interpretada como un comentario separado. Ejemplo de error: `'gustavo_bolivar: gustavo_bolivar'`, `'gustavo_bolivar: kelorengifo'` — era una sola mención de amigos partida en N entradas falsas.
+   → Diagnóstico: Al revisar el JSON se veía que `nro_comentarios=2` pero había 5+ entradas, todas con el mismo autor y texto repetido.
+   → Solución: Se reemplazó el selector de `span` individual por un selector de contenedor completo `ul > li[role="listitem"]`. Ahora se toma el `innerText` del `<li>` completo (que incluye texto + menciones en una sola cadena), se extrae el autor del primer `<a>` y se limpia del inicio del texto. Formato correcto resultante: `gustavo_bolivar: @kelorengifo @alejoocampog @ivancepedacastr`.
+   → Estado: Corrección aplicada en `scrape_ig_full.py`. Se limpiaron 224 posts del caché y se relanzó la re-extracción (pendiente de completar mañana).
+
 ---
 
 ## Scripts
@@ -114,19 +119,49 @@ Scripts del repo que se complementan:
 ## Uso
 
 ```bash
-# Prerrequisito: Chrome abierto con perfil Edge y CDP
+# Prerrequisito: Chrome abierto con perfil Edge y CDP (Instagram con sesión activa)
 google-chrome --remote-debugging-port=9222 \
   --user-data-dir=/home/zerausn/.var/app/com.microsoft.Edge/config/microsoft-edge \
   --no-first-run &
 
-# Ejecutar (desde raíz de agentes/)
-python3 redhac_extract/scripts/fb_slow_60.py    # 60×6s = 360s
-python3 redhac_extract/scripts/continue_ig.py   # 60×4s = 240s
-python3 redhac_extract/scripts/fetch_ig_likes.py  # muestra 15 posts
-python3 redhac_extract/scripts/generate_excel.py  # genera Excel
+# Flujo completo de extracción Instagram (desde raíz de agentes/)
+# Terminal 1 — scraper principal (reanudable si se interrumpe):
+python3 redhac_extract/scripts/scrape_ig_full.py
+
+# Terminal 2 — descarga de medios en paralelo (opcional, corre a la vez):
+python3 redhac_extract/scripts/download_media.py
+
+# Una vez termine scrape_ig_full.py — generar Excel y Markdown:
+python3 redhac_extract/scripts/fill_docs_full.py
+
+# Monitorear progreso del scraper en tiempo real:
+grep -o '\[[0-9]*/469\]' ~/.gemini/antigravity-ide/brain/4a5bfe4b-022b-4976-a005-c1e56d346c5e/.system_generated/tasks/<TASK_ID>.log \
+  | tail -1 | tr -d '[]' | awk -F'/' '{printf "%.1f%% (%s/469)\n", $1/$2*100, $1}'
 ```
 
 Salidas en `redhac_extract/output/` (carpeta creada automáticamente, gitignored).
+
+---
+
+## Estado Actual (2026-09-03)
+
+| Etapa | Estado | Detalle |
+|-------|--------|---------|
+| Links Instagram (469) | ✅ Completo | `output/ig_all_final.json` |
+| Scraping metadata + likes + likers | ✅ Completo | 466/469 con likes. 245 posts en caché limpio |
+| Extracción de comentarios (corrección selector) | ⏳ Pendiente | 224 posts por re-extraer con selector corregido (`ul > li[role=listitem]`) |
+| Descarga física de medios | ✅ En curso | `download_media.py` corriendo — fotos/videos en carpeta `media/` |
+| Excel REDHAC_FINAL.xlsx | ⏳ Pendiente | Ejecutar `fill_docs_full.py` tras completar scraping |
+| Markdown REDHAC_Instagram.md | ⏳ Pendiente | Se genera junto con el Excel |
+
+**Para retomar mañana:**
+```bash
+cd /home/zerausn/Documents/Antigravity/agentes/redhac_extract
+python3 scripts/scrape_ig_full.py   # salta los ya procesados automáticamente
+# cuando termine:
+python3 scripts/fill_docs_full.py
+```
+
 
 ---
 
