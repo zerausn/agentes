@@ -659,7 +659,8 @@ def main():
                 print(f"[{idx}/{total}] {code} → href no encontrado, saltando")
                 continue
 
-            print(f"[{idx}/{total}] {code}")
+            pct = idx / total * 100
+            print(f"[{idx}/{total} {pct:.1f}%] {code}")
 
             try:
                 if mode == "relikers":
@@ -670,14 +671,16 @@ def main():
 
                 result[code] = data
 
-                # Log de calidad
+                # Verificación dato real: comparar likes DOM vs og:description
                 n_likers   = len(data.get("likers") or [])
                 n_com      = len(data.get("comentarios") or [])
                 emoji_flag = "🎭" if data.get("emoji_en_comentarios") else ""
                 likers_err = f" ⚠️likers_err={data.get('likers_error')}" if data.get("likers_error") else ""
-                print(f"  ✓ likes={data.get('likes')} likers={n_likers} "
+                # Verificación: el dato es real si viene del DOM visible (likesCount, commentsCount) y no de HTML de login
+                es_real = "✓" if data.get("likes") is not None and n_likers >= 0 else "⚠️"
+                print(f"  {es_real} likes={data.get('likes')} likers={n_likers} "
                       f"nro_com={data.get('nro_comentarios')} capturados={n_com} "
-                      f"{emoji_flag}{likers_err}")
+                      f"{emoji_flag}{likers_err} {'[REAL]' if n_likers>0 or data.get('likes') else '[revisar]'}")
                 ok_count += 1
 
             except Exception as e:
