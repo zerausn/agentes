@@ -164,44 +164,38 @@ def scrape_post(cdp: Cdp, href: str) -> dict:
         else:
             reposteo = "Original"
 
-    # ── 3. Likers: click en el botón de likes → leer modal ───────────────────
+    # ── 3. Likers: llamar API nativa de Instagram ─────────────────────────────
     likers = []
-    if like_btn_pos and likes_count and likes_count <= 500:
-        try:
-            cdp.click_xy(like_btn_pos["x"], like_btn_pos["y"])
-            time.sleep(3)
-
-            # Scroll dentro del modal para cargar más likers
-            for _ in range(min(10, (likes_count // 20) + 1)):
-                cdp.eval("""
-                (() => {
-                    const modal = document.querySelector('[role="dialog"] [style*="overflow"]')
-                        || document.querySelector('[role="dialog"]');
-                    if(modal) modal.scrollTop += 400;
-                })()
-                """)
-                time.sleep(1)
-
-            # Extraer usuarios del modal
-            likers_raw = cdp.eval("""
-            (() => {
-                const dialog = document.querySelector('[role="dialog"]');
-                if(!dialog) return '[]';
-                const links = Array.from(dialog.querySelectorAll('a[href*="/"]'))
-                    .map(a => a.href.replace('https://www.instagram.com/','').replace('/','').split('?')[0])
-                    .filter(s => s && !s.includes('/') && s.length > 0);
-                return JSON.stringify([...new Set(links)]);
-            })()
-            """)
-            likers = json.loads(likers_raw) if likers_raw else []
-
-            # Cerrar modal con Escape
-            cdp.call("Input.dispatchKeyEvent", {
-                "type": "keyDown", "key": "Escape", "code": "Escape"
-            })
-            time.sleep(1)
-        except Exception as e:
-            print(f"    ⚠ No se pudo abrir modal de likes: {e}")
+    if likes_count and likes_count > 0:
+        api_js = f"""
+        (async () => {{
+            function shortcodeToMediaId(shortcode) {{
+                const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+                let id = 0n;
+                for (let i = 0; i < shortcode.length; i++) {{
+                    id = (id * 64n) + BigInt(alphabet.indexOf(shortcode[i]));
+                }}
+                return id.toString();
+            }}
+            const code = '{href.rstrip("/").split("/")[-1]}';
+            const mediaId = shortcodeToMediaId(code);
+            const csrfMatch = document.cookie.match(/csrftoken=([^;]+)/);
+            const csrf = csrfMatch ? csrfMatch[1] : '';
+            if(!csrf) return '[]';
+            
+            try {{
+                const res = await fetch(`https://www.instagram.com/api/v1/media/${{mediaId}}/likers/`, {{
+                    headers: {{ 'x-ig-app-id': '936619743392459', 'x-csrftoken': csrf }}
+                }});
+                const data = await res.json();
+                return JSON.stringify(data.users ? data.users.map(u => u.username) : []);
+            }} catch(e) {{
+                return '[]';
+            }}
+        }})()
+        """
+        raw_likers = cdp.eval(api_js, await_promise=True)
+        likers = json.loads(raw_likers) if raw_likers else []
 
     # ── 4. Imágenes / videos ──────────────────────────────────────────────────
     if is_reel:
