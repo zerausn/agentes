@@ -72,8 +72,14 @@ def update_excel(full_data: dict):
 
         href = data.get("href", "")
 
-        # Construir valores
-        imgs_str = "\n".join(data.get("imgs", []) + data.get("vids", []))
+        # Calcular rutas locales para imágenes/videos en base al código
+        local_media = []
+        for i in range(1, len(data.get("imgs", [])) + 1):
+            local_media.append(f"media/REDHAC_{code}_foto{i}.jpg")
+        for i in range(1, len(data.get("vids", [])) + 1):
+            local_media.append(f"media/REDHAC_{code}_video{i}.mp4")
+            
+        imgs_str = "\n".join(local_media)
         likers_str = ", ".join(data.get("likers", []))
         menciones_str = ", ".join(data.get("menciones", []))
         comentarios_str = "\n".join(data.get("comentarios", []))
@@ -141,8 +147,14 @@ def update_md(full_data: dict):
             if "error" in data and len(data) == 2:
                 continue
             href = data.get("href", "")
-            imgs = data.get("imgs", []) + data.get("vids", [])
-            imgs_str = " | ".join(imgs) if imgs else ""
+            
+            local_media = []
+            for j in range(1, len(data.get("imgs", [])) + 1):
+                local_media.append(f"media/REDHAC_{code}_foto{j}.jpg")
+            for j in range(1, len(data.get("vids", [])) + 1):
+                local_media.append(f"media/REDHAC_{code}_video{j}.mp4")
+                
+            imgs_str = " | ".join(local_media) if local_media else ""
             menciones_str = ", ".join(data.get("menciones", []))
             comentarios_str = "\n".join(data.get("comentarios", []))
             lines.append(f"### {i}. [{href}]({href})\n")
@@ -167,8 +179,14 @@ def update_md(full_data: dict):
         if "error" in data and len(data) == 2:
             continue
         href = data.get("href", "")
-        imgs = data.get("imgs", []) + data.get("vids", [])
-        imgs_str = " | ".join(imgs) if imgs else ""
+        
+        local_media = []
+        for j in range(1, len(data.get("imgs", [])) + 1):
+            local_media.append(f"media/REDHAC_{code}_foto{j}.jpg")
+        for j in range(1, len(data.get("vids", [])) + 1):
+            local_media.append(f"media/REDHAC_{code}_video{j}.mp4")
+            
+        imgs_str = " | ".join(local_media) if local_media else ""
         menciones_str = ", ".join(data.get("menciones", []))
 
         escaped = re.escape(href.rstrip("/"))
