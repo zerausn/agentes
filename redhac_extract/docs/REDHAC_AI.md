@@ -66,21 +66,24 @@ dentro de la pestaña del navegador (ver `scripts/README_CORRECTO.md`).
 
 ---
 
-## 5 Problemas y soluciones
+## 6 Problemas y soluciones históricas ("La hidra de mil cabezas")
 
-1. **API Meta bloqueada `#10` Page Public Content Access** en App `1455679229437683`
-   → Usar Chrome con perfil Edge + CDP `ws://127.0.0.1:9222` + cookies `c_user`/`xs`
+1. **API Meta Graph bloqueada `#10` Page Public Content Access** en App `1455679229437683`
+   → Solución: Usar Chrome con perfil Edge + CDP `ws://127.0.0.1:9222` + cookies `c_user`/`xs` simulando un usuario humano.
 
-2. **Facebook virtualizado**: 6 `[role="article"]` visibles, `window.scrollTo` no carga más
-   → `window.scrollTo` + `body.innerText` split `"Red De Huertos"` + regex `U+034F`, 60 iter × 6s
+2. **Facebook virtualizado (Scroll infinito inútil)**: Solo 6 `[role="article"]` visibles a la vez en el DOM, hacer `window.scrollTo` normal no carga todo.
+   → Solución: Script iterativo `fb_slow_60.py` que hace scroll y en cada pasada captura `body.innerText` y extrae la data partiéndola por `"Red De Huertos"`, limpiando caracteres raros (`U+034F`).
 
-3. **Instagram CDN 403 Bad URL hash / Reels inaccesibles**: curl directo a `scontent` → 403 (22 bytes)
-   → Navegar al post con CDP. Para carruseles/fotos (`/p/`): extraer en full-page grid todos los `img` con `naturalWidth >= 500`, **excluyendo los envueltos en etiquetas `<a>`** (`!i.closest('a')`) para no capturar el feed sugerido. Para reels (`/reel/`): extraer el json embebido `video_versions` para obtener la URL directa `.mp4`. Luego descargar todo mediante Python `requests`.
+3. **Instagram CDN 403 Bad URL hash / Reels inaccesibles**: Hacer curl directo a las imágenes de `scontent` arroja 403.
+   → Solución: Navegar explícitamente a cada post `/p/` mediante CDP. Extraer imágenes de alta calidad (`naturalWidth >= 500`) excluyendo las sugerencias del feed inferior (`!i.closest('a')`). Para `/reel/`, extraer el JSON nativo de `<script>` (`video_versions`) para sacar el `.mp4`.
 
-4. **Chrome mobile UA bloqueado**: "Este navegador no es compatible"
-   → Desktop UA Chrome 152 + perfil Edge, aceptar popup → header mobile muestra 714 posts
+4. **Faltantes masivos en el Excel (La Hidra)**: Los primeros scripts (e.g., `REDHAC_v2_Completo`) intentaban sacar likes, comentarios y fechas de un solo pantallazo del perfil (el grid estático). Como resultado, 467 posts quedaron sin comentarios, sin fechas y sin la lista de "quién dio like".
+   → Solución: Se creó `scrape_ig_full.py`, que navega uno por uno todos los 469 posts y vuelca los datos en `output/ig_full_data.json` antes de mandarlos al Excel definitivo.
 
-5. **Surrogates `\ud800-\udfff`** en JSON → `UnicodeEncodeError`
+5. **Límite de la interfaz para capturar Likers**: El modal de likes visual en Instagram solo carga de a 20 usuarios y al hacer scroll se rompe o se traba después de 100 usuarios, haciendo el scraping por UI (clic y scroll) extremadamente lento y frágil.
+   → Solución Definitiva (El hallazgo de oro): Se abandonó el scroll UI y se interceptó el endpoint REST nativo de Instagram `https://www.instagram.com/api/v1/media/{mediaId}/likers/`. Calculando el `mediaId` a partir del shortcode e inyectando la cookie `csrftoken` activa de la sesión, la API devuelve los usuarios de inmediato en un JSON limpio.
+
+6. **Surrogates `\ud800-\udfff`** en JSON → `UnicodeEncodeError`
    → `re.sub(r'[\ud800-\udfff]', '', s)` y `json.dumps(..., ensure_ascii=True)`
 
 ---
