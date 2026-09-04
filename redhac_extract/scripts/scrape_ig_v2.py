@@ -441,64 +441,7 @@ def scrape_post(cdp: Cdp, href: str) -> dict:
             likers_error = str(e)
             break
 
-    # FALLBACK DOM: Si la API falló (ej. retornó HTML/login page), hacer click en los likes
-    if not likers or (likers_error and 'Unexpected token' in likers_error):
-        fallback_js = r"""
-        (async () => {
-            const wait = ms => new Promise(r => setTimeout(r, ms));
-            const spans = Array.from(document.querySelectorAll('span'));
-            const likesBtn = spans.find(s => {
-                const text = s.innerText || '';
-                return /^\d[\d,.]*\s*(?:Me gusta|likes)/i.test(text) || /\s+y\s+\d[\d,.]*\s+personas\s+m[aá]s/i.test(text);
-            });
-            if (likesBtn) {
-                // Hay múltiples <a> en el span (uno para el usuario, otro para "X personas más")
-                // Debemos clickear el que NO sea un usuario (usualmente tiene href="#") o dice "personas más" / "Me gusta"
-                const links = Array.from(likesBtn.querySelectorAll('a'));
-                let targetLink = links.find(a => /personas|m[aá]s|likes|Me gusta/i.test(a.innerText)) || 
-                                 links.find(a => a.getAttribute('href') === '#');
-                
-                const linkToClick = targetLink || likesBtn.querySelector('a') || likesBtn.closest('a') || likesBtn;
-                linkToClick.click();
-                await wait(2500);
-                
-                // Buscar el diálogo de likes y hacer scroll
-                const dialog = document.querySelector('div[role="dialog"] > div:last-child > div:last-child, div[role="dialog"] div[style*="overflow-y"]');
-                if (dialog) {
-                    for(let i=0; i<6; i++) {
-                        dialog.scrollTop += 800;
-                        await wait(1200);
-                    }
-                }
-                
-                // Extraer likers del DOM
-                const users = Array.from(document.querySelectorAll('div[role="dialog"] a[role="link"]'))
-                                .map(a => a.innerText.trim())
-                                .filter(t => t.length > 0 && !t.includes('\n'));
-                
-                // Cerrar diálogo
-                const closeBtn = document.querySelector('div[role="dialog"] svg[aria-label="Cerrar"], div[role="dialog"] svg[aria-label="Close"]');
-                if (closeBtn) {
-                    const closeParent = closeBtn.closest('div[role="button"]');
-                    if(closeParent) closeParent.click();
-                }
-                
-                return JSON.stringify([...new Set(users)]);
-            }
-            return '[]';
-        })()
-        """
-        raw_dom_likers = cdp.eval(fallback_js, await_promise=True)
-        if raw_dom_likers:
-            try:
-                dom_likers = json.loads(raw_dom_likers)
-                if isinstance(dom_likers, list) and dom_likers:
-                    likers = dom_likers
-                    likers_error = "API falló, recuperado vía DOM"
-            except:
-                pass
-
-    # ── 5. Imágenes / videos ──────────────────────────────────────────────────
+        # ── 5. Imágenes / videos ──────────────────────────────────────────────────
     if is_reel:
         vid_js = r"""
         (() => {
