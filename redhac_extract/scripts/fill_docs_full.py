@@ -194,8 +194,10 @@ def update_md(full_data: dict):
 
         img_line = f"**Imagen(es):** {imgs_str}\n" if imgs_str else ""
         mentions_line = f"**Menciones:** {menciones_str}\n" if menciones_str else ""
+        comentarios_str = "\n".join(data.get("comentarios", []))
+        comments_str_block = f"**Comentarios:**\n{comentarios_str}\n" if comentarios_str else ""
 
-        def replace_block(m, img_line=img_line, mentions_line=mentions_line):
+        def replace_block(m, img_line=img_line, mentions_line=mentions_line, comments_str_block=comments_str_block):
             block = m.group(1)
             sep = m.group(2)
             # Actualizar Imagen(es)
@@ -210,6 +212,13 @@ def update_md(full_data: dict):
                     block = re.sub(r'\*\*Menciones\*\*:[^\n]*\n?', mentions_line, block)
                 else:
                     block = block.rstrip() + "\n" + mentions_line
+            
+            # Actualizar Comentarios
+            if "**Comentarios:**" in block:
+                block = re.sub(r'\*\*Comentarios:\*\*\n.*', comments_str_block.rstrip(), block, flags=re.DOTALL)
+            elif comments_str_block:
+                block = block.rstrip() + "\n" + comments_str_block
+
             return block.rstrip() + "\n" + sep
 
         new_content, n = re.subn(pattern, replace_block, content, flags=re.DOTALL)
@@ -226,6 +235,7 @@ def update_md(full_data: dict):
                 + (f"**Menciones:** {menciones_str}\n" if menciones_str else "")
                 + imgs_line
                 + f"**Texto:** {data.get('texto', '')}\n"
+                + (f"**Comentarios:**\n{comentarios_str}\n" if comentarios_str else "")
                 + "\n---\n"
             )
             new_blocks.append(block)

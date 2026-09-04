@@ -138,11 +138,11 @@ def scrape_post(cdp: Cdp, href: str) -> dict:
             return t.length > 3 && t.length < 1000 && !li.querySelector('header');
         });
         const seen = new Set();
-        const comments = commentContainers.slice(0, 40).map(li => {
+        const comments = commentContainers.map(li => {
             const authorEl = li.querySelector('a[role="link"], h3 a, h2 a, a');
             const author = authorEl ? authorEl.innerText.trim() : '';
             // El texto completo del li incluye author + texto. Limpiar el author del inicio.
-            let fullText = li.innerText.trim().replace(/\n+/g, ' ').substring(0, 400);
+            let fullText = li.innerText.trim().replace(/\n+/g, ' ');
             if (author && fullText.startsWith(author)) {
                 fullText = fullText.slice(author.length).trim();
             }

@@ -112,10 +112,8 @@ def classify_post(code: str, data: dict) -> dict:
 
     if any(i in critical for i in issues):
         status = "CRITICO"
-    elif any(i in moderate for i in issues):
+    elif any(i in moderate for i in issues) or issues:
         status = "INCOMPLETO"
-    elif issues:
-        status = "MENOR"
     else:
         status = "OK"
 
@@ -160,7 +158,7 @@ def main():
         results.append(r)
 
     # ── Contadores ────────────────────────────────────────────────────────────
-    by_status = {"OK": [], "INCOMPLETO": [], "CRITICO": [], "ERROR": []}
+    by_status = {"OK": [], "INCOMPLETO": [], "CRITICO": [], "ERROR": [], "MENOR": []}
     by_issue  = {}
     for r in results:
         by_status[r["status"]].append(r["code"])
