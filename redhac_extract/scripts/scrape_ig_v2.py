@@ -60,7 +60,7 @@ MAX_COMMENT_ROUNDS  = 2    # máximo de rondas de scroll+click buscando más com
 # ── CDP helper ─────────────────────────────────────────────────────────────────
 class Cdp:
     def __init__(self, ws_url: str):
-        self.ws = ws_lib.create_connection(ws_url, timeout=30)
+        self.ws = ws_lib.create_connection(ws_url, timeout=60, enable_multithread=True)
         self.seq = 0
 
     def call(self, method: str, params: dict = None) -> dict:
@@ -86,6 +86,13 @@ class Cdp:
             self.call("Input.dispatchMouseEvent",
                       {"type": t, "x": x, "y": y, "button": "left", "clickCount": 1})
 
+    def ping(self):
+        """Envía ping para mantener vivo el WebSocket."""
+        try:
+            self.ws.ping()
+        except Exception:
+            pass
+
     def flush(self, timeout=0.5):
         self.ws.settimeout(timeout)
         while True:
@@ -93,7 +100,7 @@ class Cdp:
                 self.ws.recv()
             except Exception:
                 break
-        self.ws.settimeout(30)
+        self.ws.settimeout(60)
 
     def close(self):
         try:
@@ -262,7 +269,7 @@ SCROLL_COMMENTS_JS = r"""
 (async () => {
     // Scroll agresivo para cargar TODOS los comentarios — awaitPromise
     const wait = ms => new Promise(r => setTimeout(r, ms));
-    const MAX_ROUNDS = 15;
+    const MAX_ROUNDS = 8;  // 8 × 1.3s = ~10s máximo — dentro del timeout WS
 
     // Selectores de botones "Ver más comentarios"
     const loadMoreText = /ver m[aá]s comentarios|load more comments|ver todos|view all/i;
@@ -408,21 +415,24 @@ def scrape_post(cdp: Cdp, href: str) -> dict:
         reposteo = f"Reposteo de @{m.group(1)}" if m else "Original"
 
     # ── 3. Scroll de comentarios y extracción v2 (con emojis) ─────────────────
-    # Hacer scroll asíncrono primero
-    cdp.eval(SCROLL_COMMENTS_JS, await_promise=True)
-    time.sleep(1.0)
-
-    raw_comments = cdp.eval(COMMENTS_JS)
-    comments = json.loads(raw_comments) if raw_comments else []
+    try:
+        cdp.eval(SCROLL_COMMENTS_JS, await_promise=True)
+        time.sleep(1.0)
+        raw_comments = cdp.eval(COMMENTS_JS)
+        comments = json.loads(raw_comments) if raw_comments else []
+    except Exception as e_scroll:
+        print(f"    ⚠️ scroll/comments error: {e_scroll}")
+        comments = []
 
     # Detectar emojis en comentarios
     emoji_in_comments = any(has_emoji(c) for c in comments)
 
-    # ── 4. Likers con backoff (API + DOM Fallback) ────────────────────────────
+    # ── 4. Likers vía API (con backoff) ───────────────────────────────────────
     code_post = href.rstrip("/").split("/")[-1]
     api_js = build_likers_js(code_post)
     likers = []
     likers_error = None
+    cdp.ping()  # keepalive antes de llamada larga
 
     for attempt in range(LIKERS_RETRY):
         raw_likers = cdp.eval(api_js, await_promise=True)
@@ -435,13 +445,14 @@ def scrape_post(cdp: Cdp, href: str) -> dict:
                 wait_s = LIKERS_BACKOFF_S * (attempt + 1)
                 time.sleep(wait_s)
             elif isinstance(parsed, dict) and "error" in parsed:
-                likers_error = parsed["error"]
+                likers_error = parsed.get("error", "unknown")
                 break
         except Exception as e:
             likers_error = str(e)
             break
 
-        # ── 5. Imágenes / videos ──────────────────────────────────────────────────
+    # ── 5. Imágenes / videos ──────────────────────────────────────────────────
+    cdp.ping()  # keepalive
     if is_reel:
         vid_js = r"""
         (() => {
