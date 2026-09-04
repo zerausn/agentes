@@ -48,13 +48,13 @@ RELIKERS_LIST = Path(__file__).parent.parent / "output" / "ig_relikers_list.json
 MIN_WIDTH     = 500
 
 # ── Parámetros ────────────────────────────────────────────────────────────────
-SCROLL_STEPS        = 20    # veces que hace scroll para cargar MÁS comentarios
-SCROLL_WAIT_S       = 1.5   # segundos entre scrolls
+SCROLL_STEPS        = 2    # veces que hace scroll para cargar MÁS comentarios
+SCROLL_WAIT_S       = 1.0   # segundos entre scrolls
 PAGE_LOAD_S         = 10    # segundos de espera tras navegar al post
 LIKERS_RETRY        = 3     # intentos para API de likers
 LIKERS_BACKOFF_S    = 12    # segundos base de backoff (se multiplica por intento)
-SLEEP_BETWEEN_POSTS = 4     # segundos entre posts
-MAX_COMMENT_ROUNDS  = 15    # máximo de rondas de scroll+click buscando más comentarios
+SLEEP_BETWEEN_POSTS = 2     # segundos entre posts
+MAX_COMMENT_ROUNDS  = 2    # máximo de rondas de scroll+click buscando más comentarios
 
 
 # ── CDP helper ─────────────────────────────────────────────────────────────────
@@ -331,6 +331,23 @@ SCROLL_COMMENTS_JS = r"""
 })()
 """
 
+
+LAST_CSRF_REFRESH = 0
+CACHED_CSRF = ""
+
+def get_fresh_csrftoken(cdp) -> str:
+    global LAST_CSRF_REFRESH, CACHED_CSRF
+    import time
+    now = time.time()
+    if now - LAST_CSRF_REFRESH > 3000:
+        try:
+            fresh = cdp.eval("document.cookie.match(/csrftoken=([^;]+)/)?.[1] || ''")
+            if fresh and len(fresh) > 10:
+                CACHED_CSRF = fresh
+                LAST_CSRF_REFRESH = now
+                print(f"  🔄 csrftoken renovado {fresh[:10]}... a las {time.ctime()}")
+        except: pass
+    return CACHED_CSRF
 
 def build_likers_js(code_post: str) -> str:
     """Genera el JS para llamar a la API de likers de Instagram."""
