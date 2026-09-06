@@ -432,3 +432,20 @@ Conectarse al nodo por ADB y ejecutar `run-as com.termux` para eliminar el archi
 adb -s 29396e8c1e3f7ece shell "run-as com.termux rm files/home/agentes/.git/index.lock"
 ```
 *(Nota: Hemos mejorado el script `yt_downloader_lotes_sin_limite.py` para capturar e imprimir el output del error real de `git add` en los logs y facilitar su detección en el futuro).*
+
+## Migración a GitHub Gists (2026-09-06)
+
+Para evitar conflictos de concurrencia y merge al mezclar descargas del PC (que corre en la rama `linux`) con la flota móvil (que corre en `linux-arm64`), la base de datos `yt_lotes_registro_sin_limite.json` fue **eliminada del control de versiones de Git**.
+
+A partir de esta actualización, el archivo JSON se sincroniza globalmente a través de un **GitHub Gist**. 
+Esto simplifica el código al eliminar toda la lógica compleja de subprocesos de `git pull/push/rebase`, permitiendo que todos los dispositivos interactúen en tiempo real con una única fuente de verdad alojada en la nube mediante peticiones HTTP `GET` y `PATCH`.
+
+### Requisitos de Autenticación
+Dado que ya no usamos las llaves SSH de Git para empujar los cambios, los scripts ahora usan la API REST de GitHub (vía HTTP). Para que un dispositivo móvil (o PC) pueda actualizar el Gist de estado, debe contar con un **Personal Access Token (PAT)** que tenga el scope `gist`.
+
+Los tokens deben distribuirse a los nodos a través de la carpeta compartida de credenciales:
+- `credentials/github_gist_token.txt` (El PAT)
+- `credentials/github_gist_id.txt` (El ID del Gist creado)
+
+**¿Qué pasa si un nodo no tiene el token?**
+Si el token falta, el nodo descargará en modo *offline* usando únicamente la caché local que quedó guardada en la ejecución anterior (el archivo `yt_lotes_registro_sin_limite.json` sigue existiendo localmente pero está ignorado por `.gitignore`). Emitirá un `Warning` de que la sincronización en la nube se ha omitido.

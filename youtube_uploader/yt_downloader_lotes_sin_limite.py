@@ -97,336 +97,110 @@ log = logging.getLogger(__name__)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SINCRONIZACIÓN GIT
+# ═══════════════════════════════════════════════════════════════════════════════
+# SINCRONIZACIÓN GIST (REEMPLAZO DE GIT)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _git(*args, capture=False):
-    """Ejecuta un comando git en el directorio del repo. Retorna (ok, output)."""
-    cmd = ["git", "-C", str(REPO_DIR)] + list(args)
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=capture,
-            text=True,
-            timeout=60,
-        )
-        output = (result.stdout + result.stderr).strip() if capture else ""
-        return result.returncode == 0, output
-    except Exception as e:
-        return False, str(e)
+import urllib.request
+import urllib.error
 
+GIST_TOKEN_FILE = CREDENTIALS_DIR / "github_gist_token.txt"
+GIST_ID_FILE = CREDENTIALS_DIR / "github_gist_id.txt"
 
-def _rebase_in_progress() -> bool:
-    git_dir = REPO_DIR / ".git"
-    return (git_dir / "rebase-merge").exists() or (git_dir / "rebase-apply").exists()
+def _get_gist_api_headers() -> dict:
+    if not GIST_TOKEN_FILE.exists():
+        return None
+    token = GIST_TOKEN_FILE.read_text(encoding="utf-8").strip()
+    if not token:
+        return None
+    return {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "X-GitHub-Api-Version": "2022-11-28"
+    }
 
-
-def _ensure_git_branch(context: str) -> bool:
-    """Garantiza que Git esté en la rama esperada antes de sincronizar."""
-    if _rebase_in_progress():
-        log.warning("[SYNC] Rebase activo detectado antes de %s; abortando rebase pendiente.", context)
-        ok_abort, out_abort = _git("rebase", "--abort", capture=True)
-        if not ok_abort:
-            log.warning("[SYNC] No se pudo abortar el rebase pendiente: %s", out_abort)
-            print("[SYNC] ⚠️  Hay un rebase pendiente. Ejecuta reparación Git antes de sincronizar.")
-            return False
-        print("[SYNC] ⚠️  Rebase pendiente abortado para evitar commits en detached HEAD.")
-
-    ok_branch, branch = _git("branch", "--show-current", capture=True)
-    current_branch = branch.strip() if ok_branch else ""
-    if current_branch == BRANCH_NAME:
-        return True
-
-    if current_branch:
-        log.warning("[SYNC] Rama actual inesperada antes de %s: %s", context, current_branch)
-    else:
-        log.warning("[SYNC] HEAD detached antes de %s; intentando volver a %s.", context, BRANCH_NAME)
-
-    ok_checkout, out_checkout = _git("checkout", BRANCH_NAME, capture=True)
-    if ok_checkout:
-        return True
-
-    log.warning("[SYNC] No se pudo cambiar a %s: %s", BRANCH_NAME, out_checkout)
-    print(f"[SYNC] ⚠️  Git no está en {BRANCH_NAME}. Se omite sincronización para no perder registro.")
-    return False
-
-
-def _load_registry_from_git(ref: str) -> dict:
-    """Carga el registro JSON desde un ref de Git, por ejemplo origin/linux-arm64."""
-    rel_registry = REGISTRY_FILE.relative_to(REPO_DIR).as_posix()
-    ok, content = _git("show", f"{ref}:{rel_registry}", capture=True)
-    if not ok or not content.strip():
-        return {}
-    try:
-        return json.loads(content)
-    except Exception as e:
-        log.warning("[SYNC] No se pudo leer registro desde %s: %s", ref, e)
-        return {}
-
-
-def _index_registry(registry: dict) -> dict:
-    index = {}
-    for month, videos in registry.items():
-        if not isinstance(videos, dict):
-            continue
-        for vid_id, entry in videos.items():
-            if isinstance(entry, dict):
-                index[vid_id] = (month, entry)
-    return index
-
-
-def _merge_downloaded_entries(target: dict, source: dict) -> int:
-    """
-    Conserva en target cualquier video que source ya tenga como descargado.
-    El estado descargado es monotónico: ningún nodo debe degradarlo a pendiente.
-    """
-    merged = 0
-    target_index = _index_registry(target)
-
-    for source_month, videos in source.items():
-        if not isinstance(videos, dict):
-            continue
-        for vid_id, source_entry in videos.items():
-            if not isinstance(source_entry, dict):
-                continue
-            if source_entry.get("status") != "descargado":
-                continue
-
-            target_month, target_entry = target_index.get(vid_id, (source_month, None))
-            if target_entry is None:
-                target.setdefault(source_month, {})[vid_id] = dict(source_entry)
-                target_index[vid_id] = (source_month, target[source_month][vid_id])
-                merged += 1
-                continue
-
-            if target_entry.get("status") == "descargado":
-                continue
-
-            target_entry["status"] = "descargado"
-            for field in ("file", "downloaded_at", "downloaded_by"):
-                target_entry[field] = source_entry.get(field)
-            target.setdefault(target_month, {})[vid_id] = target_entry
-            merged += 1
-
-    return merged
-
-
-def _preserve_remote_downloads(context: str) -> int:
-    """
-    Antes de publicar, mezcla los descargados remotos en el registro local.
-    Evita que un celular con un JSON viejo vuelva a marcar como pendiente
-    un video que otro nodo ya informó como descargado.
-    """
-    ok_fetch, out_fetch = _git("fetch", "origin", BRANCH_NAME, "--quiet", capture=True)
-    if not ok_fetch:
-        log.warning("[SYNC] No se pudo refrescar remoto antes de %s: %s", context, out_fetch)
-        return 0
-
-    local_data = load_registry()
-    remote_data = _load_registry_from_git(f"origin/{BRANCH_NAME}")
-    if not local_data or not remote_data:
-        return 0
-
-    merged = _merge_downloaded_entries(local_data, remote_data)
-    if merged:
-        save_registry(local_data)
-        log.info("[SYNC] Preservados %d descargados remotos antes de %s.", merged, context)
-        print(f"[SYNC] ✅ Preservados {merged} descargado(s) remotos ya informados por otros nodos.")
-    return merged
-
+def _get_gist_id() -> str:
+    if not GIST_ID_FILE.exists():
+        return None
+    return GIST_ID_FILE.read_text(encoding="utf-8").strip()
 
 def sync_pull():
-    """
-    Hace git pull antes de empezar para obtener el registro más reciente
-    de cualquier otro dispositivo. Loguea el resultado pero no interrumpe.
-    """
     print()
-    print("[SYNC] Descargando registro actualizado desde GitHub...")
-    log.info("[SYNC] git pull origin %s", BRANCH_NAME)
-
-    if not _ensure_git_branch("sync_pull"):
+    print("[SYNC] Descargando registro actualizado desde GitHub Gists...")
+    headers = _get_gist_api_headers()
+    gist_id = _get_gist_id()
+    if not headers or not gist_id:
+        print("[SYNC] ⚠️ Faltan credenciales o Gist ID en credentials/. Se usará el registro local.")
+        log.warning("[SYNC] Faltan github_gist_token.txt o github_gist_id.txt")
         return
 
-    # Primero el fetch para ver si hay algo nuevo
-    ok, out = _git("fetch", "origin", BRANCH_NAME, "--quiet", capture=True)
-    if not ok:
-        log.warning("[SYNC] ⚠️  git fetch falló (sin conexión?): %s", out)
-        print("[SYNC] ⚠️  No se pudo conectar con GitHub. Se usará el registro local.")
-        return
-
-    # Verificar si el remoto tiene commits nuevos
-    ok2, local  = _git("rev-parse", "HEAD", capture=True)
-    ok3, remote = _git("rev-parse", f"origin/{BRANCH_NAME}", capture=True)
-    local  = local.strip()
-    remote = remote.strip()
-
-    if local == remote:
-        print("[SYNC] ✅ Registro ya está al día (sin cambios remotos).")
-        log.info("[SYNC] Sin cambios remotos (HEAD=%s).", local[:7])
-        return
-
-    # Hay cambios: hacer pull
-    ok4, out4 = _git("pull", "--ff-only", "origin", BRANCH_NAME, capture=True)
-    if ok4:
-        # Obtener autor y tiempo del commit más reciente
-        ok5, meta = _git(
-            "log", "-1", "--pretty=format:%an | hace %cr",
-            capture=True,
-        )
-        meta_str = meta.strip() if ok5 else ""
-        log.info("[SYNC] ✅ Registro actualizado desde GitHub: %s -> %s. %s",
-                 local[:7], remote[:7], meta_str)
-        print(f"[SYNC] ✅ Registro actualizado (commit {remote[:7]}) — {meta_str}")
-    else:
-        log.warning("[SYNC] ⚠️  git pull falló (ramas divergentes): %s", out4)
-        print("[SYNC] ⚠️  Ramas desviadas. Iniciando auto-reparación de registro...")
-
-        # 1. Respaldar datos locales en memoria
-        try:
-            with open(REGISTRY_FILE, "r", encoding="utf-8") as f:
-                local_data = json.load(f)
-        except Exception:
-            local_data = {}
-
-        # 2. Forzar alineación de Git con la nube, borrando el commit local conflictivo
-        _git("reset", "--hard", f"origin/{BRANCH_NAME}")
-
-        # 3. Cargar datos remotos limpios
-        try:
-            with open(REGISTRY_FILE, "r", encoding="utf-8") as f:
-                remote_data = json.load(f)
-        except Exception:
-            remote_data = {}
-
-        # 4. Mezclar inteligentemente: conservar lo remoto e inyectar lo local que falte
-        merged_count = 0
-        for month, videos in local_data.items():
-            if month not in remote_data:
-                remote_data[month] = videos
-                merged_count += len(videos)
+    try:
+        req = urllib.request.Request(f"https://api.github.com/gists/{gist_id}", headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as response:
+            if response.status == 200:
+                gist_data = json.loads(response.read().decode("utf-8"))
+                file_obj = gist_data.get("files", {}).get("yt_lotes_registro_sin_limite.json")
+                if file_obj:
+                    content = file_obj.get("content", "{}")
+                    remote_registry = json.loads(content)
+                    local_registry = load_registry()
+                    
+                    merged_count = 0
+                    for month, videos in remote_registry.items():
+                        if month not in local_registry:
+                            local_registry[month] = videos
+                            merged_count += len(videos)
+                        else:
+                            for vid_id, vid_info in videos.items():
+                                if vid_info.get("status") == "descargado":
+                                    local_registry[month][vid_id] = vid_info
+                                    merged_count += 1
+                    save_registry(local_registry)
+                    print("[SYNC] ✅ Registro actualizado desde GitHub Gists.")
+                    log.info("[SYNC] Pull Gist OK. Mezclados: %d", merged_count)
+                else:
+                    print("[SYNC] ⚠️ Archivo JSON no encontrado en el Gist.")
             else:
-                for vid_id, vid_info in videos.items():
-                    if vid_id not in remote_data[month]:
-                        remote_data[month][vid_id] = vid_info
-                        merged_count += 1
-
-        # 5. Guardar la mezcla en el archivo y subirlo
-        if merged_count > 0:
-            with open(REGISTRY_FILE, "w", encoding="utf-8") as f:
-                json.dump(remote_data, f, indent=4, ensure_ascii=False)
-            
-            print(f"[SYNC] ✅ Auto-merge completado: {merged_count} registros locales rescatados.")
-            log.info("[SYNC] Auto-reparación finalizada. Subiendo mezcla a GitHub.")
-            
-            # Subir explícitamente usando sync_push
-            sync_push("sync: auto-merge de ramas divergentes")
-        else:
-            print("[SYNC] ✅ Auto-merge completado: no había diferencias locales.")
-            log.info("[SYNC] Auto-reparación: registro remoto intacto, sin pérdida local.")
-
+                print(f"[SYNC] ⚠️ Falló la conexión al Gist: {response.status}")
+    except Exception as e:
+        print(f"[SYNC] ⚠️ Error al descargar el registro del Gist: {e}")
+        log.error("[SYNC] Error Gist Pull: %s", e)
 
 def sync_push(commit_msg: str):
-    """
-    Hace git add + commit + push del registro tras una actualización.
-    No interrumpe el flujo si falla.
-    """
     print()
-    print("[SYNC] Subiendo registro actualizado a GitHub...")
-    log.info("[SYNC] Intentando git push: %s", commit_msg)
-
-    if not _ensure_git_branch("sync_push"):
+    print("[SYNC] Subiendo registro actualizado a GitHub Gists...")
+    headers = _get_gist_api_headers()
+    gist_id = _get_gist_id()
+    if not headers or not gist_id:
+        print("[SYNC] ⚠️ Faltan credenciales o Gist ID. Se omite subida a la nube.")
+        log.warning("[SYNC] Faltan credenciales para push Gist.")
         return
 
-    rel_registry = REGISTRY_FILE.relative_to(REPO_DIR)
-
-    _preserve_remote_downloads("crear commit")
-
-    # Solo agregar el archivo de registro, forzando porque *.json suele estar en .gitignore
-    ok1, out1 = _git("add", "-f", str(rel_registry), capture=True)
-    if not ok1:
-        log.warning("[SYNC] ⚠️  git add falló: %s", out1)
-        print(f"[SYNC] ⚠️  git add falló: {out1[:120]}. Se omite el push.")
-        return
-
-    # Verificar si hay algo para commitear
-    ok2, status = _git("status", "--porcelain", str(rel_registry), capture=True)
-    if not status.strip():
-        print("[SYNC] ✅ Sin cambios que subir (registro ya está sincronizado).")
-        log.info("[SYNC] Nada para commit (registro sin cambios).")
-        return
-
-    # Asegurar identidad de Git antes de commitear (por si es un entorno Debian limpio)
-    _, _email = _git("config", "--global", "user.email", capture=True)
-    if not _email.strip():
-        _git("config", "--global", "user.email", "zerausn@gmail.com")
-        _git("config", "--global", "user.name", "zerausn")
-        log.info("[SYNC] Identidad de Git configurada automáticamente.")
-
-    ok3, out3 = _git("commit", "-m", commit_msg, capture=True)
-    if not ok3:
-        log.warning("[SYNC] ⚠️  git commit falló: %s", out3)
-        print(f"[SYNC] ⚠️  git commit falló: {out3[:120]}")
-        return
-
-    # Hacer pull con rebase ANTES del push para incorporar cambios de otros celulares.
-    # --autostash evita que cambios locales no relacionados (por ejemplo TikTok)
-    # bloqueen la publicacion del registro compartido de descargas.
-    log.info("[SYNC] Sincronizando cambios remotos (pull --rebase --autostash) antes del push...")
-    ok_pull, out_pull = _git("pull", "--rebase", "--autostash", "origin", BRANCH_NAME, capture=True)
-    if not ok_pull:
-        log.warning("[SYNC] ⚠️  git pull --rebase --autostash falló antes del push: %s", out_pull)
-        print(f"[SYNC] ⚠️  git pull --rebase --autostash falló. Se conserva el commit local y no se empuja: {out_pull[:120]}")
-        _git("rebase", "--abort", capture=True)
-        _ensure_git_branch("sync_push post-rebase-fallido")
-        return
-
-    if not _ensure_git_branch("sync_push post-rebase"):
-        return
-
-    preserved_after_rebase = _preserve_remote_downloads("push")
-    if preserved_after_rebase:
-        ok_add2, out_add2 = _git("add", "-f", str(rel_registry), capture=True)
-        if not ok_add2:
-            log.warning("[SYNC] ⚠️  git add falló tras preservar descargados remotos: %s", out_add2)
-            print(f"[SYNC] ⚠️  git add falló tras preservar descargados remotos: {out_add2[:120]}. Se omite el push.")
-            return
-        ok_amend, out_amend = _git("commit", "--amend", "--no-edit", capture=True)
-        if not ok_amend:
-            log.warning("[SYNC] ⚠️  git commit --amend falló tras preservar remotos: %s", out_amend)
-            print(f"[SYNC] ⚠️  git commit --amend falló tras preservar remotos: {out_amend[:120]}")
-            return
-
-    # Reintentos para el push (por si hay microcortes o lentitud de red)
-    max_retries = 3
-    for attempt in range(1, max_retries + 1):
-        ok4, out4 = _git("push", "origin", f"HEAD:{BRANCH_NAME}", capture=True)
-        if ok4:
-            ok_head, head = _git("rev-parse", "HEAD", capture=True)
-            head_full = head.strip() if ok_head else ""
-            ok_remote, remote_ref = _git("ls-remote", "origin", f"refs/heads/{BRANCH_NAME}", capture=True)
-            remote_sha = remote_ref.split()[0] if ok_remote and remote_ref.strip() else ""
-            if head_full and remote_sha and remote_sha != head_full:
-                log.warning("[SYNC] Push reportó OK, pero remoto quedó en %s y HEAD es %s", remote_sha[:7], head_full[:7])
-                if attempt < max_retries:
-                    print(f"[SYNC] ⚠️  GitHub no quedó en el commit local; reintentando ({attempt}/{max_retries})...")
-                    time.sleep(3)
-                else:
-                    print("[SYNC] ⚠️  GitHub no quedó en el commit local; se intentará de nuevo después.")
-                continue
-            ok5, sha = _git("rev-parse", "--short", "HEAD", capture=True)
-            sha_str = sha.strip() if ok5 else "?"
-            log.info("[SYNC] ✅ Registro subido a GitHub (commit %s) [Intento %d]: %s", sha_str, attempt, commit_msg)
-            print(f"[SYNC] ✅ Registro sincronizado en GitHub (commit {sha_str})")
-            break
-        else:
-            log.warning("[SYNC] ⚠️  git push falló (Intento %d/%d): %s", attempt, max_retries, out4)
-            if attempt < max_retries:
-                print(f"[SYNC] ⚠️  Reintentando subida ({attempt}/{max_retries})...")
-                import time
-                time.sleep(3)
+    try:
+        sync_pull()
+        local_registry = load_registry()
+        payload = json.dumps({
+            "description": commit_msg,
+            "files": {
+                "yt_lotes_registro_sin_limite.json": {
+                    "content": json.dumps(local_registry, indent=2, ensure_ascii=False)
+                }
+            }
+        }).encode("utf-8")
+        
+        req_headers = headers.copy()
+        req_headers["Content-Type"] = "application/json"
+        req = urllib.request.Request(f"https://api.github.com/gists/{gist_id}", data=payload, headers=req_headers, method="PATCH")
+        
+        with urllib.request.urlopen(req, timeout=15) as response:
+            if response.status == 200:
+                print("[SYNC] ✅ Registro sincronizado en GitHub Gists exitosamente.")
+                log.info("[SYNC] Push Gist OK.")
             else:
-                print(f"[SYNC] ⚠️  git push falló (el registro local está actualizado, se intentará en la próxima sesión): {out4[:120]}")
-
+                print(f"[SYNC] ⚠️ Falló la subida al Gist: {response.status}")
+    except Exception as e:
+        print(f"[SYNC] ⚠️ Error al subir el registro al Gist: {e}")
+        log.error("[SYNC] Error Gist Push: %s", e)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # AUTENTICACIÓN
