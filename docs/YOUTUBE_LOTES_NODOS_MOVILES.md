@@ -286,6 +286,66 @@ Estado verificado:
 - Verificacion: los 81 perdidos eran todos `pendiente`, ninguno `descargado` (no se perdio historial de descargas).
 - Correccion: restaurados en el PC desde `6ca083e` (commit `9ca23b04`) y empujados a `linux-arm64`.
 
+## Fix 2026-09-06: PO Token Provider + cookies de sesión real (S24)
+
+Fecha: 2026-09-06
+Contexto: `docs/CAPTURA_4K_MITMPROXY_NAVEGADOR.md` documentó que, incluso después del
+fix de `--force-ipv4`, `yt-dlp` seguía recibiendo 403 desde IPs de Claro
+(residenciales, no datacenter) porque YouTube confía en la sesión/fingerprint
+de un navegador real pero no en el de `yt-dlp`. Ese mismo documento identificó
+un problema aparte y no relacionado: la captura por navegador en el S24 no
+llega a 2160p real por falta de GPU AV1/VP9 — pero esa limitación es propia
+del pipeline de captura en vivo (`6_BAJAR_YOUTUBE_4K_CAPTURA`), NO aplica a
+`5_BAJAR_YOUTUBE_SIN_LIMITE`: yt-dlp no reproduce el video en tiempo real, solo
+pide el itag exacto y lo escribe a disco, así que el cuello de botella de
+decodificación del Exynos no es relevante para esta ruta.
+
+Cambios aplicados a `yt_downloader_lotes_sin_limite.py` y
+`bootstrap_termux_arm64.sh`:
+
+1. **PO Token Provider (`bgutil-ytdlp-pot-provider`)**: genera un token de
+   origen vía BotGuard (misma librería que usa un navegador real) para que
+   YouTube confíe en las peticiones de yt-dlp. Se instala en
+   `~/bgutil-ytdlp-pot-provider` (= `/root/...` corriendo como root en el
+   proot), la ruta por defecto que el plugin detecta solo — no requiere
+   flags nuevos en el comando de yt-dlp. Requiere `yt-dlp >= 2025.05.22`
+   (ya se cumple: el proot trae `2026.07.04`+) y Node >= 20 (ya presente,
+   `20.19.2`). Verificado en sandbox: sin el server instalado, yt-dlp reporta
+   el provider `bgutil:script-node` como `unavailable`; con el server
+   clonado y compilado (`npm ci && npx tsc`) en esa ruta, pasa a `available`
+   sin tocar el comando de descarga.
+2. **Cookies de sesión real vía `--cookies-from-browser firefox:<perfil>`**:
+   apunta al mismo perfil de Firefox con login que ya usa la captura 4K por
+   navegador (`/root/captura_firefox_profile`, ver "Login con cookies de PC"
+   en `docs/CAPTURA_4K_MITMPROXY_NAVEGADOR.md`). Una sesión anónima nunca
+   recibe la oferta de 2160p; con esa sesión sí. Tiene prioridad sobre el
+   `cookies.txt` clásico (que sigue funcionando como respaldo si no existe
+   ese perfil).
+3. `bootstrap_termux_arm64.sh` instala/actualiza esto de forma idempotente
+   dentro del bloque `INSTALL_DEBIAN_DEPS`, así que corre automáticamente en
+   cualquier nodo (S24, Note 9, Vivo) la próxima vez que se ejecute
+   `0_RENOVAR_REPO`.
+
+Riesgo a vigilar: usar cookies de una cuenta logueada para automatización
+puede invalidar la sesión si YouTube detecta un patrón de descargas
+inusual (ver nota sobre `player_client=tv` deslogueando la sesión en
+`youtube_uploader/docs/DECISIONS.md`). Si la cuenta usada es la personal,
+conviene vigilar el registro de descargas fallidas por si hay que
+re-loguear el perfil de Firefox.
+
+Pendiente de verificar en el dispositivo real (no se pudo probar en el S24
+desde este entorno, solo se validó la instalación del provider y la
+compilación en un sandbox Linux x86_64 separado — sin acceso al teléfono):
+
+- Correr `0_RENOVAR_REPO` en el S24 y confirmar que `apt-get`/`npm ci`
+  terminan sin error dentro del proot (puede necesitar las libs de `canvas`
+  ya incluidas: `libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev
+  librsvg2-dev`).
+- `yt-dlp -v <URL> 2>&1 | grep pot` debe mostrar `bgutil:script-node-X.X.X
+  (external)` sin `unavailable`.
+- Lanzar `5_BAJAR_YOUTUBE_SIN_LIMITE` con un video de prueba y confirmar
+  `height=2160` en el `ffprobe` del archivo final.
+
 ## Procedimiento para reparar otro nodo
 
 1. Ver dispositivos:

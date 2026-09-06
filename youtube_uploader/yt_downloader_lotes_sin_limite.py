@@ -46,14 +46,28 @@ FFMPEG_PRESET = os.getenv("AGENTES_FFMPEG_PRESET", "ultrafast")
 FFMPEG_CRF    = os.getenv("AGENTES_FFMPEG_CRF", "20")
 FFMPEG_AUDIO  = os.getenv("AGENTES_FFMPEG_AUDIO_BITRATE", "192k")
 
-# Cookies de YouTube (opcional): si hay una sesión iniciada en cookies.txt,
-# se pasa a yt-dlp para evitar el bot-check 403 y los videos age-restricted.
+# Cookies de YouTube: una sesión anónima nunca recibe la oferta de 2160p
+# (confirmado en docs/CAPTURA_4K_MITMPROXY_NAVEGADOR.md — máximo 1080p60 sin
+# login). Se prioriza el perfil real de Firefox con sesión logueada que ya usa
+# la captura 4K por navegador (mismo login, un solo lugar que mantener); si no
+# existe, se cae al cookies.txt clásico (bot-check / age-restricted).
+_FIREFOX_PROFILE_CANDIDATES = [
+    Path("/root/captura_firefox_profile"),
+]
+FIREFOX_COOKIES_PROFILE = next(
+    (p for p in _FIREFOX_PROFILE_CANDIDATES if (p / "cookies.sqlite").exists()), None
+)
+
 _COOKIE_CANDIDATES = [
     Path("/sdcard/Antigravity/cookies.txt"),
     CREDENTIALS_DIR / "cookies.txt",
 ]
 COOKIES_FILE = next((c for c in _COOKIE_CANDIDATES if c.exists()), None)
-if COOKIES_FILE:
+if FIREFOX_COOKIES_PROFILE:
+    logging.getLogger(__name__).info(
+        "[COOKIES] yt-dlp usará sesión logueada de Firefox: %s", FIREFOX_COOKIES_PROFILE
+    )
+elif COOKIES_FILE:
     logging.getLogger(__name__).info("[COOKIES] yt-dlp usará cookies de: %s", COOKIES_FILE)
 
 # Nombre del dispositivo actual (para el registro de quién descargó qué).
@@ -714,7 +728,9 @@ def download_video(vid_id: str, title: str) -> str | None:
             "--newline", "--quiet", "--no-warnings", "--progress",
             "-o", str(stub) + ".%(ext)s",
         ]
-        if COOKIES_FILE:
+        if FIREFOX_COOKIES_PROFILE:
+            ytdlp_cmd_base += ["--cookies-from-browser", f"firefox:{FIREFOX_COOKIES_PROFILE}"]
+        elif COOKIES_FILE:
             ytdlp_cmd_base += ["--cookies", str(COOKIES_FILE)]
 
         for selector in [

@@ -304,6 +304,40 @@ python3 -m pip install --break-system-packages yt-dlp
 python3 -m pip install --break-system-packages \
   -r /root/agentes/youtube_uploader/requirements.txt \
   -r /root/agentes/meta_uploader/requirements.txt
+
+# --- PO Token Provider (bgutil-ytdlp-pot-provider) ---
+# Evita el bot-check "Sign in to confirm you are not a bot" / 403 que YouTube
+# le da a yt-dlp desde IPs residenciales marcadas (ver docs/YOUTUBE_LOTES_NODOS_MOVILES.md,
+# incidente 2026-08-07, y docs/CAPTURA_4K_MITMPROXY_NAVEGADOR.md). Genera un
+# token de origen valido via BotGuard, igual que hace un navegador real.
+# Instala en la ruta por defecto (~/bgutil-ytdlp-pot-provider = /root/... aqui
+# porque corremos como root) para que el plugin lo detecte solo, sin flags.
+POT_DIR="/root/bgutil-ytdlp-pot-provider"
+NEED_APT=0
+command -v node >/dev/null 2>&1 || NEED_APT=1
+command -v git  >/dev/null 2>&1 || NEED_APT=1
+[ -d "$POT_DIR" ] || NEED_APT=1
+if [ "$NEED_APT" = "1" ]; then
+  apt-get update -qq
+  apt-get install -y -qq nodejs npm git build-essential \
+    libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev pkg-config >/dev/null
+fi
+if [ ! -d "$POT_DIR" ]; then
+  echo "[POT] Instalando bgutil-ytdlp-pot-provider (primera vez)..."
+  git clone --depth 1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git "$POT_DIR"
+  (cd "$POT_DIR/server" && npm ci && npx tsc)
+else
+  BEFORE=$(git -C "$POT_DIR" rev-parse HEAD)
+  git -C "$POT_DIR" fetch --depth 1 origin master -q || true
+  git -C "$POT_DIR" reset --hard origin/master -q || true
+  AFTER=$(git -C "$POT_DIR" rev-parse HEAD)
+  if [ "$BEFORE" != "$AFTER" ]; then
+    echo "[POT] Actualizado $BEFORE -> $AFTER, recompilando..."
+    (cd "$POT_DIR/server" && npm ci && npx tsc)
+  fi
+fi
+python3 -m pip install --break-system-packages -U bgutil-ytdlp-pot-provider
+echo "[POT] Listo. Verificar con: yt-dlp -v <URL_YOUTUBE> 2>&1 | grep pot"
 '
 fi
 
