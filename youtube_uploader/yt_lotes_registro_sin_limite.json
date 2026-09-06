@@ -8789,7 +8789,7 @@
     "Cdi6mpnXV_E": {
       "title": "PW | (20260626_201735)",
       "publishedAt": "2026-09-05T22:45:02Z",
-      "status": "pendiente",
+      "status": "fallido",
       "file": null,
       "downloaded_at": null,
       "downloaded_by": null
@@ -8797,7 +8797,7 @@
     "w0Hwxb3smvA": {
       "title": "PW | (20250321 180903)",
       "publishedAt": "2026-09-04T22:45:33Z",
-      "status": "pendiente",
+      "status": "fallido",
       "file": null,
       "downloaded_at": null,
       "downloaded_by": null
@@ -8805,7 +8805,7 @@
     "e8N9xu7gd4s": {
       "title": "PW | (20260624_204410)",
       "publishedAt": "2026-09-03T22:45:22Z",
-      "status": "pendiente",
+      "status": "fallido",
       "file": null,
       "downloaded_at": null,
       "downloaded_by": null
@@ -8813,7 +8813,7 @@
     "Gdbfyoihe6g": {
       "title": "PW | (20260624_202423)",
       "publishedAt": "2026-09-02T22:45:15Z",
-      "status": "pendiente",
+      "status": "fallido",
       "file": null,
       "downloaded_at": null,
       "downloaded_by": null
@@ -8821,7 +8821,7 @@
     "AQqcBLr7C9Q": {
       "title": "PW | (20260624_203008)",
       "publishedAt": "2026-09-01T22:45:02Z",
-      "status": "pendiente",
+      "status": "fallido",
       "file": null,
       "downloaded_at": null,
       "downloaded_by": null
@@ -8829,10 +8829,10 @@
     "JbW7DyywGBc": {
       "title": "PW | (20260605_161202)",
       "publishedAt": "2026-09-04T22:45:35Z",
-      "status": "pendiente",
-      "file": null,
-      "downloaded_at": null,
-      "downloaded_by": null
+      "status": "descargado",
+      "file": "/mnt/Videos/antigravity/crudos/PW  (20260605_161202).mp4",
+      "downloaded_at": "2026-09-06 15:24",
+      "downloaded_by": "PC_PARROT"
     },
     "EQ1VxFIgsPk": {
       "title": "PW | (20260605_174401)",
