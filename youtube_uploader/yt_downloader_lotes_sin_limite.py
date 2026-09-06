@@ -34,7 +34,10 @@ REPO_DIR        = BASE_DIR.parent
 CREDENTIALS_DIR = BASE_DIR / "credentials"
 REGISTRY_FILE   = BASE_DIR / "yt_lotes_registro_sin_limite.json"
 LOG_FILE        = BASE_DIR / "yt_lotes_sin_limite.log"
-DEST_DIR        = Path("/sdcard/Antigravity/crudos")
+if Path("/mnt/Videos").exists():
+    DEST_DIR = Path("/mnt/Videos/antigravity/crudos")
+else:
+    DEST_DIR = Path("/sdcard/Antigravity/crudos")
 TEMP_DIR        = BASE_DIR / "yt_temp_dl"
 BRANCH_NAME     = "linux-arm64"
 
@@ -54,8 +57,14 @@ FFMPEG_AUDIO  = os.getenv("AGENTES_FFMPEG_AUDIO_BITRATE", "192k")
 _FIREFOX_PROFILE_CANDIDATES = [
     Path("/root/captura_firefox_profile"),
 ]
+def _check_firefox_profile(p: Path) -> bool:
+    try:
+        return (p / "cookies.sqlite").exists()
+    except PermissionError:
+        return False
+
 FIREFOX_COOKIES_PROFILE = next(
-    (p for p in _FIREFOX_PROFILE_CANDIDATES if (p / "cookies.sqlite").exists()), None
+    (p for p in _FIREFOX_PROFILE_CANDIDATES if _check_firefox_profile(p)), None
 )
 
 _COOKIE_CANDIDATES = [
@@ -721,7 +730,7 @@ def download_video(vid_id: str, title: str) -> str | None:
         # ── Paso 1: Descarga con yt-dlp ──────────────────────────────────────────
         log.info("  [1/2] Descargando en 4K: %s", title)
         ytdlp_cmd_base = [
-            "/usr/bin/python3", YTDLP_BIN,
+            sys.executable, "-m", "yt_dlp",
             "--js-runtimes", "node",
             "--no-part",
             "--merge-output-format", "mkv",
@@ -1257,10 +1266,23 @@ def main():
 if __name__ == "__main__":
     # Arrancar el servidor bgutil en segundo plano para el PO Token de yt-dlp
     bgutil_proc = None
-    if Path("/root/bgutil-ytdlp-pot-provider/server/build/main.js").exists():
+    bgutil_paths = [
+        Path("/root/bgutil-ytdlp-pot-provider/server/build/main.js"), # S24 Proot
+        Path.home() / "bgutil-ytdlp-pot-provider/server/build/main.js" # PC
+    ]
+    
+    def _check_bgutil_path(p: Path) -> bool:
+        try:
+            return p.exists()
+        except PermissionError:
+            return False
+
+    server_path = next((p for p in bgutil_paths if _check_bgutil_path(p)), None)
+    
+    if server_path:
         log.info("Arrancando bgutil HTTP server para PO Token...")
         bgutil_proc = subprocess.Popen(
-            ["node", "/root/bgutil-ytdlp-pot-provider/server/build/main.js"],
+            ["node", str(server_path)],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )
