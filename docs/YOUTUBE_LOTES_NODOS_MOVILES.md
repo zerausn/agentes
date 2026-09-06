@@ -449,3 +449,24 @@ Los tokens deben distribuirse a los nodos a través de la carpeta compartida de 
 
 **¿Qué pasa si un nodo no tiene el token?**
 Si el token falta, el nodo descargará en modo *offline* usando únicamente la caché local que quedó guardada en la ejecución anterior (el archivo `yt_lotes_registro_sin_limite.json` sigue existiendo localmente pero está ignorado por `.gitignore`). Emitirá un `Warning` de que la sincronización en la nube se ha omitido.
+
+## Incidente "Sign in to confirm you're not a bot" (Septiembre 2026)
+
+**Síntomas observados:**
+- Videos marcados constantemente como `fallidos`.
+- `yt-dlp` falla silenciosamente (sin salida visible salvo que se capture stdout/stderr completo).
+- Ejecución manual de yt-dlp revela el error: `ERROR: Sign in to confirm you're not a bot. Use --cookies-from-browser or --cookies for the authentication.` o `HTTP Error 429: Too Many Requests`.
+
+**Causa raíz:**
+Las descargas de yt-dlp estaban operando en modo completamente anónimo (sin cookies) debido a que se habían desactivado para evitar el infame límite a 1080p del experimento "SABR streaming" de YouTube.
+Sin embargo, la descarga masiva de cientos de gigabytes en 4K UHD desde una misma IP pero de forma "anónima" dispara el sistema anti-bots de YouTube, resultando en el bloqueo de IP temporal.
+
+**Solución aplicada (2026-09-06):**
+Las versiones modernas de `yt-dlp` (2026.08+) incluyen mecanismos internos (`--remote-components ejs:github` y client spoofing) que **evaden el límite SABR** en cuentas logueadas, permitiendo que la API recupere streams 2160p (`315` y `401`) aun enviando las cookies del usuario.
+
+Por lo tanto, en `yt_downloader_lotes_sin_limite.py` se ha **restaurado permanentemente el uso de cookies**:
+1. El script buscará el perfil de Firefox predeterminado (`FIREFOX_COOKIES_PROFILE`).
+2. Si no existe, usará el archivo `credentials/cookies.txt`. **(ATENCIÓN: Cuidado con dejar archivos de cookies.txt vacíos o generados por defecto, provocarán que la IP siga pareciendo anónima)**.
+3. Si el archivo no existe, en PC hará un intento de respaldo hacia `chrome` (`--cookies-from-browser chrome`).
+
+Con la sesión activa enviada por cookies, la descarga masiva en 4K puede continuar evadiendo por completo el Error 429 Anti-Bots.
