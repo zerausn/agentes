@@ -511,13 +511,15 @@ def download_video(vid_id: str, title: str) -> str | None:
             "--newline", "--quiet", "--no-warnings", "--progress",
             "-o", str(stub) + ".%(ext)s",
         ]
-        # IMPORTANTE: Se omiten las cookies intencionalmente para evadir el experimento "SABR streaming"
-        # que fuerza HLS a 1080p máximo en cuentas logueadas, perdiéndose el 4K DASH original.
-        # El PO Token (bgutil) provee acceso anónimo seguro sorteando el error 403.
-        # if FIREFOX_COOKIES_PROFILE:
-        #     ytdlp_cmd_base += ["--cookies-from-browser", f"firefox:{FIREFOX_COOKIES_PROFILE}"]
-        # elif COOKIES_FILE:
-        #     ytdlp_cmd_base += ["--cookies", str(COOKIES_FILE)]
+        # Usamos cookies para evadir el error 429 (Sign in to confirm you're not a bot)
+        # yt-dlp reciente (2026.08+) ya evade SABR internamente para 4K, así que es seguro usarlas.
+        if FIREFOX_COOKIES_PROFILE:
+            ytdlp_cmd_base += ["--cookies-from-browser", f"firefox:{FIREFOX_COOKIES_PROFILE}"]
+        elif COOKIES_FILE:
+            ytdlp_cmd_base += ["--cookies", str(COOKIES_FILE)]
+        else:
+            # Si no hay Firefox ni cookies.txt, intentamos con Chrome por defecto en PC
+            ytdlp_cmd_base += ["--cookies-from-browser", "chrome"]
         
         ytdlp_cmd_base += ["--remote-components", "ejs:github"]
 
