@@ -728,10 +728,15 @@ def download_video(vid_id: str, title: str) -> str | None:
             "--newline", "--quiet", "--no-warnings", "--progress",
             "-o", str(stub) + ".%(ext)s",
         ]
-        if FIREFOX_COOKIES_PROFILE:
-            ytdlp_cmd_base += ["--cookies-from-browser", f"firefox:{FIREFOX_COOKIES_PROFILE}"]
-        elif COOKIES_FILE:
-            ytdlp_cmd_base += ["--cookies", str(COOKIES_FILE)]
+        # IMPORTANTE: Se omiten las cookies intencionalmente para evadir el experimento "SABR streaming"
+        # que fuerza HLS a 1080p máximo en cuentas logueadas, perdiéndose el 4K DASH original.
+        # El PO Token (bgutil) provee acceso anónimo seguro sorteando el error 403.
+        # if FIREFOX_COOKIES_PROFILE:
+        #     ytdlp_cmd_base += ["--cookies-from-browser", f"firefox:{FIREFOX_COOKIES_PROFILE}"]
+        # elif COOKIES_FILE:
+        #     ytdlp_cmd_base += ["--cookies", str(COOKIES_FILE)]
+        
+        ytdlp_cmd_base += ["--remote-components", "ejs:github"]
 
         for selector in [
             "bestvideo[height>=2160]+bestaudio[ext=m4a]/bestvideo[height>=2160]+bestaudio/best[height>=2160]/bestvideo+bestaudio/best",
@@ -1250,4 +1255,21 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Arrancar el servidor bgutil en segundo plano para el PO Token de yt-dlp
+    bgutil_proc = None
+    if Path("/root/bgutil-ytdlp-pot-provider/server/build/main.js").exists():
+        log.info("Arrancando bgutil HTTP server para PO Token...")
+        bgutil_proc = subprocess.Popen(
+            ["node", "/root/bgutil-ytdlp-pot-provider/server/build/main.js"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        import time
+        time.sleep(2) # Darle tiempo a arrancar
+        
+    try:
+        main()
+    finally:
+        if bgutil_proc:
+            bgutil_proc.terminate()
+            bgutil_proc.wait()
