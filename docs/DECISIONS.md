@@ -145,3 +145,17 @@ canal.
   como constructor/runner base y `meta_uploader.py` como capa de subida.
 - Consecuencia: los docs del repo deben usar "videos optimizados" para el
   carril `second_pass/`, aunque el folder tecnico siga existiendo por ahora.
+
+## 2026-09-06: Separar compatibilidad de proveedores entre Codex y el proxy
+- Contexto: se validaron DeepSeek, OpenRouter, B.AI y Groq para reducir coste
+  de modelos, reutilizando las credenciales locales de DeepSeek Harness.
+- Decision: conservar OpenAI/ChatGPT como proveedor predeterminado de Codex y
+  configurar solo DeepSeek, OpenRouter y Groq como proveedores directos de
+  Codex, porque la version instalada solo admite `Responses API` para
+  proveedores personalizados.
+- Decision: mantener B.AI gratuito en OpenCode y en Antigravity Manager, cuyo
+  adaptador soporta `chat/completions`; no se fuerza B.AI en Codex mientras sus
+  modelos gratuitos no expongan `/responses`.
+- Consecuencia: la seleccion automatica por coste debe vivir en Antigravity
+  Manager. En Codex se selecciona el proveedor de forma explicita y no se
+  cambia el modelo predeterminado sin una prueba completa del runtime local.

@@ -205,3 +205,23 @@
   - `scripts/linux/shortcut_4_VIGIA_FACEBOOK720.sh`
   - `docs/VIGIA_FACEBOOK720_DOZE_FIX.md`
 - **Pendiente:** Implementar en S24 Ultra y Vivo (conectar vivo para deploy).
+
+## Integracion de proveedores IA (2026-09-06)
+- Las credenciales locales de DeepSeek, OpenRouter, B.AI y Groq fueron
+  comprobadas contra sus endpoints de modelos sin guardar secretos en el repo.
+- OpenRouter y Groq confirmaron `Responses API` y streaming SSE; DeepSeek
+  confirma la API pero la cuenta responde `402 Insufficient Balance` al
+  generar; B.AI gratuito confirma que necesita `chat/completions`.
+- `~/.codex/config.toml` conserva OpenAI como predeterminado y ahora contiene
+  `deepseek-alt`, `openrouter` y `groq` como proveedores alternativos.
+- El catalogo de modelos personalizado de Codex se reconstruyo desde el
+  catalogo embebido compatible de la CLI y contiene opciones de DeepSeek,
+  OpenRouter y Groq.
+- El source de Antigravity Manager incorpora el enrutamiento por proveedor y
+  coste, junto con UI y refresco de modelos. El build frontend paso; `cargo
+  check` queda bloqueado por Rust `1.85.1` frente a dependencias que requieren
+  `1.88+`.
+- La CLI de Codex aun muestra una discrepancia de migracion en `state_5.sqlite`
+  y advertencias de plugins/MCP. Se documenta como bloqueo local, sin borrar
+  estado ni credenciales.
+- Detalle completo: `docs/PROVEEDORES_IA_CODEX_2026-09-06.md`.

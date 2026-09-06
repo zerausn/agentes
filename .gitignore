@@ -66,3 +66,6 @@ redhac_extract/output/
 redhac_extract/*.xlsx
 redhac_extract/*.json
 redhac_extract/REDHAC*.md
+
+# Descargas temporales del pipeline de YouTube; nunca versionarlas.
+youtube_uploader/yt_temp_dl/
