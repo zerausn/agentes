@@ -108,3 +108,10 @@ python limpiar.py  # aplica todos los fixes arriba
 - **Concatenados en mayúsculas sin espacio** (`OBJETIVOGENERAL`, `MARCODEORIGENDEUNPROYECTO`, `PROYECCIONDELASITUACION` etc.) detectados en headers escaneados. Fix general: diccionario español + segmentación greedy por `x0` para mayúsculas `>12 chars` sin espacio → `OBJETIVO GENERAL`, `MARCO DE ORIGEN...` (ver `scripts/linux/pdf2md-clean.py:segmentar_mayusculas`)
 - **Número pegado** `6MARCO`, `1.6MARCO`, `2.1EL` → regex `(\d+\.\d+)([A-Z])` y `(\d)([A-Z]{2,})`
 - **Código mejorado:** `pdf2md-clean.py` ahora aplica siempre: watermarks, headers repetidos, `<br>` tablas, guiones, y concatenados generales para que cualquier PDF futuro quede pulido sin casos manuales. Uso: `pdf2md-clean.py libro-LIMPIO.md`
+
+## Caso Huellas del Bosque (2026-09-14/15, PDF muy gráfico 13M 12 pág)
+- **Liviano (pymupdf+rapidocr, 48s):** `Huellas-del-Bosque-LIMPIO.md` (12KB) con errores (`Voz-qu6? Bosquos`, columnas mezcladas)
+- **Exigente (Marker `fast`, 10 hilos, 18.4 min):** `Huellas-del-Bosque-MARKER-30MIN.md` (6.1KB) más organizado, pero deja `![](...jpeg)` sin transcribir en páginas 100% imagen (diagramas, nubes, moodboard)
+- **Fix imágenes:** Marker extrae 27 jpeg a `Huellas_images/`. RapidOCR a las 27: 18 con texto, 9 fotos sin texto. Inyectado como `> [Texto en imagen ... - OCR]` → `Huellas-del-Bosque-FINAL-COMPLETO.md` (15KB). Regla: no borrar versiones previas, crear FINAL nuevo.
+- **Visión (qwen2.5vl:7b, 6GB, iGPU Intel Iris Xe 28GB vía `OLLAMA_IGPU_ENABLE=1` en puerto 11436):** `llava:7b` no sirve (dice "no hay texto" o bloque vacío en tipografía artística). `qwen2.5vl:7b` transcribe nubes/diagramas. Lote de 11 (7 nubes pág 8 + 4 diagramas) con timeout 600s, reanudable (salta `.txt` ya hechos) → `Huellas-del-Bosque-FINAL-VISION.md`. Ver `scripts/linux/` y `/tmp/huellas_qwen.py`.
+- **Lección:** en PDFs gritones con diseño, el texto vive dentro de imágenes; el pipeline debe incluir paso visión solo a imágenes con texto (no a fotos) para no alucinar.
