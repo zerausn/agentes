@@ -146,6 +146,11 @@ canal.
 - Consecuencia: los docs del repo deben usar "videos optimizados" para el
   carril `second_pass/`, aunque el folder tecnico siga existiendo por ahora.
 
+## 2026-09-16: Reparador ADB Vivo V2058 tras apagado (loopback 127.0.0.1:5555)
+- Contexto: el vigía TikTok `6_SUBIR_TIKTOK_SHIRABYOSHI_180` usa `adb -s 127.0.0.1:5555` dentro de Termux para UI automation (content query, am broadcast, uiautomator). Cada apagado del Vivo borra `service.adb.tcp.port` y el daemon Termux pierde `/tmp/adb.*.log` si `TMPDIR` no apunta a `$PREFIX/tmp`. Síntoma: `Connection refused`/`rc=255` en `MediaScanner broadcast`, `content query` y `force-stop`, abortando share intent con `No hay content URI` y dejando 342 pendientes atascados (ciclos exit 1 en `/sdcard/Antigravity/widget_logs/6_SUBIR_TIKTOK_SHIRABYOSHI_180.log`).
+- Decision: crear `scripts/linux/reparar_adb_vivo.sh` (mirror `~/Desktop/vivo/Reparar_ADB_Vivo.sh`) que ejecuta `adb -s 34237840310037S tcpip 5555`, verifica `getprop service.adb.tcp.port`, reconecta loopback con `run-as com.termux` exportando `PREFIX/TMPDIR/HOME/PATH` y `mkdir -p $TMPDIR`, y valida `adb devices`/`ADB_OK`/`wm size` + estado del vigía. Misma secuencia que `MOBILE_MIGRATION.md#3` pero automatizada en un clic.
+- Consecuencia: reparación manual pasa de 3 comandos a 1 script. El apagado sigue matando el vigía (requiere relanzar widget `6_SUBIR_TIKTOK_SHIRABYOSHI_180`); no se intenta auto-reparación sin root porque `setprop service.adb.tcp.port` falla en Vivo sin `adb tcpip` por USB.
+
 ## 2026-09-06: Separar compatibilidad de proveedores entre Codex y el proxy
 - Contexto: se validaron DeepSeek, OpenRouter, B.AI y Groq para reducir coste
   de modelos, reutilizando las credenciales locales de DeepSeek Harness.

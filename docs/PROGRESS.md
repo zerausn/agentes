@@ -206,6 +206,12 @@
   - `docs/VIGIA_FACEBOOK720_DOZE_FIX.md`
 - **Pendiente:** Implementar en S24 Ultra y Vivo (conectar vivo para deploy).
 
+## Reparador ADB Vivo V2058 (2026-09-16)
+- **Incidente:** 5 caídas consecutivas del Vivo (`V2058`/`34237840310037S`) por apagado — `adbd TCP` se resetea y el vigía TikTok queda con `Connection refused`/`rc=255`, fallando `MediaScanner broadcast` y `content query` (log: `Abortando share intent. No hay content URI`).
+- **Fix manual aplicado 5×:** `adb -s 34237840310037S tcpip 5555` + `run-as com.termux adb connect 127.0.0.1:5555` con `TMPDIR=$PREFIX/tmp` (fix `cannot open /tmp/adb.*.log`). Verificado con `ADB_OK` + `Physical size: 1080x2408`. Tras última reparación ciclo #6 OK: `[TIKTOK_OK] completados_shirabyoshi/20260703_212505_teaser_1.mp4 | Pendientes 341`.
+- **Script creado:** `scripts/linux/reparar_adb_vivo.sh` (mirror `~/Desktop/vivo/Reparar_ADB_Vivo.sh`) — 3 pasos automatizados + verificación vigía. Documentado en `docs/DECISIONS.md#2026-09-16`.
+- **Estado al 2026-09-16:** ADB loopback OK, cola `subidos a tiktok` vacía (0 pendientes, 286 en `completados_shirabyoshi`), vigía requiere relanzar widget `6_SUBIR_TIKTOK_SHIRABYOSHI_180` tras cada apagado.
+
 ## Integracion de proveedores IA (2026-09-06)
 - Las credenciales locales de DeepSeek, OpenRouter, B.AI y Groq fueron
   comprobadas contra sus endpoints de modelos sin guardar secretos en el repo.
