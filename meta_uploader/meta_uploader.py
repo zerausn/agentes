@@ -1411,7 +1411,7 @@ def _normalize_fb_status(status_blob):
 
     return video_status, processing_state or uploading_state, publishing_state
 
-def start_fb_status_verifier(video_id, allow_scheduled=False):
+def start_fb_status_verifier(video_id, allow_scheduled=False, page_token=None):
     """
     Lanza el verificador de estado en un hilo separado para permitir asincronía.
     Retorna el objeto Thread.
@@ -1419,7 +1419,7 @@ def start_fb_status_verifier(video_id, allow_scheduled=False):
     t = threading.Thread(
         target=wait_for_fb_video_status,
         args=(video_id,),
-        kwargs={"allow_scheduled": allow_scheduled},
+        kwargs={"allow_scheduled": allow_scheduled, "page_token": page_token},
         name=f"FBVerif-{video_id}",
     )
     t.daemon = True
@@ -1428,7 +1428,7 @@ def start_fb_status_verifier(video_id, allow_scheduled=False):
 
 
 
-def wait_for_fb_video_status(video_id, *, allow_scheduled=False):
+def wait_for_fb_video_status(video_id, *, allow_scheduled=False, page_token=None):
     """
     Valida el estado asincrono de videos/Reels de Facebook.
     Devuelve:
@@ -1437,8 +1437,9 @@ def wait_for_fb_video_status(video_id, *, allow_scheduled=False):
     - "scheduled" si Meta confirma que el video quedo programado
     - None si la subida fue aceptada pero no se pudo confirmar antes del timeout
     """
+    ptoken = page_token or META_FB_PAGE_TOKEN
     url = graph_url(str(video_id))
-    params = {"fields": "status,published,scheduled_publish_time", "access_token": META_FB_PAGE_TOKEN}
+    params = {"fields": "status,published,scheduled_publish_time", "access_token": ptoken}
 
     for _ in range(FB_STATUS_MAX_POLLS):
         result = _request_json("GET", url, params=params)
@@ -1479,19 +1480,21 @@ def wait_for_fb_video_status(video_id, *, allow_scheduled=False):
     return None
 
 
-def _start_fb_upload(page_endpoint, file_size):
+def _start_fb_upload(page_endpoint, file_size, page_token=None):
+    ptoken = page_token or META_FB_PAGE_TOKEN
     return _request_json(
         "POST",
         graph_url(page_endpoint),
         data={
             "upload_phase": "start",
             "file_size": str(file_size),
-            "access_token": META_FB_PAGE_TOKEN,
+            "access_token": ptoken,
         },
     )
 
 
-def _transfer_fb_upload(page_endpoint, upload_session_id, file_path, *, video_id, current_offset=0):
+def _transfer_fb_upload(page_endpoint, upload_session_id, file_path, *, video_id, current_offset=0, page_token=None):
+    ptoken = page_token or META_FB_PAGE_TOKEN
     file_size = os.path.getsize(file_path)
     target_chunk_bytes = max(FB_UPLOAD_MIN_CHUNK_BYTES, FB_UPLOAD_CHUNK_BYTES)
     chunk_bytes = target_chunk_bytes
@@ -1530,7 +1533,7 @@ def _transfer_fb_upload(page_endpoint, upload_session_id, file_path, *, video_id
             "upload_phase": "transfer",
             "upload_session_id": upload_session_id,
             "start_offset": str(current_offset),
-            "access_token": META_FB_PAGE_TOKEN,
+            "access_token": ptoken,
         }
         result = _post_transfer_chunk(
             graph_video_url(page_endpoint),
@@ -1603,11 +1606,12 @@ def _transfer_fb_upload(page_endpoint, upload_session_id, file_path, *, video_id
     return {"success": True, "upload_session_id": upload_session_id}
 
 
-def _finish_fb_upload(endpoint, video_id, description, upload_session_id=None, publish=True, scheduled_publish_time=None, background=False):
+def _finish_fb_upload(endpoint, video_id, description, upload_session_id=None, publish=True, scheduled_publish_time=None, background=False, page_id=None, page_token=None):
+    ptoken = page_token or META_FB_PAGE_TOKEN
     finish_payload = {
         "upload_phase": "finish",
         "video_id": video_id,
-        "access_token": META_FB_PAGE_TOKEN,
+        "access_token": ptoken,
     }
     if upload_session_id:
         finish_payload["upload_session_id"] = upload_session_id
@@ -1627,12 +1631,16 @@ def _finish_fb_upload(endpoint, video_id, description, upload_session_id=None, p
         str(video_id),
         allow_scheduled=bool(scheduled_publish_time),
         background=background,
+        page_id=page_id,
+        page_token=ptoken,
     )
 
 
-def _validate_facebook_credentials(require_app_id=False):
-    if not FB_PAGE_ID or not META_FB_PAGE_TOKEN:
-        logging.error("Faltan META_FB_PAGE_ID o META_FB_PAGE_TOKEN.")
+def _validate_facebook_credentials(require_app_id=False, page_id=None, page_token=None):
+    pid = page_id or FB_PAGE_ID
+    ptoken = page_token or META_FB_PAGE_TOKEN
+    if not pid or not ptoken:
+        logging.error("Faltan page_id o page_token para Facebook.")
         return False
     if require_app_id and not FB_APP_ID:
         logging.error("Falta META_APP_ID para el flujo de file handles.")
@@ -1640,11 +1648,17 @@ def _validate_facebook_credentials(require_app_id=False):
     return True
 
 
-def _upload_facebook_video_binary(video_id, video_path):
+def _get_fb_credentials(page_id=None, page_token=None):
+    """Retorna (page_id, page_token) usando los valores pasados o los globales."""
+    return (page_id or FB_PAGE_ID, page_token or META_FB_PAGE_TOKEN)
+
+
+def _upload_facebook_video_binary(video_id, video_path, page_token=None):
+    ptoken = page_token or META_FB_PAGE_TOKEN
     file_size = os.path.getsize(video_path)
     rupload_url = f"https://rupload.facebook.com/video-upload/{GRAPH_API_VERSION}/{video_id}"
     headers = {
-        "Authorization": f"OAuth {META_FB_PAGE_TOKEN}",
+        "Authorization": f"OAuth {ptoken}",
         "offset": "0",
         "file_offset": "0",
         "file_size": str(file_size),
@@ -1654,19 +1668,21 @@ def _upload_facebook_video_binary(video_id, video_path):
     return result is not None
 
 
-def _finalize_facebook_upload(endpoint, payload, video_id, *, allow_scheduled=False, background=False):
-    result = _request_json("POST", graph_url(f"{FB_PAGE_ID}/{endpoint}"), data=payload)
+def _finalize_facebook_upload(endpoint, payload, video_id, *, allow_scheduled=False, background=False, page_id=None, page_token=None):
+    pid = page_id or FB_PAGE_ID
+    ptoken = page_token or META_FB_PAGE_TOKEN
+    result = _request_json("POST", graph_url(f"{pid}/{endpoint}"), data=payload)
     if not result:
         return None
 
     if result.get("success") or result.get("video_id") or result.get("id"):
         if background:
             logging.info("Subida aceptada por Meta para %s. Iniciando verificador en segundo plano...", video_id)
-            verif_thread = start_fb_status_verifier(video_id, allow_scheduled=allow_scheduled)
+            verif_thread = start_fb_status_verifier(video_id, allow_scheduled=allow_scheduled, page_token=ptoken)
             _set_operation_status("success_background", "facebook_finish", str(video_id), transient=False)
             return video_id
 
-        status_result = wait_for_fb_video_status(video_id, allow_scheduled=allow_scheduled)
+        status_result = wait_for_fb_video_status(video_id, allow_scheduled=allow_scheduled, page_token=ptoken)
         if status_result is False:
             return None
         if status_result == "scheduled":
@@ -1681,7 +1697,7 @@ def _finalize_facebook_upload(endpoint, payload, video_id, *, allow_scheduled=Fa
         success_msg = f"Facebook confirmo la publicacion del video {video_id}."
         if payload.get("file_name"):
             success_msg = f"Facebook confirmo la publicacion del video {video_id} para {payload['file_name']}."
-            
+
         logging.info(success_msg)
         _set_operation_status("success", "facebook_finish", str(video_id), transient=False)
         return video_id
@@ -1699,179 +1715,165 @@ def upload_fb_reel(video_path, caption, scheduled_publish_time=None, _allow_fres
     3. finish
     4. polling de estado
     """
-    global FB_PAGE_ID, META_FB_PAGE_TOKEN
-    old_page_id, old_page_token = FB_PAGE_ID, META_FB_PAGE_TOKEN
-    if page_id: FB_PAGE_ID = str(page_id)
-    if page_token: META_FB_PAGE_TOKEN = str(page_token)
+    pid, ptoken = _get_fb_credentials(page_id, page_token)
+    if not _validate_facebook_credentials(page_id=pid, page_token=ptoken):
+        return None
 
-    try:
-        if not _validate_facebook_credentials():
-            return None
+    if is_draft:
+        scheduled_publish_time = None
 
-        if is_draft:
-            scheduled_publish_time = None
+    file_path = Path(video_path)
+    if not file_path.exists():
+        logging.error("No existe el archivo para subir a Facebook Reels: %s", file_path)
+        return None
 
-        file_path = Path(video_path)
-        if not file_path.exists():
-            logging.error("No existe el archivo para subir a Facebook Reels: %s", file_path)
-            return None
-
-        file_size = file_path.stat().st_size
-        page_endpoint = f"{FB_PAGE_ID}/video_reels"
-        checkpoint = _load_fb_upload_checkpoint(page_endpoint, str(file_path), file_size)
-        if checkpoint:
-            video_id = checkpoint["video_id"]
-            upload_session_id = checkpoint["upload_session_id"]
-            current_offset = int(checkpoint.get("current_offset") or 0)
-            logging.info(
-                "Se reutiliza checkpoint de Facebook Reel para %s con sesion %s en offset %s.",
-                file_path.name,
-                upload_session_id,
-                current_offset,
-            )
-        else:
-            start_result = _start_fb_upload(page_endpoint, file_size)
-            if not start_result:
-                return None
-
-            video_id = start_result.get("video_id")
-            if not video_id:
-                logging.error("Facebook no devolvio video_id en start de Reel: %s", start_result)
-                return None
-
-            upload_session_id = start_result.get("upload_session_id") or start_result.get("video_id")
-            if not upload_session_id:
-                logging.error("Facebook no devolvio upload_session_id ni video_id en start de Reel: %s", start_result)
-                return None
-            current_offset = 0
-
-        if not _upload_facebook_video_binary(str(video_id), str(file_path)):
-            if checkpoint and _allow_fresh_retry and not get_last_operation_status().get("transient"):
-                logging.warning(
-                    "No se pudo reanudar el checkpoint de Facebook Reel para %s. Se reinicia una sesion nueva.",
-                    file_path.name,
-                )
-                _delete_fb_upload_checkpoint(page_endpoint, str(file_path))
-                return upload_fb_reel(video_path, caption, scheduled_publish_time=scheduled_publish_time, _allow_fresh_retry=False, is_draft=is_draft, background=background, page_id=page_id, page_token=page_token)
-            return None
-
-        result = _finish_fb_upload(
-            "video_reels",
-            str(video_id),
-            caption,
-            str(upload_session_id),
-            publish=not is_draft,
-            scheduled_publish_time=scheduled_publish_time,
-            background=background,
+    file_size = file_path.stat().st_size
+    page_endpoint = f"{pid}/video_reels"
+    checkpoint = _load_fb_upload_checkpoint(page_endpoint, str(file_path), file_size)
+    if checkpoint:
+        video_id = checkpoint["video_id"]
+        upload_session_id = checkpoint["upload_session_id"]
+        current_offset = int(checkpoint.get("current_offset") or 0)
+        logging.info(
+            "Se reutiliza checkpoint de Facebook Reel para %s con sesion %s en offset %s.",
+            file_path.name,
+            upload_session_id,
+            current_offset,
         )
-        if result:
-            _delete_fb_upload_checkpoint(page_endpoint, str(file_path))
-        elif checkpoint and _allow_fresh_retry and not get_last_operation_status().get("transient"):
+    else:
+        start_result = _start_fb_upload(page_endpoint, file_size)
+        if not start_result:
+            return None
+
+        video_id = start_result.get("video_id")
+        if not video_id:
+            logging.error("Facebook no devolvio video_id en start de Reel: %s", start_result)
+            return None
+
+        upload_session_id = start_result.get("upload_session_id") or start_result.get("video_id")
+        if not upload_session_id:
+            logging.error("Facebook no devolvio upload_session_id ni video_id en start de Reel: %s", start_result)
+            return None
+        current_offset = 0
+
+    if not _upload_facebook_video_binary(str(video_id), str(file_path), ptoken):
+        if checkpoint and _allow_fresh_retry and not get_last_operation_status().get("transient"):
             logging.warning(
-                "Finish rechazo la sesion de Facebook Reel reanudada de %s. Se limpia el checkpoint caducado y se reinicia.",
+                "No se pudo reanudar el checkpoint de Facebook Reel para %s. Se reinicia una sesion nueva.",
                 file_path.name,
             )
             _delete_fb_upload_checkpoint(page_endpoint, str(file_path))
-            return upload_fb_reel(video_path, caption, scheduled_publish_time=scheduled_publish_time, _allow_fresh_retry=False, is_draft=is_draft, background=background, page_id=page_id, page_token=page_token)
-        return result
+            return upload_fb_reel(video_path, caption, scheduled_publish_time=scheduled_publish_time, _allow_fresh_retry=False, is_draft=is_draft, page_id=pid, page_token=ptoken)
+        return None
 
-    finally:
-        FB_PAGE_ID, META_FB_PAGE_TOKEN = old_page_id, old_page_token
+    result = _finish_fb_upload(
+        "video_reels",
+        str(video_id),
+        caption,
+        str(upload_session_id),
+        publish=not is_draft,
+        scheduled_publish_time=scheduled_publish_time,
+        background=background,
+        page_id=pid,
+    )
+    if result:
+        _delete_fb_upload_checkpoint(page_endpoint, str(file_path))
+    elif checkpoint and _allow_fresh_retry and not get_last_operation_status().get("transient"):
+        logging.warning(
+            "Finish rechazo la sesion de Facebook Reel reanudada de %s. Se limpia el checkpoint caducado y se reinicia.",
+            file_path.name,
+        )
+        _delete_fb_upload_checkpoint(page_endpoint, str(file_path))
+        return upload_fb_reel(video_path, caption, scheduled_publish_time=scheduled_publish_time, _allow_fresh_retry=False, is_draft=is_draft, background=background)
+    return result
 
 
 def upload_fb_video_standard(video_path, description, scheduled_publish_time=None, _allow_fresh_retry=True, is_draft=False, background=False, page_id=None, page_token=None):
     """
     Flujo de videos estandar de pagina usando start/upload/finish y validacion.
     """
-    global FB_PAGE_ID, META_FB_PAGE_TOKEN
-    old_page_id, old_page_token = FB_PAGE_ID, META_FB_PAGE_TOKEN
-    if page_id: FB_PAGE_ID = str(page_id)
-    if page_token: META_FB_PAGE_TOKEN = str(page_token)
+    pid, ptoken = _get_fb_credentials(page_id, page_token)
+    if not _validate_facebook_credentials(page_id=pid, page_token=ptoken):
+        return None
 
-    try:
-        if not _validate_facebook_credentials():
-            return None
+    if is_draft:
+        scheduled_publish_time = None
 
-        if is_draft:
-            scheduled_publish_time = None
+    file_path = Path(video_path)
+    if not file_path.exists():
+        logging.error("No existe el archivo para subir a videos de Facebook: %s", file_path)
+        return None
 
-        file_path = Path(video_path)
-        if not file_path.exists():
-            logging.error("No existe el archivo para subir a videos de Facebook: %s", file_path)
-            return None
-
-        file_size = file_path.stat().st_size
-        page_endpoint = f"{FB_PAGE_ID}/videos"
-        checkpoint = _load_fb_upload_checkpoint(page_endpoint, str(file_path), file_size)
-        if checkpoint:
-            video_id = checkpoint["video_id"]
-            upload_session_id = checkpoint["upload_session_id"]
-            current_offset = int(checkpoint.get("current_offset") or 0)
-            logging.info(
-                "Se reutiliza checkpoint de Facebook Post para %s con sesion %s en offset %s.",
-                file_path.name,
-                upload_session_id,
-                current_offset,
-            )
-        else:
-            start_result = _start_fb_upload(page_endpoint, file_size)
-            if not start_result:
-                return None
-
-            video_id = start_result.get("video_id")
-            if not video_id:
-                logging.error("Facebook no devolvio video_id en start de video: %s", start_result)
-                return None
-            upload_session_id = start_result.get("upload_session_id")
-            if not upload_session_id:
-                logging.error("Facebook no devolvio upload_session_id en start de video: %s", start_result)
-                return None
-            current_offset = 0
-
-        upload_already_complete = checkpoint and current_offset >= file_size
-        if upload_already_complete:
-            logging.info(
-                "El upload de Facebook Post para %s ya estaba completo (%s/%s). Saltando directo a FINISH.",
-                file_path.name, current_offset, file_size,
-            )
-        else:
-            if not _transfer_fb_upload(
-                page_endpoint,
-                str(upload_session_id),
-                str(file_path),
-                video_id=str(video_id),
-                current_offset=current_offset,
-            ):
-                if checkpoint and _allow_fresh_retry and not get_last_operation_status().get("transient"):
-                    logging.warning(
-                        "No se pudo reanudar el checkpoint de Facebook Post para %s. Se reinicia una sesion nueva.",
-                        file_path.name,
-                    )
-                    _delete_fb_upload_checkpoint(page_endpoint, str(file_path))
-                    return upload_fb_video_standard(video_path, description, scheduled_publish_time=scheduled_publish_time, _allow_fresh_retry=False, is_draft=is_draft, background=background, page_id=page_id, page_token=page_token)
-                return None
-
-        result = _finish_fb_upload(
-            "videos",
-            str(video_id),
-            description,
-            str(upload_session_id),
-            publish=not is_draft,
-            scheduled_publish_time=scheduled_publish_time,
-            background=background,
+    file_size = file_path.stat().st_size
+    page_endpoint = f"{pid}/videos"
+    checkpoint = _load_fb_upload_checkpoint(page_endpoint, str(file_path), file_size)
+    if checkpoint:
+        video_id = checkpoint["video_id"]
+        upload_session_id = checkpoint["upload_session_id"]
+        current_offset = int(checkpoint.get("current_offset") or 0)
+        logging.info(
+            "Se reutiliza checkpoint de Facebook Post para %s con sesion %s en offset %s.",
+            file_path.name,
+            upload_session_id,
+            current_offset,
         )
-        if result:
-            _delete_fb_upload_checkpoint(page_endpoint, str(file_path))
-        elif checkpoint and _allow_fresh_retry and not get_last_operation_status().get("transient"):
-            logging.warning(
-                "Finish rechazo la sesion de Facebook Post reanudada de %s. Se limpia el checkpoint caducado y se reinicia.",
-                file_path.name,
-            )
-            _delete_fb_upload_checkpoint(page_endpoint, str(file_path))
-            return upload_fb_video_standard(video_path, description, scheduled_publish_time=scheduled_publish_time, _allow_fresh_retry=False, is_draft=is_draft, background=background, page_id=page_id, page_token=page_token)
-        return result
-    finally:
-        FB_PAGE_ID, META_FB_PAGE_TOKEN = old_page_id, old_page_token
+    else:
+        start_result = _start_fb_upload(page_endpoint, file_size)
+        if not start_result:
+            return None
+
+        video_id = start_result.get("video_id")
+        if not video_id:
+            logging.error("Facebook no devolvio video_id en start de video: %s", start_result)
+            return None
+        upload_session_id = start_result.get("upload_session_id")
+        if not upload_session_id:
+            logging.error("Facebook no devolvio upload_session_id en start de video: %s", start_result)
+            return None
+        current_offset = 0
+
+    upload_already_complete = checkpoint and current_offset >= file_size
+    if upload_already_complete:
+        logging.info(
+            "El upload de Facebook Post para %s ya estaba completo (%s/%s). Saltando directo a FINISH.",
+            file_path.name, current_offset, file_size,
+        )
+    else:
+        if not _transfer_fb_upload(
+            page_endpoint,
+            str(upload_session_id),
+            str(file_path),
+            video_id=str(video_id),
+            current_offset=current_offset,
+        ):
+            if checkpoint and _allow_fresh_retry and not get_last_operation_status().get("transient"):
+                logging.warning(
+                    "No se pudo reanudar el checkpoint de Facebook Post para %s. Se reinicia una sesion nueva.",
+                    file_path.name,
+                )
+                _delete_fb_upload_checkpoint(page_endpoint, str(file_path))
+                return upload_fb_video_standard(video_path, description, scheduled_publish_time=scheduled_publish_time, _allow_fresh_retry=False, is_draft=is_draft)
+            return None
+
+    result = _finish_fb_upload(
+        "videos",
+        str(video_id),
+        description,
+        str(upload_session_id),
+        publish=not is_draft,
+        scheduled_publish_time=scheduled_publish_time,
+        background=background,
+    )
+    if result:
+        _delete_fb_upload_checkpoint(page_endpoint, str(file_path))
+    elif checkpoint and _allow_fresh_retry and not get_last_operation_status().get("transient"):
+        logging.warning(
+            "Finish rechazo la sesion de Facebook Post reanudada de %s. Se limpia el checkpoint caducado y se reinicia.",
+            file_path.name,
+        )
+        _delete_fb_upload_checkpoint(page_endpoint, str(file_path))
+        return upload_fb_video_standard(video_path, description, scheduled_publish_time=scheduled_publish_time, _allow_fresh_retry=False, is_draft=is_draft, background=background)
+    return result
 
 
 def upload_fb_file_handle(video_path, description, scheduled_publish_time=None, is_draft=False):
@@ -2006,31 +2008,24 @@ def republish_draft_to_scheduled(video_id, scheduled_unix_time):
         return False
 
 
-def get_facebook_page_feed(limit=5, after=None, page_id=None, page_token=None):
+def get_facebook_page_feed(limit=5, after=None):
     """
     Obtiene las publicaciones publicadas mas recientes de la pagina de Facebook.
     Soporta paginacion mediante el cursor 'after'. Limit=5 para resiliencia a errores 500.
-
-    Args:
-        page_id:    ID de la pagina a consultar. Si es None usa FB_PAGE_ID global.
-        page_token: Page Access Token. Si es None usa META_FB_PAGE_TOKEN global.
     """
-    pid    = page_id    or FB_PAGE_ID
-    ptoken = page_token or META_FB_PAGE_TOKEN
-
-    if not pid or not ptoken:
+    if not FB_PAGE_ID or not META_FB_PAGE_TOKEN:
         logging.error("Faltan FB_PAGE_ID o META_FB_PAGE_TOKEN para leer el feed.")
         return None
-
-    url = graph_url(f"{pid}/published_posts")
+    
+    url = graph_url(f"{FB_PAGE_ID}/published_posts")
     params = {
         "fields": "id,message,created_time,full_picture,attachments{media,type,subattachments}",
         "limit": limit,
-        "access_token": ptoken,
+        "access_token": META_FB_PAGE_TOKEN
     }
     if after:
         params["after"] = after
-
+        
     return _request_json("GET", url, params=params)
 
 
