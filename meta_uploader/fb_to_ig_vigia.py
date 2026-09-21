@@ -254,13 +254,21 @@ def _fetch_block(page_id, page_token, page_name, after_cursor=None, block_size=1
 
 
 def _find_newest_uncrossposted(posts, registry, ig_catalog_keys):
-    """Retorna el primer post no publicado (el mas reciente) de un bloque, o (None, None)."""
+    """Retorna el primer post no publicado (el mas reciente) de un bloque que tenga media, o (None, None)."""
     for post in posts:
         post_id = post.get("id")
         message = post.get("message", "")
         duplicate, content_keys, _ = find_duplicate_reason(post_id, message, registry, ig_catalog_keys)
         if not duplicate:
-            return post, content_keys
+            media_items, _ = extract_media_list(post)
+            if media_items:
+                return post, content_keys
+            else:
+                # Si no tiene media, lo marcamos como procesado inmediatamente para no volver a evaluarlo
+                from fb_to_ig_vigia import register_processed_post, HISTORY_FILE, load_history
+                history = load_history()
+                register_processed_post(history, registry, post_id, content_keys, remember_keys=False)
+                logging.info("Post %s ignorado en pre-filtro (sin media).", post_id)
     return None, None
 
 
