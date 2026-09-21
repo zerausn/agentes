@@ -237,3 +237,125 @@ canal.
 ### Fix de Identidad de Git en Entornos Limpios
 - **Problema:** En entornos `proot-distro` recién inicializados (ej: Vivo), el paso `git commit` fallaba silenciosamente con un error de "Author identity unknown".
 - **Solución:** Se configuró explícitamente dentro del Debian de los dispositivos de producción la identidad de Git (`zerausn@gmail.com` / `zerausn`) para que el script `sync_push()` pueda crear commits sin interrupciones.
+
+## 2026-09-21: Fix error (#200) en upload de teasers a Shirabyoshi Writings (S24)
+
+### Contexto
+El agente `4_VIGIA_FB_TEASERS` (widget en S24) fallaba consistentemente con:
+`(#200) Subject does not have permission to post videos on this target`
+al intentar subir videos de teaser a la página **Shirabyoshi Writings** (ID: `1347014641828725`).
+
+### Causa Raíz
+Triple fallo en la cadena de credenciales:
+
+1. **Token incorrecto:** El `META_FB_PAGE_TOKEN_TEASER` almacenado en `~/.agentes_termux_env`
+   del S24 era un token de tipo `SYSTEM_USER` (derivado de Business Manager) en lugar de un
+   `PAGE` Access Token. Los tokens `SYSTEM_USER` no tienen permisos de `publish_video` sobre
+   páginas individuales a través del endpoint `/video_reels`.
+
+2. **Variables sin `export`:** El archivo `~/.agentes_termux_env` usaba asignación directa
+   (`VAR=valor`) en lugar de `export VAR=valor`. El shell bash las hereda dentro del mismo
+   proceso, pero **proot-distro** las limpia completamente al hacer `login debian`. Python
+   jamás recibía `META_FB_PAGE_TOKEN_TEASER`.
+
+3. **Fallback catastrófico:** Al recibir string vacío para el token de Shirabyoshi, el código
+   de `subir_fb_evacuador_teasers.py` caía al fallback `META_FB_PAGE_TOKEN` (token de
+   Performatic Writings Cali), que tampoco tiene permisos sobre Shirabyoshi.
+
+### Solución Aplicada
+
+**a) Regeneración del Page Token de Shirabyoshi:**
+Se usó `META_PAGE_TOKEN` (System User Token) para derivar el Page Access Token correcto
+vía `GET /{page-id}?fields=access_token`. Este token derivado es de tipo `PAGE`, tiene
+`profile_id=1347014641828725` y acepta `publish_video` en el endpoint `/video_reels`. 
+
+Verificación con prueba de subida real:
+```
+POST /v21.0/1347014641828725/video_reels → start: video_id OK
+Binary upload: 100% → upload: success:true
+Finish: success:true, post_id: 122153788701044766
+```
+
+**b) Fix en `~/.agentes_termux_env` (S24):**
+Se añadió `export` a todas las variables `META_*` para que proot-distro las herede:
+```bash
+# ANTES (roto)
+META_FB_PAGE_TOKEN_TEASER=EAAUr7rt...
+# DESPUÉS (correcto)
+export META_FB_PAGE_TOKEN_TEASER=EAAUr7rt...
+```
+
+**c) Fallback hardcodeado en `subir_fb_evacuador_teasers.py`:**
+Se agregó el token como valor por defecto en el `os.environ.get()`, garantizando
+que incluso si proot limpia el entorno, el script tenga credenciales válidas:
+```python
+FB_PAGE_TOKEN_TEASER = os.environ.get(
+    "META_FB_PAGE_TOKEN_TEASER",
+    "EAAUr7rtgpvMBSmu..."  # fallback a prueba de proot
+)
+```
+
+**d) Override global en `upload_video()`:**
+Se añadió inyección de credenciales en los globales del módulo `meta_uploader`
+antes de cualquier llamada a la API, para evitar que `_start_fb_upload` o
+`_finish_fb_upload` usen el token equivocado:
+```python
+import meta_uploader
+meta_uploader.META_FB_PAGE_TOKEN = page_token
+os.environ["META_FB_PAGE_TOKEN"] = page_token
+```
+
+**e) Actualización de `META_GRAPH_API_VERSION` a `v21.0`:**
+El `.env` local y en S24 usaban `v19.0` (febrero 2024). Se actualizó a `v21.0`
+como prevención de deprecaciones. El cambio se sincronizó al S24 vía ADB.
+
+### Archivos Modificados
+- `meta_uploader/.env` — token + `META_GRAPH_API_VERSION=v21.0`
+- `meta_uploader/subir_fb_evacuador_teasers.py` — fallback hardcoded + override global
+- `meta_uploader/meta_uploader.py` — `get_facebook_page_feed()` acepta `page_id`/`page_token`
+- `meta_uploader/fb_to_ig_vigia.py` — soporte multi-página (ver decisión siguiente)
+- S24 `~/.agentes_termux_env` — `export` en todas las variables `META_*`
+- S24 `scripts/linux/vigia_meta720_termux.sh` — inyecta tokens de Shirabyoshi en proot
+
+### Consecuencia
+Los teasers de Shirabyoshi Writings se suben sin error `(#200)`. El patrón de
+fallback hardcoded en el script Python protege contra futuros borrados accidentales
+del token en el entorno de Termux/proot.
+
+---
+
+## 2026-09-21: `fb_to_ig_vigia.py` ahora reconcilia MÚLTIPLES páginas de Facebook → Instagram
+
+### Contexto
+El Vigía solo leía el feed de **Performatic Writings Cali** (`META_FB_PAGE_ID`).
+La página **Shirabyoshi Writings** también publica contenido que debe cruzarse a Instagram.
+
+### Decisiones
+
+1. **Lista `FB_PAGES`:** Se declara en el módulo como lista de tuplas `(page_id, page_token, page_name)`.
+   Se lee de variables de entorno con fallback hardcoded para resistencia a proot:
+   ```python
+   FB_PAGES = [
+       (os.environ.get("META_FB_PAGE_ID", ...), ..., "Performatic Writings Cali"),
+       (os.environ.get("META_FB_PAGE_ID_TEASER", "1347014641828725"), ..., "Shirabyoshi Writings"),
+   ]
+   ```
+
+2. **`get_facebook_page_feed()` con `page_id`/`page_token` opcionales:**
+   Se extendió la firma para aceptar credenciales específicas por página sin mutar
+   las variables globales del módulo. Retrocompatible: si no se pasan, usa los globales.
+
+3. **Orden más reciente primero:** Se recopilan todos los posts de todas las páginas,
+   se mezclan en una lista única y se ordenan descendente por `created_time` antes de
+   procesar. Así el content más fresco llega primero a Instagram.
+
+4. **Logs con prefijo de página:** Cada línea del log indica `[Shirabyoshi Writings]`
+   o `[Performatic Writings Cali]` para facilitar trazabilidad.
+
+5. **`vigia_meta720_termux.sh` actualizado:** Inyecta `META_FB_PAGE_TOKEN_TEASER` como
+   variable de entorno explícita en el contexto proot antes de ejecutar Python.
+
+### Consecuencia
+El cruce FB→IG ahora cubre ambas páginas. Los posts más recientes (de cualquier página)
+tienen prioridad. El registro de deduplicación compartido (`crosspost_dedupe_registry.json`)
+evita duplicados entre páginas.

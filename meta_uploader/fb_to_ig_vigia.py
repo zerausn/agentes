@@ -10,6 +10,7 @@ from pathlib import Path
 # Importamos motores del uploader base
 from meta_uploader import (
     FB_PAGE_ID,
+    META_FB_PAGE_TOKEN,
     IG_USER_ID,
     get_facebook_page_feed,
     get_instagram_library_batch,
@@ -17,13 +18,13 @@ from meta_uploader import (
     publish_ig_container,
     check_ig_publish_limit,
     ensure_ig_compatibility,
-    probe_video
+    probe_video,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
 HISTORY_FILE = BASE_DIR / "crosspost_history.json"
 DEDUPE_REGISTRY_FILE = BASE_DIR / "crosspost_dedupe_registry.json"
-POLL_INTERVAL_SECONDS = 86400  # Cambiado a 24 horas (Daily) conforme a solicitud
+POLL_INTERVAL_SECONDS = 86400  # 24 horas (Daily)
 CAPTION_SIGNATURE = "\n\n#PW\nSíguenos también en Facebook"
 STEM_PATTERNS = (
     re.compile(r"\b\d{8}[\s_-]\d{6}(?:_\d+)?\b", re.IGNORECASE),
@@ -34,14 +35,38 @@ PW_PREFIX_RE = re.compile(r"^\s*pw\s*\|\s*\d{4}-\d{2}-\d{2}\s*\|\s*", re.IGNOREC
 NOISE_TOKEN_RE = re.compile(r"(?i)\s*#(?:pw|full|teaser|hq|pc|p)\b")
 MULTISPACE_RE = re.compile(r"\s+")
 
+# ----------------------------------------------------------------
+# Páginas de Facebook a monitorear → Instagram
+# Se leen desde el entorno para soportar múltiples páginas sin
+# modificar el módulo base (meta_uploader.py).
+# Cada entrada: (page_id, page_token, page_name)
+# ----------------------------------------------------------------
+FB_PAGES = [
+    (
+        os.environ.get("META_FB_PAGE_ID", FB_PAGE_ID),
+        os.environ.get("META_FB_PAGE_TOKEN", META_FB_PAGE_TOKEN),
+        "Performatic Writings Cali",
+    ),
+    (
+        os.environ.get("META_FB_PAGE_ID_TEASER", "1347014641828725"),
+        os.environ.get(
+            "META_FB_PAGE_TOKEN_TEASER",
+            # Fallback hardcoded: proot puede limpiar el entorno en Android
+            "EAAUr7rtgpvMBSmuoJG2DaiWjd8G6pjRDVOdBUyLtDZBupMeEJd9Ef8RuZAqi1Yhpb6CZBWYjpOwEz3Ht6SB9FkZC3SDDnSa7rLtNTTMVlCjMAZAA4di3m7M2IFeFDHfOqog3eUqL7h0alxQ8DIvc8v9mf84m4ytfYQEWl1C3Vg6LjKKR1NbcJYXnGkbje2D0GWcvZCoDJZC",
+        ),
+        "Shirabyoshi Writings",
+    ),
+]
+
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - [VIGIA-2.0] - %(levelname)s - %(message)s",
+    format="%(asctime)s - [VIGIA-3.0] - %(levelname)s - %(message)s",
     handlers=[
         logging.FileHandler(BASE_DIR / "fb_to_ig_vigia.log", encoding="utf-8"),
-        logging.StreamHandler()
-    ]
+        logging.StreamHandler(),
+    ],
 )
+
 
 def load_history():
     if not HISTORY_FILE.exists():
@@ -170,31 +195,32 @@ def find_duplicate_reason(post_id, message, registry, ig_catalog_keys):
 
     return False, content_keys, ""
 
+
 def extract_media_list(post):
     """
-    Extrae CUALQUIER media del post. Si es un carrusel, devuelve una lista de items individuales.
+    Extrae CUALQUIER media del post.
+    Si es un carrusel devuelve items individuales.
     """
     items = []
     message = post.get("message", "")
     full_picture = post.get("full_picture")
     attachments = post.get("attachments", {}).get("data", [])
-    
-    # Caso 1: Revisar sub-attachments (Album/Carrusel)
-    # El usuario quiere que cada foto del album sea un post individual.
+
+    # Caso 1: sub-attachments (Album/Carrusel)
     for att in attachments:
         sub = att.get("subattachments", {}).get("data", [])
         if sub:
             for node in sub:
-                media_url = node.get("media", {}).get("source") # Para videos en sub-att
-                if not media_url: # Para fotos
+                media_url = node.get("media", {}).get("source")
+                if not media_url:
                     media_url = node.get("media", {}).get("image", {}).get("src")
-                
                 m_type = "VIDEO" if "video" in node.get("type", "") else "IMAGE"
                 if media_url:
                     items.append({"url": media_url, "type": m_type})
-            if items: return items, message
-            
-    # Caso 2: Video individual en main metadata
+            if items:
+                return items, message
+
+    # Caso 2: Video individual
     for att in attachments:
         if "video" in att.get("type", ""):
             media_url = att.get("media", {}).get("source")
@@ -206,19 +232,71 @@ def extract_media_list(post):
     if full_picture:
         items.append({"url": full_picture, "type": "IMAGE"})
         return items, message
-    
+
     return [], message
 
+
+def _fetch_all_posts_from_page(page_id, page_token, page_name, limit_per_page=5):
+    """
+    Recorre todas las paginas del feed de una pagina de Facebook.
+    Retorna lista de posts enriquecidos con '_source_page_*' para debug.
+    """
+    posts = []
+    after_cursor = None
+    page_num = 0
+
+    while True:
+        page_num += 1
+        logging.info(
+            "[%s] Solicitando pagina %s de feed FB (after=%s)...",
+            page_name, page_num, after_cursor,
+        )
+        fb_feed = get_facebook_page_feed(
+            limit=limit_per_page,
+            after=after_cursor,
+            page_id=page_id,
+            page_token=page_token,
+        )
+
+        if fb_feed is None:
+            logging.error(
+                "[%s] Fallo al obtener feed. Abortando paginacion de esta pagina.", page_name
+            )
+            break
+
+        page_data = fb_feed.get("data") or []
+        if not page_data:
+            logging.info("[%s] No hay mas posts en el feed.", page_name)
+            break
+
+        for post in page_data:
+            post["_source_page_id"] = page_id
+            post["_source_page_name"] = page_name
+            post["_source_page_token"] = page_token
+        posts.extend(page_data)
+
+        after_cursor = (fb_feed.get("paging") or {}).get("cursors", {}).get("after")
+        if not after_cursor:
+            break
+
+    return posts
+
+
 def process_new_posts(dry_run=False):
-    logging.info("--- Iniciando ciclo de reconciliación FB -> IG (Escaneo Profundo) ---")
+    logging.info(
+        "--- Iniciando ciclo de reconciliacion FB -> IG "
+        "(Multi-Pagina, Mas Reciente Primero) ---"
+    )
     history = load_history()
     registry = load_dedupe_registry()
     registry["processed_post_ids"].update(history)
 
-    # 1. Obtener catálogo completo de Instagram para reconciliar, no solo los ultimos 5.
+    # 1. Catalogo IG para deduplicacion
     ig_catalog = get_instagram_library_batch(max_pages=150, use_cache=True)
     if ig_catalog is None:
-        logging.error("Fallo critico: No se pudo sincronizar el catalogo de Instagram. Abortando Vigia por seguridad.")
+        logging.error(
+            "Fallo critico: No se pudo sincronizar el catalogo de Instagram. Abortando."
+        )
         return 0
     ig_catalog_keys = build_catalog_key_index(ig_catalog)
     logging.info(
@@ -227,233 +305,211 @@ def process_new_posts(dry_run=False):
         len(ig_catalog_keys),
     )
 
+    # 2. Recopilar posts de TODAS las paginas configuradas
+    all_posts = []
+    for page_id, page_token, page_name in FB_PAGES:
+        if not page_id or not page_token:
+            logging.warning("[%s] Sin credenciales — saltando pagina.", page_name)
+            continue
+        logging.info("[%s] Recopilando feed (page_id=%s)...", page_name, page_id)
+        page_posts = _fetch_all_posts_from_page(page_id, page_token, page_name)
+        logging.info("[%s] %s posts obtenidos.", page_name, len(page_posts))
+        all_posts.extend(page_posts)
+
+    if not all_posts:
+        logging.info("No hay posts en ninguna pagina. Nada que procesar.")
+        return 0
+
+    # 3. Ordenar de MAS RECIENTE a MENOS RECIENTE
+    all_posts.sort(key=lambda p: p.get("created_time", ""), reverse=True)
+    logging.info(
+        "Total posts combinados a revisar (ordenados mas reciente primero): %s",
+        len(all_posts),
+    )
+
+    # 4. Procesar
     new_count = 0
-    after_cursor = None
     backlog_scan_active = True
-    
-    while backlog_scan_active:
-        logging.info("Solicitando pagina de feed FB (after=%s)...", after_cursor)
-        fb_feed = get_facebook_page_feed(limit=5, after=after_cursor)
 
-        if fb_feed is None:
-            logging.error("Fallo critico: No se pudo obtener el feed de Facebook (API Error). Abortando ciclo.")
-            break
-        if "data" not in fb_feed or not fb_feed["data"]:
-            logging.info("No hay mas posts en el feed de Facebook.")
+    for post in all_posts:
+        if not backlog_scan_active:
             break
 
-        page_rescues = 0
-        page_already_known = 0
-        
-        # Procesamos en orden cronologico inverso (mas reciente primero)
-        # Pero para el backlog profundo, usualmente procesamos lo que llega
-        for post in fb_feed["data"]:
-            post_id = post.get("id")
-            message = post.get("message", "")
-            
+        post_id = post.get("id")
+        message = post.get("message", "")
+        src_page = post.get("_source_page_name", "desconocida")
 
-            duplicate, content_keys, duplicate_reason = find_duplicate_reason(
-                post_id,
-                message,
-                registry,
-                ig_catalog_keys,
+        duplicate, content_keys, duplicate_reason = find_duplicate_reason(
+            post_id, message, registry, ig_catalog_keys
+        )
+
+        if duplicate:
+            logging.info(
+                "[%s] Post %s omitido por duplicado (%s).",
+                src_page, post_id, duplicate_reason,
             )
-            
-            # Si ya esta en el historial o si IG ya tiene el mismo contenido, lo registramos y seguimos.
-            if duplicate:
-                logging.info("Reconciliacion: Post %s omitido por duplicado (%s).", post_id, duplicate_reason)
-                register_processed_post(history, registry, post_id, content_keys, remember_keys=True)
-                page_already_known += 1
-                continue
+            register_processed_post(history, registry, post_id, content_keys, remember_keys=True)
+            continue
 
-            if dry_run:
-                logging.info("Dry-Run: Post %s detectado como faltante. Claves=%s", post_id, sorted(content_keys))
-                page_rescues += 1
-                continue
+        if dry_run:
+            logging.info(
+                "[%s] Dry-Run: Post %s detectado como faltante. Claves=%s",
+                src_page, post_id, sorted(content_keys),
+            )
+            new_count += 1
+            continue
 
-            logging.info("Procesando rescate de post: %s", post_id)
-            media_items, original_caption = extract_media_list(post)
-            
-            if not media_items:
-                logging.info("Post %s no tiene media. Saltando.", post_id)
-                register_processed_post(history, registry, post_id, remember_keys=False)
-                page_already_known += 1
-                continue
+        logging.info("[%s] Procesando rescate de post: %s", src_page, post_id)
+        media_items, original_caption = extract_media_list(post)
 
-            # Preparar caption final con firma
-            final_caption = (original_caption or "").strip() + CAPTION_SIGNATURE
+        if not media_items:
+            logging.info("[%s] Post %s no tiene media. Saltando.", src_page, post_id)
+            register_processed_post(history, registry, post_id, remember_keys=False)
+            continue
 
-            at_least_one_success = False
-            for idx, item in enumerate(media_items):
-                targets = ["FEED"]
-                if item["type"] == "VIDEO":
-                    targets = ["REELS"] 
-                
-                from meta_uploader import ensure_ig_compatibility
-                import requests
+        final_caption = (original_caption or "").strip() + CAPTION_SIGNATURE
 
-                local_path = None
-                try:
-                    logging.info("Descargando media para optimizacion local...")
-                    temp_file = BASE_DIR / f"temp_vigia_{post_id}_{idx}.mp4"
-                    resp = requests.get(item["url"], stream=True, timeout=30)
+        at_least_one_success = False
+        temp_file = None
+        local_path = None
 
-                    with open(temp_file, "wb") as f:
-                        for chunk in resp.iter_content(chunk_size=8192):
-                            f.write(chunk)
-                    
-                    local_path = ensure_ig_compatibility(str(temp_file), force_recode=False)
-                    vinfo = probe_video(local_path)
-                    duration = vinfo.get("duration_seconds", 0)
-                    
-                    active_targets = list(targets)
-                    if duration > 90:
-                        logging.info("Video largo detectado (%.2fs): Activando estrategia de Post de Feed Completo.", duration)
-                        if "FEED" not in active_targets:
-                            active_targets.append("FEED")
-                except Exception as e:
-                    logging.error("Fallo descarga/optimizacion local: %s", e)
-                    success_all = False
-                    continue
+        for idx, item in enumerate(media_items):
+            targets = ["REELS"] if item["type"] == "VIDEO" else ["FEED"]
 
-                for target_type in active_targets:
-                    if not check_ig_publish_limit():
-                        logging.error("Limite oficial de Instagram de la API alcanzado. Abortando ciclo temporalmente.")
-                        backlog_scan_active = False # Salimos de todo el escaneo
-                        success_all = False
-                        break
-                    
-                    logging.info("Subiendo item %s/%s a IG %s (Binario)...", idx+1, len(media_items), target_type)
-                    path_for_target = local_path
-                    
-                    if target_type == "STORIES" and item["type"] == "VIDEO":
-                        path_for_target = ensure_ig_compatibility(local_path, max_duration=60)
-                    elif target_type == "REELS" and duration > 90:
-                        logging.info("Recortando Reel a 90s para asegurar aceptacion de Meta.")
-                        path_for_target = ensure_ig_compatibility(local_path, max_duration=90)
-                    elif target_type == "FEED":
-                        path_for_target = local_path
+            from meta_uploader import ensure_ig_compatibility
+            import requests
 
-                    from meta_uploader import (
-                        _create_ig_video_container,
-                        upload_ig_binary,
-                        publish_ig_container
+            try:
+                logging.info("[%s] Descargando media para optimizacion local...", src_page)
+                temp_file = BASE_DIR / f"temp_vigia_{post_id}_{idx}.mp4"
+                resp = requests.get(item["url"], stream=True, timeout=30)
+                with open(temp_file, "wb") as f:
+                    for chunk in resp.iter_content(chunk_size=8192):
+                        f.write(chunk)
+
+                local_path = ensure_ig_compatibility(str(temp_file), force_recode=True)
+                vinfo = probe_video(local_path)
+                duration = vinfo.get("duration_seconds", 0)
+
+                active_targets = list(targets)
+                if duration > 90 and "FEED" not in active_targets:
+                    logging.info(
+                        "[%s] Video largo (%.2fs): activando Feed Completo.",
+                        src_page, duration,
                     )
-                    
-                    creation_id = None
-                    if target_type == "REELS":
-                        creation_id = _create_ig_video_container("REELS", caption=final_caption, share_to_feed=True)
-                    elif target_type == "STORIES":
-                        if item["type"] == "VIDEO":
-                            creation_id = _create_ig_video_container("STORIES")
-                    elif target_type == "FEED":
-                        creation_id = _create_ig_video_container("REELS", caption=final_caption, share_to_feed=True)
-                    
-                    if item["type"] == "VIDEO":
-                        if creation_id:
-                            # --- Intento con retry si Instagram rechaza por peso/formato ---
-                            upload_ok = False
-                            fallback_path = None
-                            for attempt in range(2):
-                                current_path = path_for_target if attempt == 0 else fallback_path
-                                logging.info(
-                                    "Contenedor %s listo. Esperando estabilizacion en Meta... (intento %s/2)",
-                                    target_type, attempt + 1,
-                                )
-                                time.sleep(2)
-                                if not upload_ig_binary(creation_id, current_path):
-                                    logging.warning("Upload binario fallo (intento %s/2)", attempt + 1)
-                                    if attempt == 0:
-                                        logging.info(
-                                            "Reintentando con recode CRF 18 para reducir peso..."
-                                        )
-                                        fallback_path = ensure_ig_compatibility(
-                                            local_path, force_recode=True, crf_value=18
-                                        )
-                                        # Re-crear contenedor para el reintento
-                                        from meta_uploader import _create_ig_video_container
-                                        if target_type == "REELS":
-                                            creation_id = _create_ig_video_container(
-                                                "REELS", caption=final_caption, share_to_feed=True
-                                            )
-                                        elif target_type == "STORIES":
-                                            creation_id = _create_ig_video_container("STORIES")
-                                        elif target_type == "FEED":
-                                            creation_id = _create_ig_video_container(
-                                                "REELS", caption=final_caption, share_to_feed=True
-                                            )
-                                        if not creation_id:
-                                            logging.error("No se pudo recrear contenedor para fallback.")
-                                            break
-                                    continue
-                                if wait_for_ig_container(creation_id):
-                                    ig_id = publish_ig_container(creation_id)
-                                    if ig_id:
-                                        logging.info("Video %s publicado en IG %s", post_id, target_type)
-                                        at_least_one_success = True
-                                        upload_ok = True
-                                        break
-                                else:
-                                    logging.warning("Contenedor IG no listo (intento %s/2)", attempt + 1)
+                    active_targets.append("FEED")
+            except Exception as e:
+                logging.error("[%s] Fallo descarga/optimizacion local: %s", src_page, e)
+                continue
 
-                            if upload_ok and fallback_path is not None and fallback_path != path_for_target and os.path.exists(fallback_path):
-                                try: os.remove(fallback_path)
-                                except: pass
-                        
-                        if path_for_target != local_path and os.path.exists(path_for_target):
-                            try: os.remove(path_for_target)
-                            except: pass
-                    else:
-                        from meta_uploader import create_ig_media_container_from_url
-                        creation_id = create_ig_media_container_from_url(item["url"], "IMAGE", final_caption, target=target_type)
-                        if creation_id and wait_for_ig_container(creation_id):
-                            ig_id = publish_ig_container(creation_id)
-                            if ig_id: 
-                                logging.info("Imagen %s publicada en IG %s", post_id, target_type)
-                                at_least_one_success = True
-
-                if not backlog_scan_active:
+            for target_type in active_targets:
+                if not check_ig_publish_limit():
+                    logging.error(
+                        "[%s] Limite oficial de Instagram alcanzado. Abortando ciclo.",
+                        src_page,
+                    )
+                    backlog_scan_active = False
                     break
 
-                if local_path and os.path.exists(local_path): 
-                    try: os.remove(local_path)
-                    except: pass
-                if local_path != str(temp_file) and os.path.exists(str(temp_file)):
-                    try: os.remove(str(temp_file))
-                    except: pass
+                logging.info(
+                    "[%s] Subiendo item %s/%s a IG %s (Binario)...",
+                    src_page, idx + 1, len(media_items), target_type,
+                )
+                path_for_target = local_path
 
-            # Si al menos un componente del post se subio, marcamos el post entero como procesado
-            # para evitar bucles de duplicados si otra parte (ej. Stories) falla.
-            if at_least_one_success:
-                register_processed_post(history, registry, post_id, content_keys, remember_keys=True)
-                ig_catalog_keys.update(content_keys)
-                page_rescues += 1
-                new_count += 1
+                if target_type == "STORIES" and item["type"] == "VIDEO":
+                    path_for_target = ensure_ig_compatibility(local_path, max_duration=60)
+                elif target_type == "REELS" and duration > 90:
+                    logging.info(
+                        "[%s] Recortando Reel a 90s para asegurar aceptacion.", src_page
+                    )
+                    path_for_target = ensure_ig_compatibility(local_path, max_duration=90)
+
+                from meta_uploader import (
+                    _create_ig_video_container,
+                    upload_ig_binary,
+                    publish_ig_container,
+                )
+
+                creation_id = None
+                if item["type"] == "VIDEO":
+                    if target_type in ("REELS", "FEED"):
+                        creation_id = _create_ig_video_container(
+                            "REELS", caption=final_caption, share_to_feed=True
+                        )
+                    elif target_type == "STORIES":
+                        creation_id = _create_ig_video_container("STORIES")
+
+                    if creation_id:
+                        logging.info(
+                            "[%s] Contenedor %s listo. Esperando propagacion...",
+                            src_page, target_type,
+                        )
+                        time.sleep(2)
+                        if upload_ig_binary(creation_id, path_for_target):
+                            if wait_for_ig_container(creation_id):
+                                ig_id = publish_ig_container(creation_id)
+                                if ig_id:
+                                    logging.info(
+                                        "[%s] Video %s publicado en IG %s",
+                                        src_page, post_id, target_type,
+                                    )
+                                    at_least_one_success = True
+
+                    if path_for_target != local_path and os.path.exists(path_for_target):
+                        try:
+                            os.remove(path_for_target)
+                        except Exception:
+                            pass
+                else:
+                    from meta_uploader import create_ig_media_container_from_url
+
+                    creation_id = create_ig_media_container_from_url(
+                        item["url"], "IMAGE", final_caption, target=target_type
+                    )
+                    if creation_id and wait_for_ig_container(creation_id):
+                        ig_id = publish_ig_container(creation_id)
+                        if ig_id:
+                            logging.info(
+                                "[%s] Imagen %s publicada en IG %s",
+                                src_page, post_id, target_type,
+                            )
+                            at_least_one_success = True
 
             if not backlog_scan_active:
                 break
-            
-        # Logica de paginacion:
-        # Se elimina el freno de 'pagina conocida' a peticion del usuario para 
-        # realizar una barrida (Deep Scan) total del historial de Facebook cada ciclo.
-        logging.info("Revision de la pagina completada. Reconciliados previamente: %s/%s", page_already_known, len(fb_feed["data"]))
-            
-        # Obtener cursor para la siguiente pagina
-        after_cursor = (fb_feed.get("paging") or {}).get("cursors", {}).get("after")
-        if not after_cursor:
-            logging.info("No hay mas paginas (cursor after nulo).")
-            break
 
-        # Limite de seguridad para evitar loops infinitos en una sola corrida
+            if local_path and os.path.exists(local_path):
+                try:
+                    os.remove(local_path)
+                except Exception:
+                    pass
+            if temp_file and local_path != str(temp_file) and os.path.exists(str(temp_file)):
+                try:
+                    os.remove(str(temp_file))
+                except Exception:
+                    pass
+
+        if at_least_one_success:
+            register_processed_post(history, registry, post_id, content_keys, remember_keys=True)
+            ig_catalog_keys.update(content_keys)
+            new_count += 1
+
         if new_count > 50:
-            logging.warning("Se ha alcanzado un lote grande (50+). Pausando para goteo adaptativo.")
+            logging.warning("Lote grande alcanzado (50+). Pausando para goteo adaptativo.")
             break
 
     logging.info("Ciclo finalizado. Rescatados %s posts en total.", new_count)
     return new_count
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Agente Vigia 3.2: Rescate y Reconciliacion FB-IG (Deep Scan)")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Agente Vigia 3.0: Reconciliacion Multi-Pagina FB -> IG "
+            "(Mas Reciente Primero)"
+        )
+    )
     parser.add_argument("--dry-run", action="store_true", help="Solo muestra lo que rescataria.")
     parser.add_argument("--once", action="store_true", help="Ejecuta una vez y sale.")
     args = parser.parse_args()
@@ -464,19 +520,19 @@ def main():
         except Exception as e:
             logging.error("Error en pulso del Vigia: %s", e)
             rescued = 0
-        
-        if args.once or args.dry_run: break
-        
+
+        if args.once or args.dry_run:
+            break
+
         if rescued > 0:
-            # Si hubo trabajo, dormimos poco (Polling Adaptativo de Alta Frecuencia)
-            wait_time = 600 # 10 minutos
-            logging.info("Backlog pendiente detectado. Reintentando limpieza en 10 minutos...")
+            wait_time = 600  # 10 minutos si habia backlog
+            logging.info("Backlog pendiente detectado. Reintentando en 10 minutos...")
         else:
-            # Si todo esta limpio, dormimos 24 horas (Daily Scan)
-            wait_time = 86400
+            wait_time = 86400  # 24 horas si todo esta al dia
             logging.info("Todo al dia. Durmiendo 24 horas hasta el proximo escaneo diario...")
-            
+
         time.sleep(wait_time)
+
 
 if __name__ == "__main__":
     main()

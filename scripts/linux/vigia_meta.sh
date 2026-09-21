@@ -43,7 +43,12 @@ echo ""
 BASE_DIR="/home/zerausn/Documents/Antigravity/agentes"
 cd "$BASE_DIR/meta_uploader" || exit
 
-"$BASE_DIR/.venv/bin/python3" fb_to_ig_vigia.py
+# Asegurar que las credenciales de Shirabyoshi esten disponibles
+export META_FB_PAGE_ID_TEASER="${META_FB_PAGE_ID_TEASER:-1347014641828725}"
+# META_FB_PAGE_TOKEN_TEASER debe venir del entorno (.env o ~/.agentes_env)
+# Si no está, se usara el fallback interno de fb_to_ig_vigia.py
+
+"$BASE_DIR/.venv/bin/python3" fb_to_ig_vigia.py "$@"
 
 if [ $? -ne 0 ]; then
     echo ""

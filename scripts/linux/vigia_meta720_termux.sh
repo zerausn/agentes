@@ -1,14 +1,17 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # ================================================================
-# VIGIA_META720 — Crossposteador FB->IG (S24 Termux)
-# Crosspostea 1 post de Facebook a Instagram cada 720 segundos.
+# VIGIA_META720 — Reconciliador FB→IG multi-página (S24 Termux)
+# Crosspostea posts de Facebook a Instagram cada 720 segundos.
 #
-# METODO: reloj del sistema (date +%s) para determinar cuándo
-# es el siguiente ciclo. Si Android pausa el proceso por Doze,
-# cuando despierte date +%s devuelve la hora REAL — si ya
-# pasaron 720s, crosspostea inmediatamente sin esperar más.
+# Páginas monitoreadas (más reciente primero):
+#   - Performatic Writings Cali  (META_FB_PAGE_ID)
+#   - Shirabyoshi Writings       (META_FB_PAGE_ID_TEASER=1347014641828725)
 #
-# + termux-wake-lock activo para minimizar pausas.
+# METODO: reloj del sistema (date +%s) — anti-Doze.
+# Si Android pausa el proceso por Doze, cuando despierte
+# date +%s devuelve hora REAL y continúa sin perder el ciclo.
+#
+# + termux-wake-lock para minimizar pausas.
 # + chequeo cada 15s (no sleep largo que Doze pueda congelar).
 # ================================================================
 
@@ -22,7 +25,7 @@ else
     PR_ROOT="/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/debian"
 fi
 ENV_FILE="$TERMUX_HOME/.agentes_termux_env"
-VIGIA_PROOT="$PR_ROOT/root/agentes/meta_uploader/fb_to_ig_vigia_720.py"
+VIGIA_PROOT="$PR_ROOT/root/agentes/meta_uploader/fb_to_ig_vigia.py"
 LOG_FILE="$PR_ROOT/root/agentes/meta_uploader/fb_to_ig_vigia.log"
 LOG_DIR="/sdcard/Antigravity/widget_logs"
 SESSION_LOG="$LOG_DIR/VIGIA_META720.log"
@@ -58,9 +61,11 @@ exec > >(tee -a "$SESSION_LOG") 2>&1
 
 echo ""
 echo "=============================================="
-echo "  VIGIA_META720 — reloj sistema"
+echo "  VIGIA_META720 — Reconciliador FB->IG"
 echo "  Intervalo: ${INTERVALO}s | Check: ${CHECK_INTERVAL}s"
 echo "  Inicio: $(date '+%Y-%m-%d %H:%M:%S')"
+echo "  Paginas: Performatic Writings Cali + Shirabyoshi Writings"
+echo "  Orden: MAS RECIENTE primero"
 echo "=============================================="
 
 if command -v termux-wake-lock >/dev/null 2>&1; then
@@ -78,7 +83,7 @@ if [ ! -x "$PROOT" ]; then
 fi
 
 if [ ! -f "$VIGIA_PROOT" ]; then
-    echo "[ERROR] No existe fb_to_ig_vigia_720.py"
+    echo "[ERROR] No existe fb_to_ig_vigia.py"
     echo "        Ruta: $VIGIA_PROOT"
     exit 1
 fi
@@ -99,9 +104,11 @@ while true; do
 
 source "$(dirname "$0")/_proot_bind.sh"
     "$PROOT" login debian "${PROOT_BIND_ARGS[@]}" -- /bin/bash -lc \
-        "set -o pipefail; cd /root/agentes/meta_uploader && \
-         AGENTES_STORAGE_ROOT=/sdcard/Antigravity \
-         python3 fb_to_ig_vigia_720.py 2>&1 | tee -a '${LOG_FILE}'"
+        "set -o pipefail; \
+         export META_FB_PAGE_ID_TEASER='${META_FB_PAGE_ID_TEASER:-1347014641828725}'; \
+         export META_FB_PAGE_TOKEN_TEASER='${META_FB_PAGE_TOKEN_TEASER}'; \
+         cd /root/agentes/meta_uploader && \
+         python3 fb_to_ig_vigia.py --once 2>&1 | tee -a '${LOG_FILE}'"
     EXIT_CODE=$?
 
     T_FIN=$(date +%s)
