@@ -517,8 +517,8 @@ def process_new_posts(dry_run=False):
             ig_catalog_keys.update(content_keys)
             new_count += 1
 
-        if new_count > 50:
-            logging.warning("Lote grande alcanzado (50+). Pausando para goteo adaptativo.")
+        if new_count >= 1:
+            logging.info("Límite de 1 post por ciclo alcanzado. Pausando para respetar intervalos de 720s.")
             break
 
     logging.info("Ciclo finalizado. Rescatados %s posts en total.", new_count)
