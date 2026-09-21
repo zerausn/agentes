@@ -236,9 +236,9 @@ def extract_media_list(post):
     return [], message
 
 
-def _fetch_all_posts_from_page(page_id, page_token, page_name, limit_per_page=5, max_pages=20):
+def _fetch_all_posts_from_page(page_id, page_token, page_name, known_post_ids=None, limit_per_page=5, max_pages=20):
     """
-    Recorre paginas del feed de una pagina de Facebook (hasta max_pages).
+    Recorre paginas del feed de una pagina de Facebook (hasta max_pages o hit de historial).
     Retorna lista de posts enriquecidos con '_source_page_*' para debug.
     """
     posts = []
@@ -269,11 +269,27 @@ def _fetch_all_posts_from_page(page_id, page_token, page_name, limit_per_page=5,
             logging.info("[%s] No hay mas posts en el feed.", page_name)
             break
 
+        boundary_reached = False
+        consecutive_known = 0
+
         for post in page_data:
             post["_source_page_id"] = page_id
             post["_source_page_name"] = page_name
             post["_source_page_token"] = page_token
+
+            post_id_val = post.get("id")
+            if known_post_ids and post_id_val in known_post_ids:
+                consecutive_known += 1
+                if consecutive_known >= 3:
+                    boundary_reached = True
+            else:
+                consecutive_known = 0
+
         posts.extend(page_data)
+
+        if boundary_reached:
+            logging.info("[%s] Boundary historico alcanzado (3 posts conocidos consecutivos). Deteniendo escaneo temprano.", page_name)
+            break
 
         if page_num >= max_pages:
             logging.info("[%s] Limite de %s paginas alcanzado. Deteniendo escaneo.", page_name, max_pages)
@@ -316,7 +332,9 @@ def process_new_posts(dry_run=False):
             logging.warning("[%s] Sin credenciales — saltando pagina.", page_name)
             continue
         logging.info("[%s] Recopilando feed (page_id=%s)...", page_name, page_id)
-        page_posts = _fetch_all_posts_from_page(page_id, page_token, page_name)
+        page_posts = _fetch_all_posts_from_page(
+            page_id, page_token, page_name, known_post_ids=registry["processed_post_ids"]
+        )
         logging.info("[%s] %s posts obtenidos.", page_name, len(page_posts))
         all_posts.extend(page_posts)
 
