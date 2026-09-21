@@ -236,9 +236,9 @@ def extract_media_list(post):
     return [], message
 
 
-def _fetch_all_posts_from_page(page_id, page_token, page_name, limit_per_page=5):
+def _fetch_all_posts_from_page(page_id, page_token, page_name, limit_per_page=5, max_pages=20):
     """
-    Recorre todas las paginas del feed de una pagina de Facebook.
+    Recorre paginas del feed de una pagina de Facebook (hasta max_pages).
     Retorna lista de posts enriquecidos con '_source_page_*' para debug.
     """
     posts = []
@@ -274,6 +274,10 @@ def _fetch_all_posts_from_page(page_id, page_token, page_name, limit_per_page=5)
             post["_source_page_name"] = page_name
             post["_source_page_token"] = page_token
         posts.extend(page_data)
+
+        if page_num >= max_pages:
+            logging.info("[%s] Limite de %s paginas alcanzado. Deteniendo escaneo.", page_name, max_pages)
+            break
 
         after_cursor = (fb_feed.get("paging") or {}).get("cursors", {}).get("after")
         if not after_cursor:
