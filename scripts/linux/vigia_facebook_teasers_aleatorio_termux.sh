@@ -65,7 +65,8 @@ wait_until() {
             return 0
         fi
 
-        printf "\r[TEASERS-ALEATORIO RELOJ] %3ds restantes (objetivo %s)..." "$diff" "$objetivo"
+        # Cuenta regresiva solo a terminal, no al log file (evita flood en SESSION_LOG)
+        printf "\r[TEASERS-ALEATORIO RELOJ] %3ds restantes (objetivo %s)..." "$diff" "$objetivo" > /dev/tty
         sleep "$CHECK_INTERVAL"
     done
 }
