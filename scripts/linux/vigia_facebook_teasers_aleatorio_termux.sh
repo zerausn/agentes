@@ -54,7 +54,6 @@ wait_until() {
     objetivo=$(date -d "@${target_epoch}" '+%H:%M:%S' 2>/dev/null \
                || date -r "${target_epoch}" '+%H:%M:%S' 2>/dev/null \
                || echo "??:??:??")
-    echo "[TEASERS-ALEATORIO ESPERA] Proxima subida a las: ${objetivo}"
 
     while true; do
         local now
@@ -66,7 +65,10 @@ wait_until() {
             return 0
         fi
 
-        printf "\r[TEASERS-ALEATORIO RELOJ] %3ds restantes (objetivo %s)..." "$diff" "$objetivo"
+        # Mostrar cuenta regresiva cada 30s (no cada 15s) para evitar flood
+        if [ $((diff % 30)) -eq 0 ] || [ "$diff" -le 30 ]; then
+            printf "\r[TEASERS-ALEATORIO RELOJ] %3ds restantes (objetivo %s)   " "$diff" "$objetivo"
+        fi
         sleep "$CHECK_INTERVAL"
     done
 }
@@ -83,6 +85,7 @@ echo "  VIGIA_FACEBOOK_TEASERS_ALEATORIO — reloj sistema"
 echo "  Intervalo: ALEATORIO ${INTERVALO_MIN}-${INTERVALO_MAX}s (10-16 min)"
 echo "  Check: ${CHECK_INTERVAL}s"
 echo "  Inicio: $(date '+%Y-%m-%d %H:%M:%S')"
+echo "  Destino: Shirabyoshi Writings (1347014641828725)"
 echo "=============================================="
 
 # Wake lock
