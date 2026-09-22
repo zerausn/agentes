@@ -65,10 +65,7 @@ wait_until() {
             return 0
         fi
 
-        # Mostrar cuenta regresiva cada 30s (no cada 15s) para evitar flood
-        if [ $((diff % 30)) -eq 0 ] || [ "$diff" -le 30 ]; then
-            printf "\r[TEASERS-ALEATORIO RELOJ] %3ds restantes (objetivo %s)   " "$diff" "$objetivo"
-        fi
+        printf "\r[TEASERS-ALEATORIO RELOJ] %3ds restantes (objetivo %s)..." "$diff" "$objetivo"
         sleep "$CHECK_INTERVAL"
     done
 }
