@@ -261,3 +261,65 @@
 - **Problema 3 (Aislamiento de Plugins en PC):** En Parrot OS, `yt-dlp` corría usando el binario global del sistema (`/usr/local/bin/yt-dlp`), lo que lo aislaba del entorno virtual (`.venv`) donde estaba instalado el plugin de BotGuard, provocando fallos en videos subsecuentes.
   - **Solución:** Se instaló el módulo nativo de `yt-dlp` vía pip en el `.venv`. Se modificó la invocación a `sys.executable, "-m", "yt_dlp"` para forzar a que yt-dlp corra en el entorno correcto y reconozca el plugin `bgutil`.
 - **Nuevo Flujo (Descarga al PC):** Se creó el script `5_BAJAR_YOUTUBE_SIN_LIMITE_PC.sh`. El sistema detecta automáticamente si el disco duro `/mnt/Videos` está conectado; si es así, redirige los crudos 4K directamente a `/mnt/Videos/antigravity/crudos`, evitando sobrecargar los dispositivos Android. El S24 ahora se reserva exclusivamente para subir el material procesado a las APIs de Meta y TikTok.
+
+## Vigía FB→IG v4.0 — Bloques de 100 posts + fallback histórico (2026-09-22)
+
+### Problema
+El Vigía anterior usaba un "early stop" que abortaba el escaneo en cuanto encontraba
+3 posts consecutivos ya publicados. En feeds donde los 3 posts más recientes ya
+estaban en IG pero había contenido nuevo un poco más abajo, el Vigía nunca lo encontraba.
+Adicionalmente, no existía estrategia para drenar el backlog de ~8,945 posts
+identificados por `audit_crosspost.py`.
+
+### Solución Implementada (fb_to_ig_vigia.py v4.0)
+- **5 bloques de 100 posts por página:** Cada ciclo de 720s revisa hasta 500 posts
+  por página de FB. Si un bloque está completamente ya publicado, avanza al siguiente.
+  Si encuentra uno nuevo, lo elige y para.
+- **Candidato más reciente cross-página:** Si ambas páginas tienen contenido nuevo,
+  se sube el post con `created_time` más reciente.
+- **Fallback al reporte histórico:** Si 5 bloques (500 posts) de todas las páginas
+  están publicados, consulta `missing_crossposts_report.json` y toma el post
+  más reciente pendiente de ese reporte.
+- **Pre-filtro de posts sin media:** `_find_newest_uncrossposted()` ahora salta
+  posts de solo texto dentro del mismo bloque (los registra como procesados)
+  sin gastar un ciclo de 720s en ellos.
+- **1 post por ciclo:** Python retorna apenas publica 1 post. El bash shell decide
+  cuándo re-ejecutar (cada 720s), sin `time.sleep` en Python.
+
+### Archivos Nuevos/Modificados
+- `meta_uploader/fb_to_ig_vigia.py` — reescritura completa v4.0
+- `meta_uploader/evacuador_historico.py` — agente secundario para backlog lento
+- `scripts/linux/vigia_historico_termux.sh` — runner del evacuador histórico (30 min)
+
+### Verificación en S24
+- Ciclo #4 (21:07:46): primera ejecución de v4.0. Log reporta
+  `"Bloque 1/5 (100 posts desde inicio)"` para ambas páginas.
+  Encontró candidato en primer bloque, subió exitosamente.
+- Ciclo #4 detectó un post sin media (texto puro de Shirabyoshi) antes del fix
+  del pre-filtro; el post fue descartado pero se gastó el ciclo completo.
+  El fix del pre-filtro fue aplicado y sincronizado en el mismo ciclo.
+
+## Fix: `upload_fb_reel` y `upload_fb_video_standard` sin `page_id`/`page_token` (2026-09-22)
+
+- **Problema:** `4_VIGIA_FB_TEASERS` crasheaba con
+  `TypeError: upload_fb_reel() got an unexpected keyword argument 'page_id'`.
+  El script evacuador pasaba credenciales de Shirabyoshi pero la función
+  en `meta_uploader.py` no aceptaba esos parámetros.
+- **Solución:** Se agregaron `page_id=None` y `page_token=None` a ambas funciones.
+  Internamente usan `try/finally` para parchar temporalmente los globales
+  `FB_PAGE_ID` y `META_FB_PAGE_TOKEN`, restaurándolos al salir.
+- **Retrocompatibilidad:** 100% — código existente sin esos parámetros sigue igual.
+- **Archivos:** `meta_uploader/meta_uploader.py`
+
+## Fix: Workspace Codex `.git/objects` propiedad de root (2026-09-22)
+
+- **Problema:** La IA del workspace Codex (`~/Documents/Codex/.../agentes-linux-arm64`)
+  no podía hacer commits ni pushes: `.git/objects/` tenía permisos `root:root`.
+- **Solución:**
+  1. Se hizo `git fetch` local del commit bloqueado hacia el workspace Antigravity.
+  2. Se aplicó via `cherry-pick` resolviendo conflicto en `meta_uploader.py`.
+  3. Push exitoso a `origin/linux-arm64`.
+  4. El usuario ejecutó `sudo chown -R zerausn:zerausn .git` en el workspace Codex.
+  5. El workspace Codex quedó sincronizado via `git pull --rebase`.
+- **Estado:** Ambos workspaces apuntan al mismo HEAD. La otra IA opera normalmente.
+

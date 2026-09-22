@@ -359,3 +359,123 @@ La página **Shirabyoshi Writings** también publica contenido que debe cruzarse
 El cruce FB→IG ahora cubre ambas páginas. Los posts más recientes (de cualquier página)
 tienen prioridad. El registro de deduplicación compartido (`crosspost_dedupe_registry.json`)
 evita duplicados entre páginas.
+
+---
+
+## 2026-09-22: Vigía v4.0 — Escaneo por bloques de 100 con fallback al reporte histórico
+
+### Contexto
+`fb_to_ig_vigia.py` usaba un early-stop que cortaba el escaneo en cuanto detectaba
+3 posts consecutivos ya publicados. Esto era demasiado agresivo: si los últimos
+3 posts en el feed ya estaban publicados pero había contenido nuevo en los primeros
+100 posts, el Vigía no lo encontraba.
+
+Además, el script no tenía una estrategia clara para el backlog histórico de ~8,945
+posts identificados por `audit_crosspost.py`.
+
+### Decisiones
+
+1. **Escaneo por bloques de 100 por página:**
+   Cada ciclo descarga hasta 5 bloques de 100 posts por página (usando
+   paginación por cursor de la API de FB). Si dentro de un bloque hay
+   al menos un post no publicado, se elige el más reciente y se interrumpe
+   el escaneo de esa página. Si el bloque completo ya fue publicado, se pasa
+   al siguiente bloque.
+
+2. **Candidato más reciente entre páginas:**
+   Si *Performatic* y *Shirabyoshi* tienen cada una un candidato nuevo,
+   se sube el más reciente (por `created_time`).
+
+3. **Fallback al reporte histórico:**
+   Si tras 5 bloques de 100 posts (500 posts) ninguna página tiene contenido
+   nuevo, el Vigía consulta `missing_crossposts_report.json` (generado por
+   `audit_crosspost.py`) y toma el entry más antiguo que aún no haya sido publicado.
+   Hace un fetch adicional a la API de FB para obtener el post completo con media.
+
+4. **Pre-filtro de posts sin media en la búsqueda de candidato:**
+   `_find_newest_uncrossposted()` ahora verifica que el post tenga media
+   (foto o video) antes de seleccionarlo como candidato. Posts de solo texto
+   se marcan en el registro como procesados (sin remember_keys) para no volver
+   a evaluarlos, y el buscador continúa en el mismo bloque hasta encontrar
+   uno con media. Esto evita gastar un ciclo de 720s solo para descartar
+   un post de texto.
+
+5. **Límite de 1 post por ciclo respetado en Python:**
+   La función `process_new_posts()` retorna `1` apenas sube exitosamente
+   un post. El shell bash (`vigia_meta720_termux.sh`) es quien decide cuándo
+   re-ejecutar (cada 720s), de modo que Python no hace ningún `time.sleep` interno.
+
+### Archivos Modificados
+- `meta_uploader/fb_to_ig_vigia.py` — reescritura completa v4.0 (funciones
+  `_fetch_block`, `_find_newest_uncrossposted`, `_pick_from_report`,
+  `_resolve_full_post_from_report_entry`, `process_new_posts`)
+
+### Consecuencia
+El sistema ahora cubre los posts más recientes de forma eficiente (O(bloques)),
+sin iterar todo el historial en cada ciclo. El backlog histórico se drena
+gradualmente como último recurso. Los posts de solo texto no bloquean el ciclo.
+
+---
+
+## 2026-09-22: Fix `upload_fb_reel` y `upload_fb_video_standard` — soporte de `page_id`/`page_token`
+
+### Contexto
+El widget `4_VIGIA_FB_TEASERS` fallaba con:
+```
+TypeError: upload_fb_reel() got an unexpected keyword argument 'page_id'
+```
+`subir_fb_evacuador_teasers.py` pasaba `page_id` y `page_token` a `upload_fb_reel()`
+para subir a Shirabyoshi Writings, pero la firma de esa función no aceptaba
+esos parámetros.
+
+### Solución
+Se agregaron `page_id=None` y `page_token=None` a las firmas de:
+- `upload_fb_reel()`
+- `upload_fb_video_standard()`
+
+Ambas funciones usan un bloque `try/finally` para sobreescribir temporalmente las
+variables globales `FB_PAGE_ID` y `META_FB_PAGE_TOKEN` con los valores recibidos,
+y las restauran al valor original al salir (incluso en caso de error). Esto permite
+publicar en cualquier página sin mutar el estado global de forma permanente.
+
+### Archivos Modificados
+- `meta_uploader/meta_uploader.py` — firmas extendidas con `try/finally`
+  para `upload_fb_reel` y `upload_fb_video_standard`
+
+### Consecuencia
+Cualquier script evacuador puede pasar sus propias credenciales de página
+sin necesidad de sobreescribir variables de entorno globales. Retrocompatible:
+si no se pasan `page_id`/`page_token`, el comportamiento es idéntico al anterior.
+
+---
+
+## 2026-09-22: Fix de permisos en workspace Codex (`.git/objects` propiedad de root)
+
+### Contexto
+El workspace `~/Documents/Codex/2026-08-17/rev/work/agentes-linux-arm64/` (usado
+por otra instancia de IA) tenía los directorios dentro de `.git/objects/`
+propiedad de `root:root` debido a que en algún momento un comando había corrido
+con `sudo`. Esto impedía cualquier operación de escritura de Git (`git commit`,
+`git push`) desde ese workspace.
+
+### Solución
+1. Se identificó el commit pendiente en el workspace bloqueado: `c67612a`
+   (`feat: Facebook bifurcation system - parallel independent vigilantes`).
+2. Desde el workspace principal (`/home/zerausn/Documents/Antigravity/agentes`)
+   se hizo `git fetch` local del workspace Codex:
+   ```bash
+   git fetch ~/Documents/Codex/.../agentes-linux-arm64 linux-arm64:refs/remotes/codex/linux-arm64
+   ```
+3. Se aplicó el commit vía `cherry-pick`. El único conflicto fue en
+   `meta_uploader.py` (el Codex tenía la versión antigua de la función;
+   se aceptó la versión más reciente con `git checkout --ours`).
+4. Push exitoso del commit `0520001` a `origin/linux-arm64`.
+5. El usuario ejecutó `sudo chown -R zerausn:zerausn .git` para reparar
+   los permisos del workspace Codex.
+6. El workspace Codex quedó sincronizado con `origin/linux-arm64` mediante
+   `git pull --rebase origin linux-arm64` y un nuevo push limpio.
+
+### Consecuencia
+Ambos workspaces (`Antigravity/agentes` y `Codex/agentes-linux-arm64`) apuntan
+ahora al mismo HEAD en `origin/linux-arm64`. La otra IA puede hacer commits
+y pushes sin restricciones.
