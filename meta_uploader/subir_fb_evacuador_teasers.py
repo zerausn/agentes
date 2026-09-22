@@ -27,6 +27,7 @@ if str(BASE_DIR) not in sys.path:
 from meta_uploader import (
     upload_fb_reel,
     upload_fb_video_standard,
+    MetaRateLimitError,
 )
 
 # --- Rutas ---
@@ -146,14 +147,27 @@ def upload_video(video_path: Path) -> bool:
     # TEASERS son 9:16 → intentar REEL primero, fallback a VIDEO ESTÁNDAR
     if is_reel_safe(video_path):
         logging.info("Subiendo TEASER como REEL (9:16) a %s: %s", page_name, video_path.name)
-        result = upload_fb_reel(str(video_path), caption, page_id=page_id, page_token=page_token)
-        if result:
-            logging.info("Subida exitosa como REEL | video_id=%s | archivo=%s | página=%s", result, video_path.name, page_name)
-            return True
-        logging.warning("REEL falló, probando VIDEO ESTÁNDAR como fallback...")
+        try:
+            result = upload_fb_reel(str(video_path), caption, page_id=page_id, page_token=page_token)
+            if result:
+                logging.info("Subida exitosa como REEL | video_id=%s | archivo=%s | página=%s", result, video_path.name, page_name)
+                return True
+            logging.warning("REEL falló (resultado vacío), probando VIDEO ESTÁNDAR como fallback...")
+        except MetaRateLimitError as exc:
+            # Code 368: /video_reels bloqueado temporalmente por spam.
+            # El endpoint /videos tiene límites distintos — intentar como fallback.
+            logging.warning(
+                "Code 368 en REEL endpoint — probando VIDEO ESTÁNDAR como fallback antibloqueo. (%s)", exc
+            )
 
     logging.info("Subiendo TEASER como VIDEO ESTANDAR a %s: %s", page_name, video_path.name)
-    result = upload_fb_video_standard(str(video_path), caption, page_id=page_id, page_token=page_token)
+    try:
+        result = upload_fb_video_standard(str(video_path), caption, page_id=page_id, page_token=page_token)
+    except MetaRateLimitError as exc:
+        logging.error(
+            "Code 368 también en VIDEO ESTANDAR. Página bloqueada temporalmente — esperando al próximo ciclo. (%s)", exc
+        )
+        return False
 
     if result:
         logging.info("Subida exitosa | video_id=%s | archivo=%s | página=%s", result, video_path.name, page_name)
