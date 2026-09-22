@@ -54,6 +54,7 @@ wait_until() {
     objetivo=$(date -d "@${target_epoch}" '+%H:%M:%S' 2>/dev/null \
                || date -r "${target_epoch}" '+%H:%M:%S' 2>/dev/null \
                || echo "??:??:??")
+    echo "[TEASERS-ALEATORIO ESPERA] Proxima subida a las: ${objetivo}"
 
     while true; do
         local now
@@ -61,12 +62,12 @@ wait_until() {
         local diff=$(( target_epoch - now ))
 
         if [ "$diff" -le 0 ]; then
+                    printf "\n"
             echo "[TEASERS-ALEATORIO RELOJ] Hora alcanzada: $(date '+%H:%M:%S') — arrancando ciclo."
             return 0
         fi
 
-        # Cuenta regresiva solo a terminal, no al log file (evita flood en SESSION_LOG)
-        printf "\r[TEASERS-ALEATORIO RELOJ] %3ds restantes (objetivo %s)..." "$diff" "$objetivo" > /dev/tty
+        printf "\r[TEASERS-ALEATORIO RELOJ] %3ds restantes (objetivo %s)..." "$diff" "$objetivo"
         sleep "$CHECK_INTERVAL"
     done
 }
