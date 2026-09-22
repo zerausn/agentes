@@ -124,8 +124,8 @@ while true; do
 
     # Generar intervalo aleatorio para ESTE ciclo
     INTERVALO_ALEATORIO=$(generar_intervalo_aleatorio)
-    local min=$((INTERVALO_ALEATORIO / 60))
-    local seg=$((INTERVALO_ALEATORIO % 60))
+    min=$((INTERVALO_ALEATORIO / 60))
+    seg=$((INTERVALO_ALEATORIO % 60))
     printf "\n"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  CICLO TEASERS-ALEATORIO #${CICLO} — $(date '+%Y-%m-%d %H:%M:%S')"
@@ -134,7 +134,7 @@ while true; do
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
     # Lanzar evacuador: sube 1 TEASER y retorna
-    source "$(dirname "$0")/_proot_bind.sh"
+    source "/data/data/com.termux/files/home/agentes/scripts/linux/_proot_bind.sh"
     "$PROOT" login debian "${PROOT_BIND_ARGS[@]}" -- \
         META_FB_PAGE_ID_TEASER="${META_FB_PAGE_ID_TEASER}" \
         META_FB_PAGE_TOKEN_TEASER="${META_FB_PAGE_TOKEN_TEASER}" \
@@ -161,8 +161,8 @@ while true; do
 
     # Calcular próxima ejecución basada en reloj real + intervalo aleatorio
     NEXT_EPOCH=$(( T_FIN + INTERVALO_ALEATORIO ))
-    local min=$((INTERVALO_ALEATORIO / 60))
-    local seg=$((INTERVALO_ALEATORIO % 60))
+    min=$((INTERVALO_ALEATORIO / 60))
+    seg=$((INTERVALO_ALEATORIO % 60))
     echo "[TEASERS-ALEATORIO RELOJ] Ciclo terminó: $(date '+%H:%M:%S') | Siguiente en ${INTERVALO_ALEATORIO}s (${min}m ${seg}s)"
 
     wait_until "$NEXT_EPOCH"
