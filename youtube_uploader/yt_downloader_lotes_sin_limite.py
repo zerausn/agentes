@@ -134,37 +134,49 @@ def sync_pull():
         log.warning("[SYNC] Faltan github_gist_token.txt o github_gist_id.txt")
         return
 
-    try:
-        req = urllib.request.Request(f"https://api.github.com/gists/{gist_id}", headers=headers)
-        with urllib.request.urlopen(req, timeout=15) as response:
-            if response.status == 200:
-                gist_data = json.loads(response.read().decode("utf-8"))
-                file_obj = gist_data.get("files", {}).get("yt_lotes_registro_sin_limite.json")
-                if file_obj:
-                    content = file_obj.get("content", "{}")
-                    remote_registry = json.loads(content)
-                    local_registry = load_registry()
-                    
-                    merged_count = 0
-                    for month, videos in remote_registry.items():
-                        if month not in local_registry:
-                            local_registry[month] = videos
-                            merged_count += len(videos)
-                        else:
-                            for vid_id, vid_info in videos.items():
-                                if vid_info.get("status") == "descargado":
-                                    local_registry[month][vid_id] = vid_info
-                                    merged_count += 1
-                    save_registry(local_registry)
-                    print("[SYNC] ✅ Registro actualizado desde GitHub Gists.")
-                    log.info("[SYNC] Pull Gist OK. Mezclados: %d", merged_count)
+    last_error = None
+    for attempt in range(3):
+        timeout = 30 * (attempt + 1)  # 30s, 60s, 90s progresivo
+        try:
+            req = urllib.request.Request(f"https://api.github.com/gists/{gist_id}", headers=headers)
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                if response.status == 200:
+                    raw = response.read()
+                    gist_data = json.loads(raw.decode("utf-8"))
+                    file_obj = gist_data.get("files", {}).get("yt_lotes_registro_sin_limite.json")
+                    if file_obj:
+                        content = file_obj.get("content", "{}")
+                        remote_registry = json.loads(content)
+                        local_registry = load_registry()
+
+                        merged_count = 0
+                        for month, videos in remote_registry.items():
+                            if month not in local_registry:
+                                local_registry[month] = videos
+                                merged_count += len(videos)
+                            else:
+                                for vid_id, vid_info in videos.items():
+                                    if vid_info.get("status") == "descargado":
+                                        local_registry[month][vid_id] = vid_info
+                                        merged_count += 1
+                        save_registry(local_registry)
+                        print("[SYNC] ✅ Registro actualizado desde GitHub Gists.")
+                        log.info("[SYNC] Pull Gist OK. Mezclados: %d", merged_count)
+                        return
+                    else:
+                        print("[SYNC] ⚠️ Archivo JSON no encontrado en el Gist.")
+                        return
                 else:
-                    print("[SYNC] ⚠️ Archivo JSON no encontrado en el Gist.")
-            else:
-                print(f"[SYNC] ⚠️ Falló la conexión al Gist: {response.status}")
-    except Exception as e:
-        print(f"[SYNC] ⚠️ Error al descargar el registro del Gist: {e}")
-        log.error("[SYNC] Error Gist Pull: %s", e)
+                    print(f"[SYNC] ⚠️ Falló la conexión al Gist: {response.status}")
+                    return
+        except Exception as e:
+            last_error = e
+            if attempt < 2:
+                print(f"[SYNC] ⚠️ Reintentando pull ({attempt+2}/3) tras: {e}")
+                log.warning("[SYNC] Reintento pull Gist: %s", e)
+                continue
+            print(f"[SYNC] ⚠️ Error al descargar el registro del Gist: {e}")
+            log.error("[SYNC] Error Gist Pull: %s", e)
 
 def sync_push(commit_msg: str):
     print()
@@ -176,31 +188,39 @@ def sync_push(commit_msg: str):
         log.warning("[SYNC] Faltan credenciales para push Gist.")
         return
 
-    try:
-        sync_pull()
-        local_registry = load_registry()
-        payload = json.dumps({
-            "description": commit_msg,
-            "files": {
-                "yt_lotes_registro_sin_limite.json": {
-                    "content": json.dumps(local_registry, indent=2, ensure_ascii=False)
-                }
+    local_registry = load_registry()
+    payload = json.dumps({
+        "description": commit_msg,
+        "files": {
+            "yt_lotes_registro_sin_limite.json": {
+                "content": json.dumps(local_registry, indent=2, ensure_ascii=False)
             }
-        }).encode("utf-8")
-        
-        req_headers = headers.copy()
-        req_headers["Content-Type"] = "application/json"
-        req = urllib.request.Request(f"https://api.github.com/gists/{gist_id}", data=payload, headers=req_headers, method="PATCH")
-        
-        with urllib.request.urlopen(req, timeout=15) as response:
-            if response.status == 200:
-                print("[SYNC] ✅ Registro sincronizado en GitHub Gists exitosamente.")
-                log.info("[SYNC] Push Gist OK.")
-            else:
-                print(f"[SYNC] ⚠️ Falló la subida al Gist: {response.status}")
-    except Exception as e:
-        print(f"[SYNC] ⚠️ Error al subir el registro al Gist: {e}")
-        log.error("[SYNC] Error Gist Push: %s", e)
+        }
+    }).encode("utf-8")
+
+    last_error = None
+    for attempt in range(3):
+        timeout = 30 * (attempt + 1)
+        try:
+            req_headers = headers.copy()
+            req_headers["Content-Type"] = "application/json"
+            req = urllib.request.Request(f"https://api.github.com/gists/{gist_id}", data=payload, headers=req_headers, method="PATCH")
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                if response.status == 200:
+                    print("[SYNC] ✅ Registro sincronizado en GitHub Gists exitosamente.")
+                    log.info("[SYNC] Push Gist OK.")
+                    return
+                else:
+                    print(f"[SYNC] ⚠️ Falló la subida al Gist: {response.status}")
+                    return
+        except Exception as e:
+            last_error = e
+            if attempt < 2:
+                print(f"[SYNC] ⚠️ Reintentando push ({attempt+2}/3) tras: {e}")
+                log.warning("[SYNC] Reintento push Gist: %s", e)
+                continue
+            print(f"[SYNC] ⚠️ Error al subir el registro al Gist: {e}")
+            log.error("[SYNC] Error Gist Push: %s", e)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # AUTENTICACIÓN

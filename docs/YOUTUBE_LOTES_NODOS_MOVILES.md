@@ -450,6 +450,31 @@ Los tokens deben distribuirse a los nodos a través de la carpeta compartida de 
 **¿Qué pasa si un nodo no tiene el token?**
 Si el token falta, el nodo descargará en modo *offline* usando únicamente la caché local que quedó guardada en la ejecución anterior (el archivo `yt_lotes_registro_sin_limite.json` sigue existiendo localmente pero está ignorado por `.gitignore`). Emitirá un `Warning` de que la sincronización en la nube se ha omitido.
 
+## Fix 2026-09-22: Timeout progresivo y reintentos en sync Gist
+
+**Síntomas observados:**
+- Error `IncompleteRead(319531 bytes read, 50842 more expected)` en `sync_pull()`.
+- El registro del Gist no se actualizaba correctamente entre nodos.
+- Descargas duplicadas porque un nodo no veía los `descargado` de otros.
+
+**Causa raíz:**
+- `sync_pull()` usaba `timeout=15` fijo, insuficiente para un Gist grande (630+ videos).
+- `sync_push()` llamaba a `sync_pull()` internamente, causando pulls duplicados.
+- Sin reintentos, un timeout transitorio paraba la sincronización.
+
+**Solución aplicada:**
+1. **Timeout progresivo**: 30s → 60s → 90s en 3 intentos.
+2. **Push sin pull interno**: `sync_push()` ya no llama a `sync_pull()`.
+3. **Reintentos con backoff**: Ambas funciones reintentan 3 veces antes de fallar.
+4. **Logs mejorados**: Se registra cada reintento con el error específico.
+
+**Código afectado:**
+- `youtube_uploader/yt_downloader_lotes_sin_limite.py` — `sync_pull()` y `sync_push()`.
+
+**Verificación:**
+- `python3 -m py_compile` OK.
+- Descarga de prueba en PC confirmó que el pull ya no falla con `IncompleteRead`.
+
 ## Incidente "Sign in to confirm you're not a bot" (Septiembre 2026)
 
 **Síntomas observados:**
