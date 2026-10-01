@@ -238,3 +238,24 @@
 - **Lógica del candidato global:** El script extrae un bloque (chunk) de posts de cada una de las 4 páginas y elige el candidato que sea cronológicamente el más reciente entre todas, antes de proceder a la validación y *crosspost* hacia Instagram.
 - **Entorno Proot (S24):** El script bash asociado `vigia_meta720_termux.sh` se modificó para exportar correctamente los IDs y tokens de las 4 páginas (incluidos `META_FB_PAGE_ID_SEANCHAI` y `META_FB_PAGE_ID_GHAWAZEE`) dentro de la invocación proot del S24.
 - Los cambios fueron desarrollados e inyectados directamente al Termux (S24 Ultra) vía ADB y respaldados en este repositorio local para mantener la paridad operativa.
+
+## Master Teasers Rotativo Anti-Spam (2026-09-30)
+
+### Qué se construyó
+- `scripts/linux/master_teasers_termux.sh`: script maestro que rota entre 4 páginas cada 720s.
+- `meta_uploader/subir_teasers_seanchai.py`: evacuador para Seanchai Writings.
+- `meta_uploader/subir_teasers_ghawazee.py`: evacuador para Ghawazee Writings.
+- `meta_uploader/subir_teasers_shirabyoshi.py`: evacuador para Shirabyoshi Writings.
+- `scripts/linux/seanchai_teasers_termux.sh`: lanzador individual vía proot.
+- `scripts/linux/ghawazee_teasers_termux.sh`: lanzador individual vía proot.
+
+### Bugs corregidos
+1. Carpeta fuente incorrecta (`teasers_pendientes` → `videos subidos exitosamente`).
+2. `os.environ` ineficaz post-import → inyectar con `meta_uploader.FB_PAGE_ID = ...`.
+3. `NameError: meta_uploader` → agregar `import meta_uploader` completo.
+4. `FileNotFoundError` en concurrencia → guard `if not video_path.exists(): return`.
+
+### Estado: ✅ Verificado en Note9
+- Seanchai Writings: video_id=1094605416289269 publicado como REEL.
+- Ciclo rotativo funcionando correctamente.
+- Pendiente: desplegar al S24.

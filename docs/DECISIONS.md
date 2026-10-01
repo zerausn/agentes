@@ -164,3 +164,62 @@ canal.
 - Consecuencia: la seleccion automatica por coste debe vivir en Antigravity
   Manager. En Codex se selecciona el proveedor de forma explicita y no se
   cambia el modelo predeterminado sin una prueba completa del runtime local.
+
+## 2026-09-30: Sistema rotativo de teasers anti-spam entre 4 páginas de Meta
+
+### Contexto
+Se creó `master_teasers_termux.sh` para distribuir teasers rotativamente entre 4 páginas de Facebook:
+- **Performatic Writings Cali** (ID: 803559979506784) — `subir_fb_evacuador_teasers.py`
+- **Seanchai Writings** (ID: 824642984061807) — `subir_teasers_seanchai.py`
+- **Ghawazee Writings** (ID: 1288381367700799) — `subir_teasers_ghawazee.py`
+- **Shirabyoshi Writings** (ID: 1347014641828725) — `subir_teasers_shirabyoshi.py`
+
+Publica cada 720s → 30 videos/página/día como calentamiento anti-spam.
+
+### Cómo obtener los Page Access Tokens sin ir al panel de Meta
+Con el user token (META_PAGE_TOKEN) ya guardado en el .env:
+```bash
+curl "https://graph.facebook.com/v21.0/me/accounts?access_token=<META_PAGE_TOKEN>&fields=id,name,access_token&limit=25"
+```
+Devuelve los tokens de todas las páginas de la cuenta. Duración ~60 días.
+
+### Estructura del .env para múltiples páginas
+```
+META_PAGE_TOKEN=<user_token>          # para /me/accounts y lectura de feed
+META_FB_PAGE_ID=803559979506784       # Performatic (default)
+META_FB_PAGE_TOKEN=<token_performatic>
+
+META_FB_PAGE_ID_SEANCHAI=824642984061807
+META_FB_PAGE_TOKEN_SEANCHAI=<token_seanchai>
+
+META_FB_PAGE_ID_GHAWAZEE=1288381367700799
+META_FB_PAGE_TOKEN_GHAWAZEE=<token_ghawazee>
+
+META_FB_PAGE_ID_SHIRABYOSHI=1347014641828725
+META_FB_PAGE_TOKEN_SHIRABYOSHI=<token_shirabyoshi>
+```
+
+### Decisión crítica: inyectar credenciales directo al módulo Python
+`meta_uploader.py` lee env vars UNA SOLA VEZ al importarse. Cambiar os.environ
+después del import NO tiene efecto. La única forma correcta:
+
+```python
+import meta_uploader          # import completo, no solo "from"
+meta_uploader.FB_PAGE_ID = page_id
+meta_uploader.META_FB_PAGE_TOKEN = page_token
+```
+
+### Fix: move_to_done tolerante a concurrencia
+Si dos instancias corren en paralelo, la segunda falla con FileNotFoundError:
+```python
+def move_to_done(video_path: Path) -> None:
+    if not video_path.exists():
+        logging.warning("Archivo ya no existe: %s", video_path.name)
+        return
+    ...
+```
+
+### Carpeta fuente de videos
+Todos los uploaders leen de: `ROOT / "videos subidos exitosamente"`
+donde `ROOT = Path(os.environ.get("AGENTES_STORAGE_ROOT", ""))`.
+Los launchers bash exportan: `export AGENTES_STORAGE_ROOT=/sdcard/Antigravity`
