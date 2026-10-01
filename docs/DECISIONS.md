@@ -622,3 +622,29 @@ Cada una de las 4 páginas recibe exactamente 1 teaser cada 48 minutos (30 por d
 
 
 
+
+---
+
+## 2026-10-01: Vigía IG — Reemplazo del Reporte Estático por Paginación Profunda (Deep Cursor)
+
+### Contexto
+El bot Vigía utilizaba un reporte estático (`missing_crossposts_report.json`) para rescatar posts históricos
+que no se cruzaron a Instagram en su momento. Para ello, consultaba a la Graph API usando el ID directo
+del post (`GET /{post_id}`).
+La API de Facebook prohíbe consultas directas a IDs de posts antiguos sin permisos avanzados (App Review:
+`pages_read_engagement`), devolviendo un Code 10 que bloqueaba la recuperación.
+
+### Decisión
+Se descarta por completo el uso del reporte estático de IDs para la recuperación histórica.
+En su lugar, se implementará un mecanismo de **Paginación Profunda (Deep Cursor)**.
+
+El script mantendrá un archivo `crosspost_deep_cursors.json` que almacenará el cursor de paginación
+de `GET /{page_id}/published_posts` de cada página. 
+Cuando el Vigía no encuentre posts nuevos en los primeros bloques, usará su ciclo para consultar el 
+bloque histórico donde se había quedado, extraerá un post pendiente, y guardará el nuevo cursor.
+
+Esta arquitectura es superior porque:
+1. Las llamadas de paginación están amparadas por el token estándar (`pages_manage_posts`), evadiendo
+   por completo la restricción de Code 10 impuesta a las consultas directas por ID.
+2. Es resiliente a posts borrados (la API simplemente no los devuelve).
+3. No requiere mantenimiento externo (el reporte se generaba manualmente).
