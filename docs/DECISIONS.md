@@ -621,36 +621,4 @@ Cada una de las 4 páginas recibe exactamente 1 teaser cada 48 minutos (30 por d
 - El bot Vigía de Instagram (`fb_to_ig_vigia.py`) se encarga de monitorear estas 4 páginas de Facebook y cruza el video a Instagram **una sola vez**, utilizando un registro de deduplicación que evita que el mismo teaser se suba varias veces al Feed/Reels de IG, sin importar en cuántas páginas de FB aparezca.
 
 
----
 
-## 2026-10-01: Vigia IG — Permisos de Facebook API (pages_read_engagement)
-
-### Contexto
-El token de Performatic Writings Cali fue generado con el scope `pages_manage_posts`.
-Este permiso es suficiente para:
-- Subir videos a la página (REELs y Videos Estándar)
-- Leer el feed reciente de la página (`/page_id/feed`)
-
-Sin embargo, **no** es suficiente para:
-- Leer los adjuntos (URL del video) de un post específico por ID (`/post_id?fields=attachments{media}`)
-  cuando ese post es antiguo. Eso requiere `pages_read_engagement`.
-
-### Decisión
-No se solicitará el permiso `pages_read_engagement` porque:
-1. Requiere revisión manual de Meta (App Review), un proceso lento y con riesgo de rechazo.
-2. El Vigía **no necesita** leer posts por ID directo para su función principal. Funciona
-   correctamente leyendo el feed reciente.
-3. El reporte histórico (`missing_crossposts_report.json`) es solo un fallback de recuperación
-   para posts que quedaron sin cruzar. Si un post del reporte ya no es accesible, simplemente
-   se descarta — no es un bloqueo crítico.
-
-### Comportamiento definido
-Cuando `_resolve_full_post_from_report_entry` recibe HTTP 400/403/404:
-- El post se marca como procesado en `crosspost_dedupe_registry.json`.
-- El Vigía continúa con el siguiente candidato del reporte (hasta 10 intentos por ciclo).
-- Si todos los candidatos del reporte son inaccesibles, el ciclo termina limpiamente
-  y el Vigía espera el siguiente ciclo de 12 minutos.
-
-### Flujo correcto de Instagram (sin tocar el reporte)
-El Vigía toma el video directamente del feed de FB → descarga → sube a IG.
-El reporte histórico es solo un fallback para posts que quedaron atrasados.

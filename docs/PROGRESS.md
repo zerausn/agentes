@@ -269,33 +269,23 @@ ERROR - No se pudo resolver el post del reporte via API. Abortando.
 ```
 El ciclo terminaba con exit 0 (sin publicar nada).
 
-### Causa raíz
+### Causa raíz (Investigación en curso)
 La función `_resolve_full_post_from_report_entry` llamaba a la API de Facebook con
-`fields=attachments{media}` sobre un post ID específico. Facebook devolvía **HTTP 400 – Code 10**
-(`pages_read_engagement` permission required). El token tiene `pages_manage_posts` (para subir),
-pero **no** `pages_read_engagement` (para leer adjuntos de posts antiguos por ID directo).
-
-La lectura del **feed** (`/page/feed`) sí funciona porque opera a nivel de página.
-La lectura de **un post por ID** con adjuntos multimedia requiere un permiso más elevado
-(`pages_read_engagement`) que es una característica revisable por Meta.
-
-Los posts del reporte histórico son antiguos (de meses atrás) y Facebook aplica restricciones
-más estrictas a posts antiguos cuando se acceden directamente por ID.
+`fields=attachments{media}` sobre un post ID específico. Facebook devolvía **HTTP 400 – Code 10**.
+Se sospecha de un problema con los tokens (scopes faltantes, o tokens cruzados entre páginas), 
+ya que la misma consulta sobre el feed reciente sí funciona.
 
 ### Solución aplicada (`fb_to_ig_vigia.py`)
+Inicialmente se había modificado para marcar el post como procesado y saltarlo, pero **eso era destructivo**: 
+si el error era del token, el Vigía descartaría silenciosamente miles de posts válidos del reporte histórico, 
+marcando todo como procesado sin subir nada a Instagram.
 
-1. `_resolve_full_post_from_report_entry` ahora devuelve una tupla `(post, http_code)` en lugar
-   de solo `post`.
-2. El bloque fallback en `process_new_posts` ahora distingue:
-   - **HTTP 400/403/404** → el post ya no es accesible; lo marca como procesado en el registro
-     (`crosspost_dedupe_registry.json`) y continúa con el siguiente del reporte.
-   - **Error transitorio (timeout, red, http_code=0)** → aborta el ciclo y reintenta en 12 min.
-3. Se añadió `MAX_REPORT_RETRIES = 10` para evitar loops infinitos en el fallback.
+Se revirtió esa lógica. Ahora, si recibe **HTTP 400/403/404**:
+- Se genera un error claro en el log advirtiendo de un posible problema de token.
+- **Se aborta el ciclo** para proteger el reporte histórico y NO quemar el listado de pendientes.
 
-### Resultado esperado
-El Vigía irá vaciando progresivamente los posts inaccesibles del reporte, marcándolos como
-procesados, hasta encontrar uno que sí pueda resolver. A partir de entonces, cruzará
-nuevamente a Instagram sin interrupciones.
+El usuario debe revisar y regenerar los tokens, o en su defecto modificar el script para que consulte 
+el endpoint `/{page_id}/videos` en vez de buscar posts individuales.
 
 ### Archivo modificado
-- `meta_uploader/fb_to_ig_vigia.py` — commit `6e0c070`
+- `meta_uploader/fb_to_ig_vigia.py` — commit `c483513`
