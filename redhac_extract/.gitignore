@@ -1,0 +1,12 @@
+# Datos de investigación (privacidad + tamaño) - no subir al repo
+output/
+*.json
+*.xlsx
+*.jpg
+*.webp
+*.png
+*.mp4
+Fotos/
+*_Fotos_*/
+.DS_Store
+.env

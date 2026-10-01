@@ -27,6 +27,7 @@ Aquí se encuentran los arquivos para definir, revisar y mejorar el **sistema de
 | **configs/** | 🔧 Archivos de configuración YAML para cada agente |
 | **scripts/** | 🖥️ Scripts PowerShell para inicialización y automatización |
 | **historial/** | 📊 Registros de sesiones, decisiones y ejecuciones |
+| **docs/** | 📖 Memoria versionada del sistema |
 | **nemoclaw/** | 🦞 Contexto operativo, replicación, seguridad y Telegram para NVIDIA NemoClaw |
 | **comandos para linux/** | 🐧 Notas y scripts de soporte para Linux |
 
@@ -189,6 +190,9 @@ Para más detalles, consulta la [Guía de Apilamiento](file:///c:/Users/ZN-/Docu
 ## 📝 Notas
 - El sistema de Meta ya está **OPERATIVO v6.0**.
 - NemoClaw y otros módulos siguen en fase de diseño/implementación.
+- La verificacion de DeepSeek, OpenRouter, B.AI y Groq para Codex y
+  Antigravity Manager esta registrada en
+  [docs/PROVEEDORES_IA_CODEX_2026-09-06.md](docs/PROVEEDORES_IA_CODEX_2026-09-06.md).
 
 ---
 
