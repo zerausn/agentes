@@ -343,15 +343,23 @@ def _resolve_full_post_from_report_entry(entry):
         if resp.status_code == 200:
             full = resp.json()
             full["_source_page_name"] = src_page
-            return full, 200
+            return full, 200, None
+        
+        # Parse error dict
+        err_data = {}
+        try:
+            err_data = resp.json().get("error", {})
+        except Exception:
+            pass
+            
         logging.warning(
             "Post %s del reporte no accesible: HTTP %s — %s",
             post_id, resp.status_code, resp.text[:200],
         )
-        return None, resp.status_code
+        return None, resp.status_code, err_data
     except Exception as e:
         logging.error("Error al resolver post %s desde API: %s", post_id, e)
-    return None, 0
+    return None, 0, None
 
 
 # ─── Ciclo principal ──────────────────────────────────────────────────────────
@@ -431,20 +439,49 @@ def process_new_posts(dry_run=False):
                 logging.info("No hay contenido pendiente en bloques frescos ni en el reporte. Todo al dia.")
                 return 0
             post_id_rep = report_entry.get("post_id")
-            candidate_post, http_code = _resolve_full_post_from_report_entry(report_entry)
+            candidate_post, http_code, err_data = _resolve_full_post_from_report_entry(report_entry)
             if candidate_post is not None:
                 break
-            # Si el post no es accesible, abortamos para no destruir el reporte entero por culpa de un token malo
-            if http_code in (400, 403, 404):
+                
+            err_code = err_data.get("code") if err_data else None
+            err_subcode = err_data.get("error_subcode") if err_data else None
+            
+            # Error de Token / Permisos (190, 200, 10)
+            if err_code in (10, 190, 200):
                 logging.error(
-                    "Post %s es inaccesible (HTTP %s). Posible problema de token o permisos. "
-                    "Abortando para NO destruir el reporte historico. Por favor revisa los tokens "
-                    "o usa el endpoint /{page_id}/videos en su lugar.",
-                    post_id_rep, http_code,
+                    "Post %s es inaccesible por error de permisos/token (code: %s, subcode: %s). "
+                    "Abortando el ciclo para NO vaciar el reporte historico. Por favor revisa los tokens en FB.",
+                    post_id_rep, err_code, err_subcode
                 )
                 return 0
-            # Error transitorio (red, timeout) — abortar para reintentar en el próximo ciclo
-            logging.error("Error transitorio al resolver post %s (HTTP %s). Abortando ciclo.", post_id_rep, http_code)
+                
+            # Post borrado o inexistente (code 100, subcode 33)
+            if err_code == 100 and err_subcode == 33:
+                logging.warning(
+                    "Post %s ya no existe (code 100, subcode 33). Post borrado en FB. Registrando como inaccesible y saltando.",
+                    post_id_rep
+                )
+                
+                # Guardar en inaccesibles.json en lugar del registro normal
+                inaccesibles_path = ROOT / "crosspost_inaccesibles.json"
+                inac_reg = {}
+                if inaccesibles_path.exists():
+                    try:
+                        inac_reg = json.loads(inaccesibles_path.read_text(encoding="utf-8"))
+                    except Exception:
+                        pass
+                inac_reg[post_id_rep] = {"timestamp": datetime.now().isoformat(), "reason": "deleted_in_fb"}
+                inaccesibles_path.write_text(json.dumps(inac_reg, indent=2), encoding="utf-8")
+                
+                candidate_post = None
+                candidate_keys = None
+                continue
+                
+            # Otros errores (5xx, timeout, 400 desconocido)
+            logging.error(
+                "Error transitorio o desconocido al resolver post %s (HTTP %s, code %s). Abortando ciclo.", 
+                post_id_rep, http_code, err_code
+            )
             return 0
         else:
             logging.error("Se agotaron %s intentos del reporte historico sin encontrar un post valido.", MAX_REPORT_RETRIES)
