@@ -1741,7 +1741,7 @@ def upload_fb_reel(video_path, caption, scheduled_publish_time=None, _allow_fres
             current_offset,
         )
     else:
-        start_result = _start_fb_upload(page_endpoint, file_size)
+        start_result = _start_fb_upload(page_endpoint, file_size, page_token=ptoken)
         if not start_result:
             return None
 
@@ -1775,6 +1775,7 @@ def upload_fb_reel(video_path, caption, scheduled_publish_time=None, _allow_fres
         scheduled_publish_time=scheduled_publish_time,
         background=background,
         page_id=pid,
+        page_token=ptoken,
     )
     if result:
         _delete_fb_upload_checkpoint(page_endpoint, str(file_path))
@@ -1818,7 +1819,7 @@ def upload_fb_video_standard(video_path, description, scheduled_publish_time=Non
             current_offset,
         )
     else:
-        start_result = _start_fb_upload(page_endpoint, file_size)
+        start_result = _start_fb_upload(page_endpoint, file_size, page_token=ptoken)
         if not start_result:
             return None
 
@@ -1845,6 +1846,7 @@ def upload_fb_video_standard(video_path, description, scheduled_publish_time=Non
             str(file_path),
             video_id=str(video_id),
             current_offset=current_offset,
+            page_token=ptoken,
         ):
             if checkpoint and _allow_fresh_retry and not get_last_operation_status().get("transient"):
                 logging.warning(
@@ -1863,6 +1865,8 @@ def upload_fb_video_standard(video_path, description, scheduled_publish_time=Non
         publish=not is_draft,
         scheduled_publish_time=scheduled_publish_time,
         background=background,
+        page_id=pid,
+        page_token=ptoken,
     )
     if result:
         _delete_fb_upload_checkpoint(page_endpoint, str(file_path))
