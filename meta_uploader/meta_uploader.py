@@ -2008,20 +2008,23 @@ def republish_draft_to_scheduled(video_id, scheduled_unix_time):
         return False
 
 
-def get_facebook_page_feed(limit=5, after=None):
+def get_facebook_page_feed(limit=5, after=None, page_id=None, page_token=None):
     """
     Obtiene las publicaciones publicadas mas recientes de la pagina de Facebook.
     Soporta paginacion mediante el cursor 'after'. Limit=5 para resiliencia a errores 500.
     """
-    if not FB_PAGE_ID or not META_FB_PAGE_TOKEN:
+    target_id = page_id or FB_PAGE_ID
+    target_token = page_token or META_FB_PAGE_TOKEN
+    
+    if not target_id or not target_token:
         logging.error("Faltan FB_PAGE_ID o META_FB_PAGE_TOKEN para leer el feed.")
         return None
     
-    url = graph_url(f"{FB_PAGE_ID}/published_posts")
+    url = graph_url(f"{target_id}/published_posts")
     params = {
         "fields": "id,message,created_time,full_picture,attachments{media,type,subattachments}",
         "limit": limit,
-        "access_token": META_FB_PAGE_TOKEN
+        "access_token": target_token
     }
     if after:
         params["after"] = after
