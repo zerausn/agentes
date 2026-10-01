@@ -248,3 +248,11 @@
 - **Permisos +x en git reset:** Al sincronizar el S24 con `git reset --hard`, los scripts nuevos llegaban sin bit de ejecución (Android no preserva +x en el sistema de archivos de Termux). Se corrigió de forma permanente agregando `find … -exec chmod +x` al final de `renovar_repo_termux.sh`, para que toda actualización futura del repo restaure permisos automáticamente.
 - **Shortcut 7_SHIRABYOSHI_TEASERS.sh:** Corregido para apuntar a `shirabyoshi_teasers_termux.sh` en lugar del obsoleto `shirabyoshi_teasers_seguro_termux.sh`.
 - **Limpieza vigia_meta720_termux.sh:** Eliminados los exports inline de tokens `META_FB_PAGE_*` dentro de la llamada a proot, ya que `fb_to_ig_vigia.py` los lee directamente del `.env` interno de proot. Una sola fuente de verdad para credenciales.
+
+## Fix Master Teasers + Script Performatic (2026-09-30, noche)
+- **Problema identificado:** El slot "Performatic Writings" del `10_MASTER_TEASERS_ROTATIVO` apuntaba a `subir_fb_evacuador_teasers.py`, que en realidad siempre subía a **Shirabyoshi Writings**. El log mentía: decía "Turno de: Performatic Writings" pero el código mandaba el video a Shirabyoshi.
+- **Error secundario:** El `.env` del Note9 no tenía `META_FB_PAGE_TOKEN_TEASER`, causando que el fallback cayera al token de Performatic, que no tiene permisos sobre Shirabyoshi → HTTP 400.
+- **Creado `subir_teasers_performatic.py`:** Script dedicado a Performatic Writings Cali (ID: `803559979506784`). Misma arquitectura que los otros 3 scripts de página (REEL → Video Estándar → backoff 24h). Ya deployado en Note9 y en GitHub.
+- **`master_teasers_termux.sh` corregido:** Slot 4 usa `subir_teasers_performatic.py`. Ahora las 4 páginas tienen scripts dedicados y sin ambigüedad.
+- **Token Shirabyoshi inyectado en Note9:** `META_FB_PAGE_TOKEN_TEASER` añadido al `.env` en Termux y en el proot Debian del Note9.
+- **5 videos recuperados:** Devueltos de `fallidos_facebook` a sus colas correctas.

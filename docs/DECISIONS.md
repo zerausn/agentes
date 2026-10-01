@@ -554,3 +554,61 @@ Eliminar los `export` inline del comando proot. El `.env` dentro de proot es la 
 
 ### Consecuencia
 Menos superficie de fallo: una sola fuente de credenciales por entorno. Cualquier renovación de tokens solo requiere actualizar el `.env` dentro del proot, sin necesidad de editar también el script bash.
+
+---
+
+## 2026-09-30: Corrección arquitectura Master Teasers — slot "Performatic" apuntaba a Shirabyoshi
+
+### Contexto
+El widget `10_MASTER_TEASERS_ROTATIVO` rota entre 4 scripts, uno por página. El array interno era:
+```
+SCRIPTS = [seanchai, ghawazee, shirabyoshi, subir_fb_evacuador_teasers.py]
+NOMBRES = ["Seanchai", "Ghawazee", "Shirabyoshi", "Performatic Writings"]
+```
+El problema: `subir_fb_evacuador_teasers.py` es el script **original y antiguo**, y siempre subió a **Shirabyoshi Writings** (hardcodeado). El slot 4 se etiquetaba "Performatic Writings" en el log, pero en realidad enviaba contenido a Shirabyoshi — un alias engañoso que causó confusión y además fallaba porque el `.env` del Note9 no tenía `META_FB_PAGE_TOKEN_TEASER`.
+
+### Causa raíz doble
+1. **Arquitectural:** El slot 4 del master nunca tuvo un script dedicado a Performatic; usaba el evacuador de Shirabyoshi por omisión histórica.
+2. **Credenciales:** El `.env` del Note9 no tenía `META_FB_PAGE_TOKEN_TEASER`, por lo que el script caía al fallback de `META_FB_PAGE_TOKEN` (token de Performatic), que no tiene permisos de publicar en Shirabyoshi → error HTTP 400 `"No tienes permiso para subir un video aquí"`.
+
+### Soluciones aplicadas
+
+1. **Nuevo script `subir_teasers_performatic.py`:**
+   - Creado siguiendo exactamente la misma arquitectura de `subir_teasers_shirabyoshi.py`, `subir_teasers_seanchai.py` y `subir_teasers_ghawazee.py`.
+   - Lee `META_FB_PAGE_TOKEN` y `META_FB_PAGE_ID` (Performatic Writings Cali, ID: `803559979506784`).
+   - Carpeta fuente: `videos subidos exitosamente` (teasers con `_teaser_` en el nombre).
+   - Lógica: intenta REEL (9:16), fallback a Video Estándar, backoff 24h si Code 368.
+   - Log dedicado: `fb_performatic_teasers.log`.
+   - Archivo de backoff dedicado: `.bloqueo_368_performatic`.
+
+2. **`master_teasers_termux.sh` actualizado:**
+   ```bash
+   # ANTES (roto)
+   "subir_fb_evacuador_teasers.py"  →  "Performatic Writings"
+   # DESPUÉS (correcto)
+   "subir_teasers_performatic.py"   →  "Performatic Writings Cali"
+   ```
+
+3. **`META_FB_PAGE_TOKEN_TEASER` inyectado en Note9:**
+   Se derivó el Page Access Token de Shirabyoshi vía Graph API y se añadió al `.env` en Termux home y en proot Debian del Note9, corrigiendo también el fallback roto.
+
+4. **Recuperación de videos fallidos:**
+   5 videos en `fallidos_facebook` fueron devueltos a sus colas correctas:
+   - 3 teasers → `teasers_pendientes` (Shirabyoshi)
+   - 2 teasers con fecha → `videos subidos exitosamente` (Seanchai/Ghawazee)
+
+### Estado final del Master Teasers
+| Slot | Script | Página destino |
+|------|--------|---------------|
+| 1 | `subir_teasers_seanchai.py` | Seanchai Writings |
+| 2 | `subir_teasers_ghawazee.py` | Ghawazee Writings |
+| 3 | `subir_teasers_shirabyoshi.py` | Shirabyoshi Writings |
+| 4 | `subir_teasers_performatic.py` | Performatic Writings Cali |
+
+### Archivos modificados/creados
+- `meta_uploader/subir_teasers_performatic.py` — nuevo script
+- `scripts/linux/master_teasers_termux.sh` — slot 4 corregido
+- Note9 `~/.agentes_termux_env` y proot `.env` — `META_FB_PAGE_TOKEN_TEASER` inyectado
+
+### Consecuencia
+Cada una de las 4 páginas recibe exactamente 1 teaser cada 48 minutos (30 por día), sin contaminación cruzada de credenciales ni de contenido.
