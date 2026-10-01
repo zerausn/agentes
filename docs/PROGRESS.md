@@ -256,3 +256,46 @@
 - **`master_teasers_termux.sh` corregido:** Slot 4 usa `subir_teasers_performatic.py`. Ahora las 4 páginas tienen scripts dedicados y sin ambigüedad.
 - **Token Shirabyoshi inyectado en Note9:** `META_FB_PAGE_TOKEN_TEASER` añadido al `.env` en Termux y en el proot Debian del Note9.
 - **5 videos recuperados:** Devueltos de `fallidos_facebook` a sus colas correctas.
+
+## Fix Vigía Instagram — Posts Inaccesibles del Reporte Histórico (2026-10-01)
+
+### Síntoma
+El Vigía de Instagram (`fb_to_ig_vigia.py`) llevaba 6+ horas sin publicar nada.
+El log mostraba:
+```
+Ninguno de los 5 bloques de ninguna pagina tenia posts nuevos. Consultando reporte historico...
+Reporte historico: candidato sin publicar: 803559979506784_122153788701044766 (Performatic Writings Cali)
+ERROR - No se pudo resolver el post del reporte via API. Abortando.
+```
+El ciclo terminaba con exit 0 (sin publicar nada).
+
+### Causa raíz
+La función `_resolve_full_post_from_report_entry` llamaba a la API de Facebook con
+`fields=attachments{media}` sobre un post ID específico. Facebook devolvía **HTTP 400 – Code 10**
+(`pages_read_engagement` permission required). El token tiene `pages_manage_posts` (para subir),
+pero **no** `pages_read_engagement` (para leer adjuntos de posts antiguos por ID directo).
+
+La lectura del **feed** (`/page/feed`) sí funciona porque opera a nivel de página.
+La lectura de **un post por ID** con adjuntos multimedia requiere un permiso más elevado
+(`pages_read_engagement`) que es una característica revisable por Meta.
+
+Los posts del reporte histórico son antiguos (de meses atrás) y Facebook aplica restricciones
+más estrictas a posts antiguos cuando se acceden directamente por ID.
+
+### Solución aplicada (`fb_to_ig_vigia.py`)
+
+1. `_resolve_full_post_from_report_entry` ahora devuelve una tupla `(post, http_code)` en lugar
+   de solo `post`.
+2. El bloque fallback en `process_new_posts` ahora distingue:
+   - **HTTP 400/403/404** → el post ya no es accesible; lo marca como procesado en el registro
+     (`crosspost_dedupe_registry.json`) y continúa con el siguiente del reporte.
+   - **Error transitorio (timeout, red, http_code=0)** → aborta el ciclo y reintenta en 12 min.
+3. Se añadió `MAX_REPORT_RETRIES = 10` para evitar loops infinitos en el fallback.
+
+### Resultado esperado
+El Vigía irá vaciando progresivamente los posts inaccesibles del reporte, marcándolos como
+procesados, hasta encontrar uno que sí pueda resolver. A partir de entonces, cruzará
+nuevamente a Instagram sin interrupciones.
+
+### Archivo modificado
+- `meta_uploader/fb_to_ig_vigia.py` — commit `6e0c070`
