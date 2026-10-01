@@ -612,3 +612,11 @@ El problema: `subir_fb_evacuador_teasers.py` es el script **original y antiguo**
 
 ### Consecuencia
 Cada una de las 4 páginas recibe exactamente 1 teaser cada 48 minutos (30 por día), sin contaminación cruzada de credenciales ni de contenido.
+
+---
+### 2026-10-01: Corrección de origen para FB Teasers
+
+- **Concepto clave:** La carpeta `teasers_pendientes` es de uso **EXCLUSIVO** de YouTube. YouTube es quien los sube como Shorts y, una vez terminados, los traslada a `videos subidos exitosamente`.
+- Por tanto, **TODOS** los scripts de Facebook (Performatic, Seanchai, Ghawazee, Shirabyoshi) toman sus videos de la carpeta `videos subidos exitosamente`. No de `teasers_pendientes`.
+- El bot Vigía de Instagram (`fb_to_ig_vigia.py`) se encarga de monitorear estas 4 páginas de Facebook y cruza el video a Instagram **una sola vez**, utilizando un registro de deduplicación que evita que el mismo teaser se suba varias veces al Feed/Reels de IG, sin importar en cuántas páginas de FB aparezca.
+
