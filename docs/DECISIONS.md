@@ -505,3 +505,52 @@ Se presentaron tres errores concurrentes en los evacuadores de teasers y crudos:
 
 ### Consecuencia
 Los flujos de publicación paralela hacia las 4 páginas (Performatic, Shirabyoshi, Seanchai, Ghawazee) ahora manejan correctamente los casos extremos (videos estándar y limpieza de variables del shell proot) en total sincronía y sin problemas de permisos transversales.
+
+---
+
+## 2026-09-30: Fix de permisos de ejecución en S24 Ultra tras `git reset`
+
+### Contexto
+Después del `git reset --hard origin/linux-arm64` para sincronizar el S24 con los últimos cambios, todos los scripts nuevos (ghawazee, seanchai, shirabyoshi teasers, vigia_historico, etc.) fallaban con `Permission denied` al ser ejecutados desde los widgets de Termux.
+
+El Note9 no presentaba este problema porque esos scripts habían llegado al dispositivo directamente por ADB (con `chmod +x` explícito), mientras que en el S24 llegaron vía `git reset`, que no preserva el bit de ejecución en el sistema de archivos de Android.
+
+### Causa raíz
+El sistema de archivos de Termux en Android (basado en ext4 con mapeo de permisos limitado para aplicaciones no-root) no propaga el bit `+x` que Git almacena internamente en los blobs. Al hacer `git reset --hard` o `git pull`, los archivos nuevos se crean con permisos `rw-rw-rw-` (666) en lugar de `rwxrwxrwx` (777), independientemente de lo que indique el index de Git.
+
+### Solución aplicada
+
+1. **Corrección inmediata en el S24:**
+   ```bash
+   chmod +x ~/agentes/scripts/linux/*.sh
+   chmod +x ~/agentes/meta_uploader/*.py
+   ```
+
+2. **Fix permanente en `renovar_repo_termux.sh`:**
+   Se añadió un bloque `find … -exec chmod +x` que siempre se ejecuta después de cada `git pull`. De esta forma, cualquier actualización futura del repo restaura automáticamente los permisos:
+   ```bash
+   find "$REPO_DIR/scripts/linux" -name "*.sh" -exec chmod +x {} \;
+   find "$REPO_DIR/meta_uploader" -name "*.py" -exec chmod +x {} \;
+   ```
+
+3. **Shortcut `7_SHIRABYOSHI_TEASERS.sh` actualizado:**
+   El shortcut apuntaba a `shirabyoshi_teasers_seguro_termux.sh` (script obsoleto no rastreado por Git). Se redirigió al nuevo script oficial `shirabyoshi_teasers_termux.sh`.
+
+### Archivos modificados
+- `scripts/linux/renovar_repo_termux.sh` — bloque `chmod +x` permanente post-pull
+
+### Consecuencia
+A partir de ahora, cada vez que el usuario ejecute `0_RENOVAR_REPO.sh` en cualquier dispositivo Android (S24, Note9, Vivo), todos los scripts y módulos Python quedarán con permisos de ejecución correctos sin intervención manual.
+
+---
+
+## 2026-09-30: Limpieza de exports redundantes en `vigia_meta720_termux.sh`
+
+### Contexto
+El script exportaba explícitamente `META_FB_PAGE_ID_TEASER`, `META_FB_PAGE_TOKEN_TEASER`, `META_FB_PAGE_ID_SEANCHAI`, `META_FB_PAGE_TOKEN_SEANCHAI`, `META_FB_PAGE_ID_GHAWAZEE` y `META_FB_PAGE_TOKEN_GHAWAZEE` dentro del comando proot `login`. Esto duplicaba variables que `fb_to_ig_vigia.py` ya lee directamente del archivo `.env` dentro del entorno proot, y podía causar conflictos si el `.env` tenía tokens más actualizados (por ejemplo, tras una renovación de token).
+
+### Decisión
+Eliminar los `export` inline del comando proot. El `.env` dentro de proot es la fuente única de verdad para los tokens de cada página.
+
+### Consecuencia
+Menos superficie de fallo: una sola fuente de credenciales por entorno. Cualquier renovación de tokens solo requiere actualizar el `.env` dentro del proot, sin necesidad de editar también el script bash.
