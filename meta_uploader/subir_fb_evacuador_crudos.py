@@ -30,8 +30,16 @@ from meta_uploader import (
 )
 
 # --- Rutas ---
-ROOT = Path(os.environ.get("AGENTES_STORAGE_ROOT", ""))
-if not str(ROOT):
+_root_env = os.environ.get("AGENTES_STORAGE_ROOT", "").strip()
+if not _root_env:
+    mobile_root = Path("/sdcard/Antigravity")
+    if mobile_root.exists():
+        ROOT = mobile_root
+    else:
+        ROOT = Path("/home/zerausn/Documents/Antigravity")
+else:
+    ROOT = Path(_root_env)
+if False:
     mobile_root = Path("/sdcard/Antigravity")
     if mobile_root.exists():
         ROOT = mobile_root
