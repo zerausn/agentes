@@ -319,6 +319,9 @@ def _resolve_full_post_from_report_entry(entry):
     """
     El reporte guarda solo metadatos. Llama a la API de FB para obtener
     el post completo con attachments y retorna el dict enriquecido.
+    Retorna (post_dict_o_None, http_status_code).
+    Si el status code es 400/403 significa que el post ya no es accesible
+    (permiso revocado o post eliminado) y debe marcarse como procesado.
     """
     import requests as req_lib
     post_id = entry.get("post_id")
@@ -340,10 +343,15 @@ def _resolve_full_post_from_report_entry(entry):
         if resp.status_code == 200:
             full = resp.json()
             full["_source_page_name"] = src_page
-            return full
+            return full, 200
+        logging.warning(
+            "Post %s del reporte no accesible: HTTP %s — %s",
+            post_id, resp.status_code, resp.text[:200],
+        )
+        return None, resp.status_code
     except Exception as e:
         logging.error("Error al resolver post %s desde API: %s", post_id, e)
-    return None
+    return None, 0
 
 
 # ─── Ciclo principal ──────────────────────────────────────────────────────────
@@ -416,14 +424,35 @@ def process_new_posts(dry_run=False):
             "Ninguno de los %s bloques de ninguna pagina tenia posts nuevos. Consultando reporte historico...",
             MAX_BLOCKS,
         )
-        report_entry, candidate_keys = _pick_from_report(registry, ig_catalog_keys)
-        if report_entry is not None:
-            candidate_post = _resolve_full_post_from_report_entry(report_entry)
-            if candidate_post is None:
-                logging.error("No se pudo resolver el post del reporte via API. Abortando.")
+        MAX_REPORT_RETRIES = 10  # Máximo de entradas del reporte a intentar antes de rendirse
+        for _retry in range(MAX_REPORT_RETRIES):
+            report_entry, candidate_keys = _pick_from_report(registry, ig_catalog_keys)
+            if report_entry is None:
+                logging.info("No hay contenido pendiente en bloques frescos ni en el reporte. Todo al dia.")
                 return 0
+            post_id_rep = report_entry.get("post_id")
+            candidate_post, http_code = _resolve_full_post_from_report_entry(report_entry)
+            if candidate_post is not None:
+                break
+            # Si el post no es accesible (permiso revocado, post eliminado), lo saltamos
+            if http_code in (400, 403, 404):
+                logging.warning(
+                    "Post %s del reporte es inaccesible (HTTP %s). Marcando como procesado y continuando.",
+                    post_id_rep, http_code,
+                )
+                register_processed_post(history, registry, post_id_rep, candidate_keys, remember_keys=True)
+                ig_catalog_keys.update(candidate_keys or set())
+                candidate_post = None
+                candidate_keys = None
+                continue
+            # Error transitorio (red, timeout) — abortar para reintentar en el próximo ciclo
+            logging.error("Error transitorio al resolver post %s (HTTP %s). Abortando ciclo.", post_id_rep, http_code)
+            return 0
         else:
-            logging.info("No hay contenido pendiente en bloques frescos ni en el reporte. Todo al dia.")
+            logging.error("Se agotaron %s intentos del reporte historico sin encontrar un post valido.", MAX_REPORT_RETRIES)
+            return 0
+        if candidate_post is None:
+            logging.info("No hay contenido publicable tras agotar el reporte historico.")
             return 0
 
     # 4. Subir el candidato encontrado
