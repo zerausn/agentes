@@ -434,17 +434,15 @@ def process_new_posts(dry_run=False):
             candidate_post, http_code = _resolve_full_post_from_report_entry(report_entry)
             if candidate_post is not None:
                 break
-            # Si el post no es accesible (permiso revocado, post eliminado), lo saltamos
+            # Si el post no es accesible, abortamos para no destruir el reporte entero por culpa de un token malo
             if http_code in (400, 403, 404):
-                logging.warning(
-                    "Post %s del reporte es inaccesible (HTTP %s). Marcando como procesado y continuando.",
+                logging.error(
+                    "Post %s es inaccesible (HTTP %s). Posible problema de token o permisos. "
+                    "Abortando para NO destruir el reporte historico. Por favor revisa los tokens "
+                    "o usa el endpoint /{page_id}/videos en su lugar.",
                     post_id_rep, http_code,
                 )
-                register_processed_post(history, registry, post_id_rep, candidate_keys, remember_keys=True)
-                ig_catalog_keys.update(candidate_keys or set())
-                candidate_post = None
-                candidate_keys = None
-                continue
+                return 0
             # Error transitorio (red, timeout) — abortar para reintentar en el próximo ciclo
             logging.error("Error transitorio al resolver post %s (HTTP %s). Abortando ciclo.", post_id_rep, http_code)
             return 0
