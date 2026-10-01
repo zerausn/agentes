@@ -96,3 +96,11 @@
 - [x] Nuevos statuses: `published_with_ig_delegated`, `scheduled_with_ig_delegated`.
 - [x] Eliminado el transcoding de IG (`ensure_ig_compatibility` + deep clean) del flujo principal, ahorrando ~2 min de CPU por video.
 - [x] Auto-move de videos completos a `ya_subidos_fb_ig/` y reubicación de temporales `slice_60s/ig_compat` a `ya_subidos_ig_temp/` (fuera del alcance del uploader).
+
+### 2026-10-01: Reparación del bug del Vigía 4.0 (commit a0bd37d)
+- [x] Inicialización de `candidate_post`/`candidate_keys` antes del `for` en `process_new_posts()`.
+- [x] Verificado con tests de los tres caminos: posts nuevos (línea 354), sin posts nuevos (373) y Deep Cursor (373+).
+- [x] `--once` ahora sale con código 1 ante excepción (no 0=falso OK).
+- [x] Marcador `"DONE"` en `deep_cursors` para no re-escanear páginas agotadas.
+- [x] Mensajes obsoletos ("Fallback reporte historico") corregidos a "Paginacion profunda (Deep Cursor)".
+- [x] Documentado en `DECISIONS.md` como D47.

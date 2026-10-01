@@ -319,3 +319,13 @@
     2. Cláusula de Rescate: El runner se marca éxito (`ok=True`) si al menos Facebook se resuelve, evitando abortos por fallos en IG.
     3. Gestión Automática de Archivos: Al completar una jornada, se mueven videos originales a `ya_subidos_fb_ig/` y temporales (`slice_60s`, `ig_compat`) a `ya_subidos_ig_temp/`.
 - **Razón:** Eliminar el cuello de botella que causaba Instagram (Rate Limiting y fallos de API) sobre el flujo estable de Facebook. El auto-move garantiza que el área de trabajo se mantenga despejada y previene duplicados en escaneos futuros.
+
+## D47: Reparación del Vigía 4.0 (UnboundLocalError + código de salida oculto)
+- **Decisión:**
+    1. Inicializar `candidate_post = None` y `candidate_keys = None` justo antes del `for page_id, page_token, page_name in FB_PAGES:` en `process_new_posts()`.
+    2. En `main()`, cuando `--once` o `--dry-run` y ocurre una excepción, salir con `sys.exit(1)` en lugar de dejar que el script termine con código 0.
+    3. Guardar `"DONE"` en `deep_cursors[page_id]` cuando un bloque profundo llega al fin de la página, y saltar esa página en ciclos siguientes.
+- **Razón:**
+    - El commit `a0bd37d` (refactor a Deep Cursor) se quitó la inicialización de `candidate_post`/`candidate_keys`. Con posts nuevos fallaba en la línea 354 (`if candidate_post is None or ...`) y sin posts nuevos fallaba en la línea 373 (`if candidate_post is None:`). Ambos caminos lanzaban `UnboundLocalError`, así que el Vigía no publicó nada desde las 14:09.
+    - `main()` capturaba la excepción, ponía `rescued=0` y terminaba con código 0. El launcher `vigia_meta720_termux.sh` interpretaba 0 como "crosspost exitoso", ocultando el fallo.
+    - El cursor profundo que "se acaba" (next_cursor=None) se guardaba como None y al ciclo siguiente `.get()` devolvía None, volviendo a `page_last_cursors` y re-escaneando los mismos bloques sin avanzar. El marcador "DONE" evita ese gasto de API.

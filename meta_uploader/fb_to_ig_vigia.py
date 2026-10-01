@@ -1,9 +1,10 @@
+import argparse
 import json
 import logging
-import time
-import argparse
 import os
 import re
+import sys
+import time
 import unicodedata
 from pathlib import Path
 
@@ -305,7 +306,7 @@ def save_deep_cursors(cursors_dict):
 
 def process_new_posts(dry_run=False):
     logging.info(
-        "--- Vigia v4.0: Bloques de 100 por pagina | Max 5 bloques | Fallback reporte historico ---"
+        "--- Vigia v4.0: Bloques de 100 por pagina | Max 5 bloques | Paginacion profunda (Deep Cursor) ---"
     )
     history = load_history()
     registry = load_dedupe_registry()
@@ -325,6 +326,14 @@ def process_new_posts(dry_run=False):
     # Guardar el último cursor de los bloques frescos de cada página
     # para usarlo como punto de partida histórico si no hay deep cursor previo
     page_last_cursors = {}
+
+    # Inicializar candidatos ANTES de recorrer las páginas.
+    # El refactor de Deep Cursor (a0bd37d) se quitó esta inicialización y
+    # dejó al Vigía sin publicar nada: el primer post sin cruzar lanza
+    # UnboundLocalError en la línea 354, y el camino "sin posts nuevos"
+    # falla en la línea 373.
+    candidate_post = None
+    candidate_keys = None
 
     for page_id, page_token, page_name in FB_PAGES:
         if not page_id or not page_token:
@@ -383,11 +392,14 @@ def process_new_posts(dry_run=False):
                 continue
                 
             cursor = deep_cursors.get(page_id)
+            if cursor == "DONE":
+                logging.info("[%s] Pagina ya recorrida al fondo (DONE). Saltando.", page_name)
+                continue
             if not cursor:
                 cursor = page_last_cursors.get(page_id)
                 if not cursor:
                     continue  # La página tiene menos de MAX_BLOCKS en total, no hay historial profundo
-                    
+
             logging.info("[%s] Retomando historial profundo desde cursor.", page_name)
             
             for deep_block_num in range(1, MAX_DEEP_BLOCKS + 1):
@@ -398,7 +410,10 @@ def process_new_posts(dry_run=False):
                 )
                 if not block_posts:
                     logging.info("[%s] Historial profundo agotado (fin de la pagina).", page_name)
-                    # Opcional: borrar el cursor si se llegó al principio de los tiempos
+                    # Marcamos la pagina como DONE para que los proximos ciclos
+                    # no re-escaneen los mismos bloques de siempre (ahorra API).
+                    deep_cursors[page_id] = "DONE"
+                    save_deep_cursors(deep_cursors)
                     break
                     
                 new_post, new_keys = _find_newest_uncrossposted(block_posts, registry, ig_catalog_keys)
@@ -548,7 +563,7 @@ def process_new_posts(dry_run=False):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Agente Vigia 4.0: Bloques por pagina + fallback reporte historico"
+        description="Agente Vigia 4.0: Bloques por pagina + paginacion profunda (Deep Cursor)"
     )
     parser.add_argument("--dry-run", action="store_true", help="Solo muestra lo que subiria.")
     parser.add_argument("--once", action="store_true", help="Ejecuta una vez y sale.")
@@ -559,6 +574,11 @@ def main():
             rescued = process_new_posts(dry_run=args.dry_run)
         except Exception as e:
             logging.error("Error en pulso del Vigia: %s", e)
+            if args.once or args.dry_run:
+                # No escondemos el fallo como "OK" (código 0): el launcher
+                # interpreta 0 como crosspost exitoso. Con --once salimos
+                # con código 1 para que el widget muestre el error real.
+                sys.exit(1)
             rescued = 0
 
         if args.once or args.dry_run:
