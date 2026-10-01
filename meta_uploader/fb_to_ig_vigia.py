@@ -234,12 +234,15 @@ def extract_media_list(post):
 def _fetch_block(page_id, page_token, page_name, after_cursor=None, block_size=100):
     """
     Descarga un bloque de `block_size` posts del feed de FB comenzando desde `after_cursor`.
-    Retorna (posts, next_cursor). Posts en orden mas reciente → mas antiguo.
+    Retorna (posts, next_cursor, api_ok). Posts en orden mas reciente → mas antiguo.
+    `api_ok` es False si la API fallo a mitad de bloque (fb_feed es None): en ese
+    caso un resultado vacio NO significa fin del feed, solo que hay que reintentar.
     """
     posts = []
     cursor = after_cursor
     api_page_size = 10
     last_cursor = None
+    api_ok = True
 
     for _ in range(block_size // api_page_size):
         fb_feed = get_facebook_page_feed(
@@ -249,6 +252,7 @@ def _fetch_block(page_id, page_token, page_name, after_cursor=None, block_size=1
             page_token=page_token,
         )
         if fb_feed is None:
+            api_ok = False
             break
         page_data = fb_feed.get("data") or []
         if not page_data:
@@ -263,7 +267,7 @@ def _fetch_block(page_id, page_token, page_name, after_cursor=None, block_size=1
             break
         cursor = last_cursor
 
-    return posts, last_cursor
+    return posts, last_cursor, api_ok
 
 
 def _find_newest_uncrossposted(posts, registry, ig_catalog_keys):
@@ -278,7 +282,8 @@ def _find_newest_uncrossposted(posts, registry, ig_catalog_keys):
                 return post, content_keys
             else:
                 # Si no tiene media, lo marcamos como procesado inmediatamente para no volver a evaluarlo
-                from fb_to_ig_vigia import register_processed_post, HISTORY_FILE, load_history
+                # (register_processed_post/load_history son del propio modulo;
+                # no se auto-importa para evitar ejecutar el modulo dos veces).
                 history = load_history()
                 register_processed_post(history, registry, post_id, content_keys, remember_keys=False)
                 logging.info("Post %s ignorado en pre-filtro (sin media).", post_id)
@@ -315,8 +320,10 @@ def process_new_posts(dry_run=False):
     # 1. Catálogo IG para deduplicación (cacheado)
     ig_catalog = get_instagram_library_batch(max_pages=150, use_cache=True)
     if ig_catalog is None:
-        logging.error("Fallo critico: No se pudo sincronizar el catalogo de IG. Abortando.")
-        return 0
+        # No se retorna 0 ("OK") porque el launcher lo interpretaria como exito:
+        # se lanza excepcion para que main() registre el error y --once salga
+        # con codigo 1.
+        raise RuntimeError("No se pudo sincronizar el catalogo de IG. Abortando.")
     ig_catalog_keys = build_catalog_key_index(ig_catalog)
     logging.info("Catalogo IG: %s captions, %s claves.", len(ig_catalog), len(ig_catalog_keys))
 
@@ -347,13 +354,21 @@ def process_new_posts(dry_run=False):
                 page_name, block_num, MAX_BLOCKS, BLOCK_SIZE,
                 "inicio" if block_cursor is None else "cursor"
             )
-            block_posts, next_cursor = _fetch_block(
+            block_posts, next_cursor, api_ok = _fetch_block(
                 page_id, page_token, page_name,
                 after_cursor=block_cursor,
                 block_size=BLOCK_SIZE,
             )
             if not block_posts:
-                logging.info("[%s] Bloque %s vacio. No hay mas posts en esta pagina.", page_name, block_num)
+                if api_ok:
+                    logging.info("[%s] Bloque %s vacio. No hay mas posts en esta pagina.", page_name, block_num)
+                else:
+                    # Bloque vacio por FALLO de API, no por fin de pagina:
+                    # se rompe sin asumir nada y se reintenta en el proximo ciclo.
+                    logging.warning(
+                        "[%s] Bloque %s: la API fallo (sin datos). Se reintentara en el proximo ciclo.",
+                        page_name, block_num,
+                    )
                 break
 
             new_post, new_keys = _find_newest_uncrossposted(block_posts, registry, ig_catalog_keys)
@@ -403,17 +418,27 @@ def process_new_posts(dry_run=False):
             logging.info("[%s] Retomando historial profundo desde cursor.", page_name)
             
             for deep_block_num in range(1, MAX_DEEP_BLOCKS + 1):
-                block_posts, next_cursor = _fetch_block(
+                block_posts, next_cursor, api_ok = _fetch_block(
                     page_id, page_token, page_name,
                     after_cursor=cursor,
                     block_size=BLOCK_SIZE,
                 )
                 if not block_posts:
-                    logging.info("[%s] Historial profundo agotado (fin de la pagina).", page_name)
-                    # Marcamos la pagina como DONE para que los proximos ciclos
-                    # no re-escaneen los mismos bloques de siempre (ahorra API).
-                    deep_cursors[page_id] = "DONE"
-                    save_deep_cursors(deep_cursors)
+                    if api_ok:
+                        logging.info("[%s] Historial profundo agotado (fin de la pagina).", page_name)
+                        # Marcamos la pagina como DONE para que los proximos ciclos
+                        # no re-escaneen los mismos bloques de siempre (ahorra API).
+                        deep_cursors[page_id] = "DONE"
+                        save_deep_cursors(deep_cursors)
+                    else:
+                        # Bloque vacio por FALLO de API, no por fin de pagina:
+                        # NO se marca DONE (perderia el backlog) ni se mueve el
+                        # cursor; el proximo ciclo reintenta desde el mismo punto.
+                        logging.warning(
+                            "[%s] Bloque historico %s: la API fallo (sin datos). "
+                            "Se conserva el cursor para reintentar.",
+                            page_name, deep_block_num,
+                        )
                     break
                     
                 new_post, new_keys = _find_newest_uncrossposted(block_posts, registry, ig_catalog_keys)
@@ -426,7 +451,13 @@ def process_new_posts(dry_run=False):
                 
                 # El bloque profundo entero ya estaba cruzado. Avanzamos el cursor para hundirnos más en la historia
                 cursor = next_cursor
-                deep_cursors[page_id] = cursor
+                if cursor is None:
+                    # Sin cursor siguiente el feed llego al fondo (D47):
+                    # guardar None haria que el proximo ciclo volviera a
+                    # page_last_cursors y re-escaneara los mismos bloques.
+                    deep_cursors[page_id] = "DONE"
+                else:
+                    deep_cursors[page_id] = cursor
                 save_deep_cursors(deep_cursors)
                 
                 logging.info("[%s] Bloque historico %s vacio de pendientes. Cursor hundido al siguiente nivel.", page_name, deep_block_num)
@@ -581,7 +612,11 @@ def main():
                 sys.exit(1)
             rescued = 0
 
-        if args.once or args.dry_run:
+        if args.once:
+            # 0 = se publico algo, 2 = nada pendiente, 1 = error (ver except).
+            # El launcher distingue 2 como "Sin posts nuevos para crosspostear".
+            sys.exit(0 if rescued else 2)
+        if args.dry_run:
             break
 
         if rescued > 0:

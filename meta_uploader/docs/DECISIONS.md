@@ -329,3 +329,14 @@
     - El commit `a0bd37d` (refactor a Deep Cursor) se quitó la inicialización de `candidate_post`/`candidate_keys`. Con posts nuevos fallaba en la línea 354 (`if candidate_post is None or ...`) y sin posts nuevos fallaba en la línea 373 (`if candidate_post is None:`). Ambos caminos lanzaban `UnboundLocalError`, así que el Vigía no publicó nada desde las 14:09.
     - `main()` capturaba la excepción, ponía `rescued=0` y terminaba con código 0. El launcher `vigia_meta720_termux.sh` interpretaba 0 como "crosspost exitoso", ocultando el fallo.
     - El cursor profundo que "se acaba" (next_cursor=None) se guardaba como None y al ciclo siguiente `.get()` devolvía None, volviendo a `page_last_cursors` y re-escaneando los mismos bloques sin avanzar. El marcador "DONE" evita ese gasto de API.
+
+## D48: Endurecimiento del Deep Cursor (DONE falso por fallo de API + códigos de salida)
+- **Decisión:**
+    1. `_fetch_block()` ahora retorna `(posts, next_cursor, api_ok)`. Un bloque vacío con `api_ok=False` es fallo de red, NO fin de página: no se marca `"DONE"` ni se mueve el cursor (se reintenta en el próximo ciclo).
+    2. Cuando un bloque profundo ya cruzado devuelve `next_cursor=None` (fondo real del feed), se guarda `"DONE"` en vez de `None` (D47 solo cubría el bloque vacío; guardar `None` re-escanaba los mismos bloques cada ciclo).
+    3. `--once` ahora distingue: `0` = se publicó algo, `2` = nada pendiente (el launcher ya lo muestra como "Sin posts nuevos"), `1` = error.
+    4. Si el catálogo de IG es ilegible (`None`), se lanza `RuntimeError` en vez de retornar 0 silencioso (antes el launcher lo mostraba como "OK").
+    5. Se eliminó el auto-import `from fb_to_ig_vigia import ...` dentro de `_find_newest_uncrossposted()` (ejecutaba el módulo dos veces al correr como `__main__`); se usan los globales del propio módulo.
+- **Razón:**
+    - Un error 500/timeout de Meta a mitad del Deep Cursor dejaba `block_posts` vacío y el código marcaba la página como `"DONE"` para siempre, perdiendo el backlog histórico hasta borrar manualmente `crosspost_deep_cursors.json`.
+    - El retorno `0` reutilizado para "todo al día", "post descartado" y "catálogo roto" impedía distinguir un ciclo sano de un fallo en el log del widget.

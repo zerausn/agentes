@@ -58,3 +58,13 @@
     - Se confirmó en vivo `Fotos sueltas` con 21 fotos, teaser de 5 fotos y archivado local tras confirmación.
     - Se confirmó en vivo que álbumes pequeños de `2-3` fotos publican teaser con las disponibles, quedan confirmados y se archivan.
 - **Estado**: El flujo ya verifica listado de fechas y crea álbumes automáticamente. La corrida quedó detenida a pedido del usuario durante `Fotos 2025-10-24`; se puede continuar ejecutando `photo_uploader/subir_album_diario.sh` y reanudará sin duplicar.
+
+## Sesión: 2026-10-01 — Revisión del widget VIGIA_META720 y endurecimiento del Deep Cursor
+- **Objetivo**: Revisar la lógica del widget `vigia_meta720.sh`, leer la documentación y decidir si el Deep Cursor sirve para recuperar los videos pasados de Facebook hacia Instagram.
+- **Logros**:
+    - Confirmado que el fix `dad4a65` (UnboundLocalError de `a0bd37d`) es correcto: verificado con tests sin red de los 3 caminos.
+    - Detectados y corregidos 2 bugs restantes del Deep Cursor: `DONE` falso ante fallo de API y cursor `None` guardado como `None` (re-escaneo infinito).
+    - Códigos de salida de `--once` distinguidos (`0` publicado / `2` nada pendiente / `1` error); catálogo IG ilegible ahora es error visible.
+    - Conclusión: el Deep Cursor SÍ es la vía correcta para el backlog histórico (evita el Code 10 del reporte estático); el widget publica 1 post por ciclo de 12 min, primero lo reciente y luego hunde el cursor en la historia.
+    - Hallazgo de seguridad: el Page Access Token sigue en el historial del repo público (commits `83c004f`, `c1ac514`, `1713712`); hay que rotarlo.
+- **Estado**: Cambios listos localmente en la rama `linux-arm64`, pendientes de push + `0_RENOVAR_REPO` en los dispositivos y de rotar el token.

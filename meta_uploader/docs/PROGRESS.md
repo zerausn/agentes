@@ -104,3 +104,13 @@
 - [x] Marcador `"DONE"` en `deep_cursors` para no re-escanear páginas agotadas.
 - [x] Mensajes obsoletos ("Fallback reporte historico") corregidos a "Paginacion profunda (Deep Cursor)".
 - [x] Documentado en `DECISIONS.md` como D47.
+
+### 2026-10-01: Endurecimiento del Deep Cursor (D48)
+- [x] `_fetch_block()` retorna `api_ok`: un bloque vacío por fallo de API ya no marca la página como `"DONE"` (antes perdía el backlog histórico).
+- [x] `next_cursor=None` tras bloque procesado se guarda como `"DONE"` (antes se guardaba `None` y re-escanaba los mismos bloques cada ciclo).
+- [x] `--once` distingue publicado (`0`) / nada pendiente (`2`) / error (`1`); catálogo IG ilegible lanza `RuntimeError` visible.
+- [x] Eliminado auto-import `from fb_to_ig_vigia import ...` y el `test.py` suelto que imprimía un token.
+- [x] Verificado sin red con 8 casos (3 caminos originales + rescate DONE + no-DONE ante fallo API + `_fetch_block` real + catálogo fatal + exit codes) y `test_vigia_dedupe.py` (3 tests OK).
+- [x] Documentado en `DECISIONS.md` como D48.
+- [ ] Hacer push a `origin/linux-arm64` y correr `0_RENOVAR_REPO` en los dispositivos para que el widget tome el fix.
+- [ ] Rotar el Page Access Token filtrado en el historial público del repo (commits `83c004f`, `c1ac514`, `1713712`).
