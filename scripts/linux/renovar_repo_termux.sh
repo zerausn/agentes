@@ -46,6 +46,11 @@ else
     echo "  [OK] Repo actualizado a $(git rev-parse --short HEAD)"
 fi
 
+# Siempre restablecer permisos de ejecucion (git en Android no preserva +x)
+echo "  [+x] Aplicando permisos de ejecucion en scripts/linux/ y meta_uploader/..."
+find "$REPO_DIR/scripts/linux" -name "*.sh" -exec chmod +x {} \;
+find "$REPO_DIR/meta_uploader" -name "*.py" -exec chmod +x {} \;
+
 echo ""
 
 # 3. Re-ejecutar bootstrap para recrear todos los shortcuts
