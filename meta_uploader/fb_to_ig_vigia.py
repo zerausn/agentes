@@ -45,7 +45,7 @@ FB_PAGES = [
         os.environ.get("META_FB_PAGE_ID_TEASER", "1347014641828725"),
         os.environ.get(
             "META_FB_PAGE_TOKEN_TEASER",
-            "EAAUr7rtgpvMBSmuoJG2DaiWjd8G6pjRDVOdBUyLtDZBupMeEJd9Ef8RuZAqi1Yhpb6CZBWYjpOwEz3Ht6SB9FkZC3SDDnSa7rLtNTTMVlCjMAZAA4di3m7M2IFeFDHfOqog3eUqL7h0alxQ8DIvc8v9mf84m4ytfYQEWl1C3Vg6LjKKR1NbcJYXnGkbje2D0GWcvZCoDJZC",
+            "",
         ),
         "Shirabyoshi Writings",
     ),
@@ -329,7 +329,7 @@ def _resolve_full_post_from_report_entry(entry):
     if "Shirabyoshi" in src_page:
         token = os.environ.get(
             "META_FB_PAGE_TOKEN_TEASER",
-            "EAAUr7rtgpvMBSmuoJG2DaiWjd8G6pjRDVOdBUyLtDZBupMeEJd9Ef8RuZAqi1Yhpb6CZBWYjpOwEz3Ht6SB9FkZC3SDDnSa7rLtNTTMVlCjMAZAA4di3m7M2IFeFDHfOqog3eUqL7h0alxQ8DIvc8v9mf84m4ytfYQEWl1C3Vg6LjKKR1NbcJYXnGkbje2D0GWcvZCoDJZC",
+            "",
         )
     else:
         token = os.environ.get("META_FB_PAGE_TOKEN", META_FB_PAGE_TOKEN)
