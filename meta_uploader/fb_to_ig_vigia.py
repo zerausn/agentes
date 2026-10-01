@@ -85,6 +85,8 @@ def load_history():
         return set()
 
 
+DEEP_CURSORS_FILE = BASE_DIR / "crosspost_deep_cursors.json"
+
 def load_dedupe_registry():
     if not DEDUPE_REGISTRY_FILE.exists():
         return {"processed_post_ids": set(), "processed_keys": set()}
@@ -282,84 +284,21 @@ def _find_newest_uncrossposted(posts, registry, ig_catalog_keys):
     return None, None
 
 
-# ─── Fallback al reporte histórico ───────────────────────────────────────────
+# ─── Paginacion Profunda (Deep Cursors) ──────────────────────────────────────────
 
-def _pick_from_report(registry, ig_catalog_keys):
-    """
-    Lee missing_crossposts_report.json y devuelve el entry más reciente
-    que aún no haya sido publicado en IG, como (entry_dict, content_keys).
-    """
-    report_file = BASE_DIR / "missing_crossposts_report.json"
-    if not report_file.exists():
-        logging.info("No existe reporte historico. Nada que hacer.")
-        return None, None
-    try:
-        with open(report_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception as e:
-        logging.error("Error al leer reporte historico: %s", e)
-        return None, None
-    missing = data.get("missing_posts") or []
-    if not missing:
-        logging.info("Reporte historico vacio. Todo sincronizado.")
-        return None, None
-    # El reporte viene ordenado del mas reciente al mas antiguo (por audit_crosspost.py)
-    for entry in missing:
-        post_id = entry.get("post_id")
-        message = entry.get("caption", "")
-        duplicate, content_keys, _ = find_duplicate_reason(post_id, message, registry, ig_catalog_keys)
-        if not duplicate:
-            logging.info("Reporte historico: candidato sin publicar: %s (%s)", post_id, entry.get("page"))
-            return entry, content_keys
-    logging.info("Reporte historico: todos los entries ya publicados.")
-    return None, None
-
-
-def _resolve_full_post_from_report_entry(entry):
-    """
-    El reporte guarda solo metadatos. Llama a la API de FB para obtener
-    el post completo con attachments y retorna el dict enriquecido.
-    Retorna (post_dict_o_None, http_status_code).
-    Si el status code es 400/403 significa que el post ya no es accesible
-    (permiso revocado o post eliminado) y debe marcarse como procesado.
-    """
-    import requests as req_lib
-    post_id = entry.get("post_id")
-    src_page = entry.get("page", "")
-    if "Shirabyoshi" in src_page:
-        token = os.environ.get(
-            "META_FB_PAGE_TOKEN_TEASER",
-            "",
-        )
-    else:
-        token = os.environ.get("META_FB_PAGE_TOKEN", META_FB_PAGE_TOKEN)
-    url = (
-        f"https://graph.facebook.com/v21.0/{post_id}"
-        f"?fields=message,full_picture,attachments{{media,subattachments,type}}"
-        f"&access_token={token}"
-    )
-    try:
-        resp = req_lib.get(url, timeout=30)
-        if resp.status_code == 200:
-            full = resp.json()
-            full["_source_page_name"] = src_page
-            return full, 200, None
-        
-        # Parse error dict
-        err_data = {}
+def load_deep_cursors():
+    if DEEP_CURSORS_FILE.exists():
         try:
-            err_data = resp.json().get("error", {})
-        except Exception:
-            pass
-            
-        logging.warning(
-            "Post %s del reporte no accesible: HTTP %s — %s",
-            post_id, resp.status_code, resp.text[:200],
-        )
-        return None, resp.status_code, err_data
+            return json.loads(DEEP_CURSORS_FILE.read_text(encoding="utf-8"))
+        except Exception as e:
+            logging.error("Error leyendo deep cursors: %s", e)
+    return {}
+
+def save_deep_cursors(cursors_dict):
+    try:
+        DEEP_CURSORS_FILE.write_text(json.dumps(cursors_dict, indent=2), encoding="utf-8")
     except Exception as e:
-        logging.error("Error al resolver post %s desde API: %s", post_id, e)
-    return None, 0, None
+        logging.error("Error guardando deep cursors: %s", e)
 
 
 # ─── Ciclo principal ──────────────────────────────────────────────────────────
@@ -383,9 +322,9 @@ def process_new_posts(dry_run=False):
     MAX_BLOCKS = 5    # Bloques de 100 por pagina antes de caer al reporte
     BLOCK_SIZE = 100  # Posts por bloque
 
-    # 2. Búsqueda por bloques en cada página de FB
-    candidate_post = None
-    candidate_keys = None
+    # Guardar el último cursor de los bloques frescos de cada página
+    # para usarlo como punto de partida histórico si no hay deep cursor previo
+    page_last_cursors = {}
 
     for page_id, page_token, page_name in FB_PAGES:
         if not page_id or not page_token:
@@ -425,69 +364,66 @@ def process_new_posts(dry_run=False):
             if not block_cursor:
                 logging.info("[%s] Sin mas posts en la pagina.", page_name)
                 break
+                
+        # Guardamos donde quedó el feed fresco para esta página
+        if block_cursor:
+            page_last_cursors[page_id] = block_cursor
 
-    # 3. Fallback al reporte histórico si ningún bloque fresco tenía contenido nuevo
+    # 3. Fallback a Paginación Profunda (Deep Cursor) si ningún bloque fresco tenía contenido
     if candidate_post is None:
         logging.info(
-            "Ninguno de los %s bloques de ninguna pagina tenia posts nuevos. Consultando reporte historico...",
-            MAX_BLOCKS,
+            "Ninguno de los bloques frescos tenia posts nuevos. Iniciando recuperación historica profunda (Deep Cursor)..."
         )
-        MAX_REPORT_RETRIES = 10  # Máximo de entradas del reporte a intentar antes de rendirse
-        for _retry in range(MAX_REPORT_RETRIES):
-            report_entry, candidate_keys = _pick_from_report(registry, ig_catalog_keys)
-            if report_entry is None:
-                logging.info("No hay contenido pendiente en bloques frescos ni en el reporte. Todo al dia.")
-                return 0
-            post_id_rep = report_entry.get("post_id")
-            candidate_post, http_code, err_data = _resolve_full_post_from_report_entry(report_entry)
-            if candidate_post is not None:
-                break
-                
-            err_code = err_data.get("code") if err_data else None
-            err_subcode = err_data.get("error_subcode") if err_data else None
-            
-            # Error de Token / Permisos (190, 200, 10)
-            if err_code in (10, 190, 200):
-                logging.error(
-                    "Post %s es inaccesible por error de permisos/token (code: %s, subcode: %s). "
-                    "Abortando el ciclo para NO vaciar el reporte historico. Por favor revisa los tokens en FB.",
-                    post_id_rep, err_code, err_subcode
-                )
-                return 0
-                
-            # Post borrado o inexistente (code 100, subcode 33)
-            if err_code == 100 and err_subcode == 33:
-                logging.warning(
-                    "Post %s ya no existe (code 100, subcode 33). Post borrado en FB. Registrando como inaccesible y saltando.",
-                    post_id_rep
-                )
-                
-                # Guardar en inaccesibles.json en lugar del registro normal
-                inaccesibles_path = ROOT / "crosspost_inaccesibles.json"
-                inac_reg = {}
-                if inaccesibles_path.exists():
-                    try:
-                        inac_reg = json.loads(inaccesibles_path.read_text(encoding="utf-8"))
-                    except Exception:
-                        pass
-                inac_reg[post_id_rep] = {"timestamp": datetime.now().isoformat(), "reason": "deleted_in_fb"}
-                inaccesibles_path.write_text(json.dumps(inac_reg, indent=2), encoding="utf-8")
-                
-                candidate_post = None
-                candidate_keys = None
+        deep_cursors = load_deep_cursors()
+        
+        MAX_DEEP_BLOCKS = 3  # Bloques a avanzar por ciclo buscando un post perdido
+        
+        for page_id, page_token, page_name in FB_PAGES:
+            if not page_id or not page_token:
                 continue
                 
-            # Otros errores (5xx, timeout, 400 desconocido)
-            logging.error(
-                "Error transitorio o desconocido al resolver post %s (HTTP %s, code %s). Abortando ciclo.", 
-                post_id_rep, http_code, err_code
-            )
-            return 0
-        else:
-            logging.error("Se agotaron %s intentos del reporte historico sin encontrar un post valido.", MAX_REPORT_RETRIES)
-            return 0
+            cursor = deep_cursors.get(page_id)
+            if not cursor:
+                cursor = page_last_cursors.get(page_id)
+                if not cursor:
+                    continue  # La página tiene menos de MAX_BLOCKS en total, no hay historial profundo
+                    
+            logging.info("[%s] Retomando historial profundo desde cursor.", page_name)
+            
+            for deep_block_num in range(1, MAX_DEEP_BLOCKS + 1):
+                block_posts, next_cursor = _fetch_block(
+                    page_id, page_token, page_name,
+                    after_cursor=cursor,
+                    block_size=BLOCK_SIZE,
+                )
+                if not block_posts:
+                    logging.info("[%s] Historial profundo agotado (fin de la pagina).", page_name)
+                    # Opcional: borrar el cursor si se llegó al principio de los tiempos
+                    break
+                    
+                new_post, new_keys = _find_newest_uncrossposted(block_posts, registry, ig_catalog_keys)
+                if new_post:
+                    logging.info("[%s] Rescate profundo exitoso: %s", page_name, new_post.get("id"))
+                    candidate_post = new_post
+                    candidate_keys = new_keys
+                    # NO actualizamos el cursor, para que en el prox ciclo siga revisando este mismo bloque
+                    break 
+                
+                # El bloque profundo entero ya estaba cruzado. Avanzamos el cursor para hundirnos más en la historia
+                cursor = next_cursor
+                deep_cursors[page_id] = cursor
+                save_deep_cursors(deep_cursors)
+                
+                logging.info("[%s] Bloque historico %s vacio de pendientes. Cursor hundido al siguiente nivel.", page_name, deep_block_num)
+                
+                if not cursor:
+                    break
+                    
+            if candidate_post:
+                break  # Encontramos uno, no hace falta buscar en las otras páginas este ciclo
+                
         if candidate_post is None:
-            logging.info("No hay contenido publicable tras agotar el reporte historico.")
+            logging.info("No hay contenido pendiente ni en bloques frescos ni en la historia profunda visible este ciclo. Todo al dia.")
             return 0
 
     # 4. Subir el candidato encontrado
