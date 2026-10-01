@@ -206,120 +206,35 @@
   - `docs/VIGIA_FACEBOOK720_DOZE_FIX.md`
 - **Pendiente:** Implementar en S24 Ultra y Vivo (conectar vivo para deploy).
 
-## Optimización teaser_generator — HW encoding y stream copy (2026-07-01)
-- **Problema:** `teaser_generator.py` forzaba `libx264` software encoding en Note 9, resultando en 0.01x–0.17x speed. Thermal throttling mataba la mayoría de los segmentos antes de completarlos.
-- **Solución:** 3-path strategy:
-  1. Stream copy si el source ya es h264+yuv420p (tarda segundos en vez de minutos).
-  2. HW `h264_mediacodec` si el encoder está disponible.
-  3. Fallback `libx264`.
-- `detect_available_encoders()` con cache (`~/.cache/agentes/encoders.json`) para no escanear FFmpeg cada vez.
-- `probe_video_stream_info()` para analizar el stream de video del crudo.
-- **Deploy verificado** en Note 9 (SM-N9600), S24 Ultra (SM-S928B) y Vivo V2058.
+## Reparador ADB Vivo V2058 (2026-09-16)
+- **Incidente:** 5 caídas consecutivas del Vivo (`V2058`/`34237840310037S`) por apagado — `adbd TCP` se resetea y el vigía TikTok queda con `Connection refused`/`rc=255`, fallando `MediaScanner broadcast` y `content query` (log: `Abortando share intent. No hay content URI`).
+- **Fix manual aplicado 5×:** `adb -s 34237840310037S tcpip 5555` + `run-as com.termux adb connect 127.0.0.1:5555` con `TMPDIR=$PREFIX/tmp` (fix `cannot open /tmp/adb.*.log`). Verificado con `ADB_OK` + `Physical size: 1080x2408`. Tras última reparación ciclo #6 OK: `[TIKTOK_OK] completados_shirabyoshi/20260703_212505_teaser_1.mp4 | Pendientes 341`.
+- **Script creado:** `scripts/linux/reparar_adb_vivo.sh` (mirror `~/Desktop/vivo/Reparar_ADB_Vivo.sh`) — 3 pasos automatizados + verificación vigía. Documentado en `docs/DECISIONS.md#2026-09-16`.
+- **Estado al 2026-09-16:** ADB loopback OK, cola `subidos a tiktok` vacía (0 pendientes, 286 en `completados_shirabyoshi`), vigía requiere relanzar widget `6_SUBIR_TIKTOK_SHIRABYOSHI_180` tras cada apagado.
 
-## 3_SUBIR_TEASERS_YT720 — Widget anti-Doze para YouTube (2026-07-01)
-- **Problema:** El widget `3_SUBIR_TEASERS_YT` subía TODOS los teasers de una sola vez y terminaba. Sin loop, sin wake-lock, sin anti-Doze.
-- **Solución:**
-  1. `vigia_teasers_yt720_termux.sh` — loop bash con `termux-wake-lock`, `wait_until(epoch)` con 15s checks (mismo patrón probado de VIGIA_FACEBOOK720).
-  2. Reutiliza `teaser_uploader.py --single-file --from-orchestrator` — sube 1 teaser por ciclo, espera processing de YouTube + `move_file_to_success()`.
-  3. Dos modos: NORMAL (720s) y LIMITED (3600s cuando YouTube rechaza por uploadLimitExceeded).
-  4. Output del uploader en vivo (sin captura en variable).
-  5. Cada ciclo reporta `[PENDIENTES] N teasers restantes`.
-- **Archivos nuevos:**
-  - `scripts/linux/vigia_teasers_yt720_termux.sh`
-  - `scripts/linux/shortcut_3_SUBIR_TEASERS_YT720.sh`
-  - `termux_widgets/3_SUBIR_TEASERS_YT720.sh`
-  - `docs/VIGIA_TEASERS_YT720_DOZE_FIX.md`
-- **Deploy:** Note 9 (widget instalado en `~/.shortcuts/`).
+## Integracion de proveedores IA (2026-09-06)
+- Las credenciales locales de DeepSeek, OpenRouter, B.AI y Groq fueron
+  comprobadas contra sus endpoints de modelos sin guardar secretos en el repo.
+- OpenRouter y Groq confirmaron `Responses API` y streaming SSE; DeepSeek
+  confirma la API pero la cuenta responde `402 Insufficient Balance` al
+  generar; B.AI gratuito confirma que necesita `chat/completions`.
+- `~/.codex/config.toml` conserva OpenAI como predeterminado y ahora contiene
+  `deepseek-alt`, `openrouter` y `groq` como proveedores alternativos.
+- El catalogo de modelos personalizado de Codex se reconstruyo desde el
+  catalogo embebido compatible de la CLI y contiene opciones de DeepSeek,
+  OpenRouter y Groq.
+- El source de Antigravity Manager incorpora el enrutamiento por proveedor y
+  coste, junto con UI y refresco de modelos. El build frontend paso; `cargo
+  check` queda bloqueado por Rust `1.85.1` frente a dependencias que requieren
+  `1.88+`.
+- La CLI de Codex aun muestra una discrepancia de migracion en `state_5.sqlite`
+  y advertencias de plugins/MCP. Se documenta como bloqueo local, sin borrar
+  estado ni credenciales.
+- Detalle completo: `docs/PROVEEDORES_IA_CODEX_2026-09-06.md`.
 
-## Fix: Evacuador Facebook Reels Aspect Ratio (2026-07-01)
-- **Problema:** El evacuador de Facebook subía todos los videos nombrados como `_teaser_` al endpoint `video_reels` de Meta, ignorando su formato real. Si el video era horizontal (ej. 3840x1644 / 2.33:1), la API de Meta lo rechazaba.
-- **Solución:** Se integró `ffprobe` en `subir_fb_evacuador_720.py` para medir el `aspect ratio` real en tiempo de ejecución. Si es un `teaser` y es horizontal, ahora el script hace fallback y lo sube como un video estándar de Facebook para evitar el rechazo de la API.
-- **Solución adicional:** Los videos que fallen por cualquier otra razón ahora se mueven a `fallidos_facebook/` para no congelar la cola. Se agregó un contador de videos pendientes al final de cada ciclo del Vigía en Bash.
-- **Deploy verificado:** Note 9 (SM-N9600).
-
-## Estabilización y Rendimiento de Descargador YouTube Lotes (2026-07-11)
-- **Problema 1 (FUSE Bind):** Fallas en Termux al montar rutas en Android 11+ porque `proot-distro` no puede acceder directamente a `$PR_ROOT/sdcard/`.
-  - **Solución:** Implementación global en `scripts/linux/_proot_bind.sh` usando staging estandarizado en `/root/antigravity_staging` para todos los scripts (YouTube y Meta).
-- **Problema 2 (Autenticación y Red):** Las sesiones se rompían con `git push` pidiendo contraseñas en segundo plano o fallando por microcortes, causando bloqueos infinitos de la automatización.
-  - **Solución:** Inyección de llaves `SSH (ed25519)` individuales en S24, Vivo y Note9. Implementación de una rutina anti-caídas con 3 reintentos en el push de `yt_downloader_lotes_sin_limite.py`.
-- **Problema 3 (Branches Divergentes):** Descargas de videos de 1 hora causaban un `fetch first (rejected)` si otro equipo empujaba primero.
-  - **Solución:** Inyección de `git pull --rebase origin linux-arm64` antes del `push` asegurando que cada celular absorba las descargas de los demás sin conflictos.
-- **Problema 4 (Thermal Throttling / Note9 se apaga):** `ffmpeg` tardaba 26 horas por video 4K debido a re-encoding forzado (`libx264 fast`) agotando la batería.
-  - **Solución:** Detección de codec inteligente con `ffprobe`. Si la fuente de YouTube ya es H.264, se realiza un remux instantáneo (`-c copy`) que toma 30 segundos. Para VP9 o AV1, se realiza un fallback a `libx264 ultrafast` para reducir la carga de CPU y el recalentamiento térmico.
-- **Problema 5 (Rebases atascados y ejecuciones duplicadas):** S24 y Note9 quedaron en `HEAD (no branch)` por rebases interrumpidos, y varias instancias del widget escribieron al mismo registro/log, provocando commits locales que parecían subidos pero no llegaban realmente a `linux-arm64`.
-  - **Solución:** `yt_downloader_lotes_sin_limite.py` ahora valida que Git esté en `linux-arm64`, aborta rebases pendientes antes de sincronizar, no empuja si el rebase falla, usa `git push origin HEAD:linux-arm64` y verifica que el remoto quede en el mismo SHA local. El wrapper `bajar_youtube_sin_limite_termux.sh` crea un lock en `~/.run/5_BAJAR_YOUTUBE_SIN_LIMITE.lock` para impedir ejecuciones simultáneas.
-- **Problema 6 (Nodos con registro viejo degradando descargas):** Un nodo podia correr con un JSON viejo en memoria y, al commitear cambios amplios del registro, volver a dejar como `pendiente` un video que otro nodo ya habia marcado como `descargado`. Caso real: `8Ltnq81N0PU` (`20250404 181037.mp4`) fue descargado por el S24 y despues aparecio otra vez como pendiente en GitHub.
-  - **Solución:** `sync_push()` ahora usa `git pull --rebase --autostash` y preserva desde `origin/linux-arm64` todos los `status: descargado` antes de crear el commit y despues del rebase. El registro remoto fue corregido en `a3104f2e`.
-- **Runbook:** ver `docs/YOUTUBE_LOTES_NODOS_MOVILES.md` para la arquitectura de nodos, el incidente S24/Note9, rutas de backup y procedimiento de recuperación.
-- **Estado de despliegue:** S24 quedo reparado y alineado con GitHub en `a3104f2e`. Note9 tenia el fix `--autostash`, pero debe recibir `a3104f2e` antes de escoger otro lote. Los tres equipos del escuadrón (S24, Vivo, Note9) deben operar siempre desde `linux-arm64`, haciendo pull antes de decidir pendientes y push tras marcar descargas, para que ningún nodo repita videos ya reportados por otro.
-
-## Descargador YouTube 4K en PC (Parrot OS) y Evasión de SABR / BotGuard (2026-09-06)
-- **Problema 1 (SABR Streaming Bloquea 4K):** El uso de cookies autenticadas (`--cookies-from-browser`) causaba que YouTube aplicara un experimento (SABR streaming) que limitaba la resolución máxima a 1080p (HLS) sin importar si el video original estaba en 4K.
-  - **Solución:** Se retiraron las cookies de la petición `yt-dlp` en `yt_downloader_lotes_sin_limite.py`. Al realizar peticiones de forma anónima, la API vuelve a servir los streams DASH nativos en 4K (2160p).
-- **Problema 2 (Error 403 Forbidden por BotGuard):** Al descargar de forma anónima, YouTube exigía un `PO Token` válido para no bloquear la descarga del chunk a mitad de camino (`HTTP Error 403`).
-  - **Solución:** Se instaló y configuró el plugin `bgutil-ytdlp-pot-provider`. El script de Python arranca silenciosamente un servidor Node.js en `localhost:4416` (proveedor de tokens) antes de iniciar `yt-dlp`, permitiendo descargas anónimas ininterrumpidas.
-- **Problema 3 (Aislamiento de Plugins en PC):** En Parrot OS, `yt-dlp` corría usando el binario global del sistema (`/usr/local/bin/yt-dlp`), lo que lo aislaba del entorno virtual (`.venv`) donde estaba instalado el plugin de BotGuard, provocando fallos en videos subsecuentes.
-  - **Solución:** Se instaló el módulo nativo de `yt-dlp` vía pip en el `.venv`. Se modificó la invocación a `sys.executable, "-m", "yt_dlp"` para forzar a que yt-dlp corra en el entorno correcto y reconozca el plugin `bgutil`.
-- **Nuevo Flujo (Descarga al PC):** Se creó el script `5_BAJAR_YOUTUBE_SIN_LIMITE_PC.sh`. El sistema detecta automáticamente si el disco duro `/mnt/Videos` está conectado; si es así, redirige los crudos 4K directamente a `/mnt/Videos/antigravity/crudos`, evitando sobrecargar los dispositivos Android. El S24 ahora se reserva exclusivamente para subir el material procesado a las APIs de Meta y TikTok.
-
-## Vigía FB→IG v4.0 — Bloques de 100 posts + fallback histórico (2026-09-22)
-
-### Problema
-El Vigía anterior usaba un "early stop" que abortaba el escaneo en cuanto encontraba
-3 posts consecutivos ya publicados. En feeds donde los 3 posts más recientes ya
-estaban en IG pero había contenido nuevo un poco más abajo, el Vigía nunca lo encontraba.
-Adicionalmente, no existía estrategia para drenar el backlog de ~8,945 posts
-identificados por `audit_crosspost.py`.
-
-### Solución Implementada (fb_to_ig_vigia.py v4.0)
-- **5 bloques de 100 posts por página:** Cada ciclo de 720s revisa hasta 500 posts
-  por página de FB. Si un bloque está completamente ya publicado, avanza al siguiente.
-  Si encuentra uno nuevo, lo elige y para.
-- **Candidato más reciente cross-página:** Si ambas páginas tienen contenido nuevo,
-  se sube el post con `created_time` más reciente.
-- **Fallback al reporte histórico:** Si 5 bloques (500 posts) de todas las páginas
-  están publicados, consulta `missing_crossposts_report.json` y toma el post
-  más reciente pendiente de ese reporte.
-- **Pre-filtro de posts sin media:** `_find_newest_uncrossposted()` ahora salta
-  posts de solo texto dentro del mismo bloque (los registra como procesados)
-  sin gastar un ciclo de 720s en ellos.
-- **1 post por ciclo:** Python retorna apenas publica 1 post. El bash shell decide
-  cuándo re-ejecutar (cada 720s), sin `time.sleep` en Python.
-
-### Archivos Nuevos/Modificados
-- `meta_uploader/fb_to_ig_vigia.py` — reescritura completa v4.0
-- `meta_uploader/evacuador_historico.py` — agente secundario para backlog lento
-- `scripts/linux/vigia_historico_termux.sh` — runner del evacuador histórico (30 min)
-
-### Verificación en S24
-- Ciclo #4 (21:07:46): primera ejecución de v4.0. Log reporta
-  `"Bloque 1/5 (100 posts desde inicio)"` para ambas páginas.
-  Encontró candidato en primer bloque, subió exitosamente.
-- Ciclo #4 detectó un post sin media (texto puro de Shirabyoshi) antes del fix
-  del pre-filtro; el post fue descartado pero se gastó el ciclo completo.
-  El fix del pre-filtro fue aplicado y sincronizado en el mismo ciclo.
-
-## Fix: `upload_fb_reel` y `upload_fb_video_standard` sin `page_id`/`page_token` (2026-09-22)
-
-- **Problema:** `4_VIGIA_FB_TEASERS` crasheaba con
-  `TypeError: upload_fb_reel() got an unexpected keyword argument 'page_id'`.
-  El script evacuador pasaba credenciales de Shirabyoshi pero la función
-  en `meta_uploader.py` no aceptaba esos parámetros.
-- **Solución:** Se agregaron `page_id=None` y `page_token=None` a ambas funciones.
-  Internamente usan `try/finally` para parchar temporalmente los globales
-  `FB_PAGE_ID` y `META_FB_PAGE_TOKEN`, restaurándolos al salir.
-- **Retrocompatibilidad:** 100% — código existente sin esos parámetros sigue igual.
-- **Archivos:** `meta_uploader/meta_uploader.py`
-
-## Fix: Workspace Codex `.git/objects` propiedad de root (2026-09-22)
-
-- **Problema:** La IA del workspace Codex (`~/Documents/Codex/.../agentes-linux-arm64`)
-  no podía hacer commits ni pushes: `.git/objects/` tenía permisos `root:root`.
-- **Solución:**
-  1. Se hizo `git fetch` local del commit bloqueado hacia el workspace Antigravity.
-  2. Se aplicó via `cherry-pick` resolviendo conflicto en `meta_uploader.py`.
-  3. Push exitoso a `origin/linux-arm64`.
-  4. El usuario ejecutó `sudo chown -R zerausn:zerausn .git` en el workspace Codex.
-  5. El workspace Codex quedó sincronizado via `git pull --rebase`.
-- **Estado:** Ambos workspaces apuntan al mismo HEAD. La otra IA opera normalmente.
-
+## Actualización Vigía Meta (2026-09-30)
+- **Monitoreo Multi-Página:** El script `fb_to_ig_vigia.py` fue actualizado para soportar la lectura secuencial del feed de múltiples páginas de Facebook en un solo ciclo.
+- Se añadieron las cuentas de **Seanchai Writings** y **Ghawazee Writings** a la tupla `FB_PAGES` para un total de 4 páginas monitoreadas: Performatic, Shirabyoshi, Seanchai y Ghawazee.
+- **Lógica del candidato global:** El script extrae un bloque (chunk) de posts de cada una de las 4 páginas y elige el candidato que sea cronológicamente el más reciente entre todas, antes de proceder a la validación y *crosspost* hacia Instagram.
+- **Entorno Proot (S24):** El script bash asociado `vigia_meta720_termux.sh` se modificó para exportar correctamente los IDs y tokens de las 4 páginas (incluidos `META_FB_PAGE_ID_SEANCHAI` y `META_FB_PAGE_ID_GHAWAZEE`) dentro de la invocación proot del S24.
+- Los cambios fueron desarrollados e inyectados directamente al Termux (S24 Ultra) vía ADB y respaldados en este repositorio local para mantener la paridad operativa.

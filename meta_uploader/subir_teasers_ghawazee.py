@@ -1,8 +1,8 @@
 """
-subir_teasers_shirabyoshi.py
-Evacua UN SOLO TEASER a la vez a Shirabyoshi Writings, con logica anti-spam y evasion Code 368.
-- Maneja archivo de backoff (.bloqueo_368) para obligar pausa de 24h.
-- Genera variaciones dinamicas de texto (hashtags) para evadir filtros de similitud.
+subir_teasers_ghawazee.py
+Evacua UN SOLO TEASER a la vez a Ghawazee Writings, con lógica anti-spam y evasión Code 368.
+- Maneja archivo de backoff (.bloqueo_368_ghawazee) para obligar pausa de 24h.
+- Genera variaciones dinámicas de texto (hashtags) para evadir filtros de similitud.
 - Intenta REEL, si falla con 368 intenta VIDEO NORMAL, si ambos fallan activa backoff.
 """
 import json
@@ -36,20 +36,19 @@ if not str(ROOT):
     else:
         ROOT = Path("/home/zerausn/Documents/Antigravity")
 
-# CORREGIDO: leer de teasers_pendientes
 SOURCE_DIR   = ROOT / "teasers_pendientes"
 DONE_DIR     = ROOT / "subidos a facebbok"
 FAILED_DIR   = ROOT / "fallidos_facebook"
-LOG_FILE     = BASE_DIR / "fb_shirabyoshi_teasers.log"
-BACKOFF_FILE = BASE_DIR / ".bloqueo_368"
+LOG_FILE     = BASE_DIR / "fb_ghawazee_teasers.log"
+BACKOFF_FILE = BASE_DIR / ".bloqueo_368_ghawazee"
 
 TEASER_RE      = re.compile(r"(?i)_teaser_\d+")
 SUPPORTED_EXTS = {".mp4", ".mov", ".mkv"}
 REEL_ASPECT_TOLERANCE = 0.08
 
 # --- Credenciales ---
-FB_PAGE_ID_TEASER = os.environ.get("META_FB_PAGE_ID_TEASER", "1347014641828725")
-FB_PAGE_TOKEN_TEASER = os.environ.get("META_FB_PAGE_TOKEN_TEASER", os.environ.get("META_FB_PAGE_TOKEN", ""))
+FB_PAGE_ID_GHAWAZEE = os.environ.get("META_FB_PAGE_ID_GHAWAZEE", "1288381367700799")
+FB_PAGE_TOKEN_GHAWAZEE = os.environ.get("META_FB_PAGE_TOKEN_GHAWAZEE", "")
 
 # --- Logging ---
 logging.basicConfig(
@@ -71,12 +70,12 @@ def check_backoff() -> bool:
         cooldown_end = mtime + timedelta(hours=24)
         if datetime.now() < cooldown_end:
             logging.warning(
-                "BACKOFF ACTIVO: La pagina esta bloqueada temporalmente (Code 368). "
+                "BACKOFF ACTIVO: La página está bloqueada temporalmente (Code 368). "
                 "El castigo termina el %s.", cooldown_end.strftime("%Y-%m-%d %H:%M:%S")
             )
             return True
         else:
-            logging.info("El periodo de backoff (24h) ha terminado. Levantando restriccion.")
+            logging.info("El período de backoff (24h) ha terminado. Levantando restricción.")
             BACKOFF_FILE.unlink()
             return False
     except Exception as e:
@@ -88,7 +87,7 @@ def set_backoff():
     """Marca el inicio de un castigo de 24 horas."""
     BACKOFF_FILE.touch()
     logging.error(
-        "Se ha creado el archivo .bloqueo_368. "
+        "Se ha creado el archivo .bloqueo_368_ghawazee. "
         "Se detienen las subidas por 24h para proteger la cuenta."
     )
 
@@ -126,7 +125,7 @@ def is_reel_safe(video_path: Path) -> bool:
 
 def build_caption(video_path: Path) -> str:
     """Genera texto dinamico y hashtags variables para evadir filtros de similitud.
-    Prefijo: #SW (Shirabyoshi Writings). Frases artisticas al final."""
+    Prefijo: #GW (Ghawazee Writings). Frases artisticas al final."""
     stem = video_path.stem
 
     # Hashtags: siempre 3 en total.
@@ -139,7 +138,7 @@ def build_caption(video_path: Path) -> str:
         "#performatividad", "#escrituraviva", "#escena",
     ]
     two_random = random.sample(hashtag_pool, 2)
-    tags_str = "#shirabyoshi " + " ".join(two_random)
+    tags_str = "#ghawazee " + " ".join(two_random)
 
     # 24 frases artisticas — se elige una al azar y va AL FINAL
     frases = [
@@ -171,7 +170,7 @@ def build_caption(video_path: Path) -> str:
     frase = random.choice(frases)
 
     return (
-        f"#SW | {stem}\n\n"
+        f"#GW | {stem}\n\n"
         "linktr.ee/performaticwritingscali\n\n"
         f"{tags_str}\n\n"
         f"{frase}"
@@ -198,12 +197,12 @@ def move_to_failed(video_path: Path) -> None:
 
 def upload_video(video_path: Path) -> bool:
     caption = build_caption(video_path)
-    page_id = FB_PAGE_ID_TEASER
-    page_token = FB_PAGE_TOKEN_TEASER
-    page_name = "Shirabyoshi Writings (Teasers)"
+    page_id = FB_PAGE_ID_GHAWAZEE
+    page_token = FB_PAGE_TOKEN_GHAWAZEE
+    page_name = "Ghawazee Writings"
 
     if not page_id or not page_token:
-        logging.error("Faltan credenciales para la pagina %s", page_name)
+        logging.error("Faltan credenciales para la página %s", page_name)
         return False
 
     os.environ["FB_PAGE_ID"] = page_id
@@ -216,17 +215,17 @@ def upload_video(video_path: Path) -> bool:
             if result:
                 logging.info("Subida exitosa como REEL | video_id=%s", result)
                 return True
-            logging.warning("REEL fallo (resultado vacio o permiso denegado), probando VIDEO ESTANDAR...")
+            logging.warning("REEL falló (resultado vacío o permiso denegado), probando VIDEO ESTÁNDAR...")
         except MetaRateLimitError as exc:
             logging.warning(
-                "Code 368 en REEL endpoint — probando VIDEO ESTANDAR como fallback antibloqueo. (%s)", exc
+                "Code 368 en REEL endpoint — probando VIDEO ESTÁNDAR como fallback antibloqueo. (%s)", exc
             )
 
-    logging.info("Subiendo TEASER como VIDEO ESTANDAR a %s: %s", page_name, video_path.name)
+    logging.info("Subiendo TEASER como VIDEO ESTÁNDAR a %s: %s", page_name, video_path.name)
     try:
         result = upload_fb_video_standard(str(video_path), caption)
     except MetaRateLimitError as exc:
-        logging.error("Code 368 tambien en VIDEO ESTANDAR. Pagina bloqueada temporalmente.")
+        logging.error("Code 368 también en VIDEO ESTÁNDAR. Página bloqueada temporalmente.")
         set_backoff()
         return False
 
@@ -234,13 +233,13 @@ def upload_video(video_path: Path) -> bool:
         logging.info("Subida exitosa | video_id=%s", result)
         return True
     else:
-        logging.error("Fallo la subida de: %s", video_path.name)
+        logging.error("Falló la subida de: %s", video_path.name)
         return False
 
 
 def main():
     logging.info("=" * 60)
-    logging.info("  NUEVO EVACUADOR SHIRABYOSHI TEASERS (ANTI-SPAM)")
+    logging.info("  NUEVO EVACUADOR GHAWAZEE TEASERS (ANTI-SPAM) - 30/dia")
     logging.info("  Carpeta fuente: %s", SOURCE_DIR)
     logging.info("=" * 60)
 

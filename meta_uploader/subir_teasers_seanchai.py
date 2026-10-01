@@ -1,7 +1,7 @@
 """
-subir_teasers_shirabyoshi.py
-Evacua UN SOLO TEASER a la vez a Shirabyoshi Writings, con logica anti-spam y evasion Code 368.
-- Maneja archivo de backoff (.bloqueo_368) para obligar pausa de 24h.
+subir_teasers_seanchai.py
+Evacua UN SOLO TEASER a la vez a Seanchai Writings, con logica anti-spam y evasion Code 368.
+- Maneja archivo de backoff (.bloqueo_368_seanchai) para obligar pausa de 24h.
 - Genera variaciones dinamicas de texto (hashtags) para evadir filtros de similitud.
 - Intenta REEL, si falla con 368 intenta VIDEO NORMAL, si ambos fallan activa backoff.
 """
@@ -36,20 +36,19 @@ if not str(ROOT):
     else:
         ROOT = Path("/home/zerausn/Documents/Antigravity")
 
-# CORREGIDO: leer de teasers_pendientes
 SOURCE_DIR   = ROOT / "teasers_pendientes"
 DONE_DIR     = ROOT / "subidos a facebbok"
 FAILED_DIR   = ROOT / "fallidos_facebook"
-LOG_FILE     = BASE_DIR / "fb_shirabyoshi_teasers.log"
-BACKOFF_FILE = BASE_DIR / ".bloqueo_368"
+LOG_FILE     = BASE_DIR / "fb_seanchai_teasers.log"
+BACKOFF_FILE = BASE_DIR / ".bloqueo_368_seanchai"
 
 TEASER_RE      = re.compile(r"(?i)_teaser_\d+")
 SUPPORTED_EXTS = {".mp4", ".mov", ".mkv"}
 REEL_ASPECT_TOLERANCE = 0.08
 
 # --- Credenciales ---
-FB_PAGE_ID_TEASER = os.environ.get("META_FB_PAGE_ID_TEASER", "1347014641828725")
-FB_PAGE_TOKEN_TEASER = os.environ.get("META_FB_PAGE_TOKEN_TEASER", os.environ.get("META_FB_PAGE_TOKEN", ""))
+FB_PAGE_ID_SEANCHAI = os.environ.get("META_FB_PAGE_ID_SEANCHAI", "824642984061807")
+FB_PAGE_TOKEN_SEANCHAI = os.environ.get("META_FB_PAGE_TOKEN_SEANCHAI", "")
 
 # --- Logging ---
 logging.basicConfig(
@@ -88,7 +87,7 @@ def set_backoff():
     """Marca el inicio de un castigo de 24 horas."""
     BACKOFF_FILE.touch()
     logging.error(
-        "Se ha creado el archivo .bloqueo_368. "
+        "Se ha creado el archivo .bloqueo_368_seanchai. "
         "Se detienen las subidas por 24h para proteger la cuenta."
     )
 
@@ -126,7 +125,7 @@ def is_reel_safe(video_path: Path) -> bool:
 
 def build_caption(video_path: Path) -> str:
     """Genera texto dinamico y hashtags variables para evadir filtros de similitud.
-    Prefijo: #SW (Shirabyoshi Writings). Frases artisticas al final."""
+    Prefijo: #SeW (Seanchai Writings). Frases artisticas al final."""
     stem = video_path.stem
 
     # Hashtags: siempre 3 en total.
@@ -139,7 +138,7 @@ def build_caption(video_path: Path) -> str:
         "#performatividad", "#escrituraviva", "#escena",
     ]
     two_random = random.sample(hashtag_pool, 2)
-    tags_str = "#shirabyoshi " + " ".join(two_random)
+    tags_str = "#seanchai " + " ".join(two_random)
 
     # 24 frases artisticas — se elige una al azar y va AL FINAL
     frases = [
@@ -198,9 +197,9 @@ def move_to_failed(video_path: Path) -> None:
 
 def upload_video(video_path: Path) -> bool:
     caption = build_caption(video_path)
-    page_id = FB_PAGE_ID_TEASER
-    page_token = FB_PAGE_TOKEN_TEASER
-    page_name = "Shirabyoshi Writings (Teasers)"
+    page_id = FB_PAGE_ID_SEANCHAI
+    page_token = FB_PAGE_TOKEN_SEANCHAI
+    page_name = "Seanchai Writings"
 
     if not page_id or not page_token:
         logging.error("Faltan credenciales para la pagina %s", page_name)
@@ -240,7 +239,7 @@ def upload_video(video_path: Path) -> bool:
 
 def main():
     logging.info("=" * 60)
-    logging.info("  NUEVO EVACUADOR SHIRABYOSHI TEASERS (ANTI-SPAM)")
+    logging.info("  NUEVO EVACUADOR SEANCHAI TEASERS (ANTI-SPAM)")
     logging.info("  Carpeta fuente: %s", SOURCE_DIR)
     logging.info("=" * 60)
 

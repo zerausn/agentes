@@ -49,6 +49,16 @@ FB_PAGES = [
         ),
         "Shirabyoshi Writings",
     ),
+    (
+        os.environ.get("META_FB_PAGE_ID_SEANCHAI", "824642984061807"),
+        os.environ.get("META_FB_PAGE_TOKEN_SEANCHAI", ""),
+        "Seanchai Writings",
+    ),
+    (
+        os.environ.get("META_FB_PAGE_ID_GHAWAZEE", "1288381367700799"),
+        os.environ.get("META_FB_PAGE_TOKEN_GHAWAZEE", ""),
+        "Ghawazee Writings",
+    ),
 ]
 
 logging.basicConfig(

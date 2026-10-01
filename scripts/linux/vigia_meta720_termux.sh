@@ -107,6 +107,10 @@ source "$(dirname "$0")/_proot_bind.sh"
         "set -o pipefail; \
          export META_FB_PAGE_ID_TEASER='${META_FB_PAGE_ID_TEASER:-1347014641828725}'; \
          export META_FB_PAGE_TOKEN_TEASER='${META_FB_PAGE_TOKEN_TEASER}'; \
+         export META_FB_PAGE_ID_SEANCHAI='${META_FB_PAGE_ID_SEANCHAI:-824642984061807}'; \
+         export META_FB_PAGE_TOKEN_SEANCHAI='${META_FB_PAGE_TOKEN_SEANCHAI}'; \
+         export META_FB_PAGE_ID_GHAWAZEE='${META_FB_PAGE_ID_GHAWAZEE:-1288381367700799}'; \
+         export META_FB_PAGE_TOKEN_GHAWAZEE='${META_FB_PAGE_TOKEN_GHAWAZEE}'; \
          cd /root/agentes/meta_uploader && \
          python3 fb_to_ig_vigia.py --once 2>&1 | tee -a '${LOG_FILE}'"
     EXIT_CODE=$?

@@ -1,18 +1,19 @@
 """
 subir_fb_evacuador_teasers.py  (VERSION BASH-LOOP — sin time.sleep interno)
-Evacua UN SOLO TEASER de 'videos subidos exitosamente' a Facebook y retorna.
-El loop/pausa de 720s lo gestiona el script bash (con termux-wake-lock).
+Evacua UN SOLO TEASER de 'teasers_pendientes' a Facebook y retorna.
+El loop/pausa lo gestiona el script bash (con termux-wake-lock).
 
-SOLO TEASERS → Shirabyoshi Writings (ID: 1347014641828725)
+SOLO TEASERS -> Shirabyoshi Writings (ID: 1347014641828725)
 
 Exit codes:
-  0  — video subido y movido OK
-  2  — no habia videos pendientes (carpeta vacía)
-  1  — error durante la subida
+  0  -- video subido y movido OK
+  2  -- no habia videos pendientes (carpeta vacía)
+  1  -- error durante la subida
 """
 import json
 import logging
 import os
+import random
 import re
 import shutil
 import subprocess
@@ -39,7 +40,8 @@ if not str(ROOT):
     else:
         ROOT = Path("/home/zerausn/Documents/Antigravity")
 
-SOURCE_DIR = ROOT / "videos subidos exitosamente"
+# CORREGIDO: leer de teasers_pendientes (antes buscaba en "videos subidos exitosamente" que estaba vacía)
+SOURCE_DIR = ROOT / "teasers_pendientes"
 DONE_DIR   = ROOT / "subidos a facebbok"
 FAILED_DIR = ROOT / "fallidos_facebook"
 LOG_FILE   = BASE_DIR / "fb_evacuador_teasers.log"
@@ -47,11 +49,11 @@ LOG_FILE   = BASE_DIR / "fb_evacuador_teasers.log"
 TEASER_RE      = re.compile(r"(?i)_teaser_\d+")
 SUPPORTED_EXTS = {".mp4", ".mov", ".mkv"}
 
-# Margen de tolerancia al comparar con la relacion 9:16 exacta (igual al clasificador)
+# Margen de tolerancia al comparar con la relacion 9:16 exacta
 REEL_ASPECT_TOLERANCE = 0.08
 
 # --- IDs de páginas de Facebook ---
-FB_PAGE_ID_TEASER = os.environ.get("META_FB_PAGE_ID_TEASER", "1347014641828725")    # Shirabyoshi Writings
+FB_PAGE_ID_TEASER = os.environ.get("META_FB_PAGE_ID_TEASER", "1347014641828725")  # Shirabyoshi Writings
 FB_PAGE_TOKEN_TEASER = os.environ.get("META_FB_PAGE_TOKEN_TEASER", os.environ.get("META_FB_PAGE_TOKEN", ""))
 
 # --- Logging ---
@@ -92,7 +94,6 @@ def probe_video_dimensions(video_path: Path):
 def is_reel_safe(video_path: Path) -> bool:
     """
     Devuelve True si el video es vertical con relacion de aspecto ~9:16.
-    Reutiliza la misma politica conservadora que classify_meta_videos.py.
     Si ffprobe falla, asume que NO es reel-safe (fallback a POST estandar).
     """
     width, height = probe_video_dimensions(video_path)
@@ -103,11 +104,56 @@ def is_reel_safe(video_path: Path) -> bool:
 
 
 def build_caption(video_path: Path) -> str:
+    """Genera texto dinamico y hashtags variables para evadir filtros de similitud.
+    Prefijo: #PW (Performatic Writings). Frases artisticas al final."""
     stem = video_path.stem
+
+    # Hashtags: siempre 3 en total.
+    # 1 fijo = nombre de la pagina, 2 elegidos al azar del pool.
+    # (Facebook penaliza el exceso de hashtags desde 2024-2025)
+    hashtag_pool = [
+        "#teatro", "#performance", "#escriturasperformaticas",
+        "#arteescenico", "#arteperformativo",
+        "#artesescenicas", "#teatroindependiente", "#arteescena",
+        "#performatividad", "#escrituraviva", "#escena",
+    ]
+    two_random = random.sample(hashtag_pool, 2)
+    tags_str = "#performatic " + " ".join(two_random)
+
+    # 24 frases artisticas — se elige una al azar y va AL FINAL
+    frases = [
+        "Nueva entrega de performance...",
+        "Arte y escritura en escena...",
+        "Del cuerpo a la palabra...",
+        "Escrituras que se mueven...",
+        "El cuerpo como territorio...",
+        "La voz que toma forma...",
+        "Cuando el arte habla sin palabras...",
+        "Donde la escritura se hace carne...",
+        "El espacio como lienzo vivo...",
+        "Lenguaje que desborda la pagina...",
+        "El gesto que narra lo inefable...",
+        "Cuerpo, texto, presencia...",
+        "La escena como laboratorio...",
+        "Escrituras que resisten...",
+        "El arte que no se detiene...",
+        "Desde los margenes de la representacion...",
+        "El presente como materia prima...",
+        "Donde comienza el acto...",
+        "La escritura en su forma mas viva...",
+        "Mas alla del texto...",
+        "Cuando el cuerpo es el mensaje...",
+        "El performance como pregunta...",
+        "Arte que toca lo que no se dice...",
+        "La escena habla por si sola...",
+    ]
+    frase = random.choice(frases)
+
     return (
         f"#PW | {stem}\n\n"
-        "Síguenos también en Instagram linktr.ee/performaticwritingscali\n\n"
-        "#teatro #performance #escriturasperformaticas"
+        "linktr.ee/performaticwritingscali\n\n"
+        f"{tags_str}\n\n"
+        f"{frase}"
     )
 
 
@@ -140,24 +186,23 @@ def upload_video(video_path: Path) -> bool:
     page_name = "Shirabyoshi Writings (Teasers)"
 
     if not page_id or not page_token:
-        logging.error("Faltan credenciales para la página %s (page_id=%s, token=%s)",
+        logging.error("Faltan credenciales para la pagina %s (page_id=%s, token=%s)",
                       page_name, page_id, "OK" if page_token else "FALTANTE")
         return False
 
-    # TEASERS son 9:16 → intentar REEL primero, fallback a VIDEO ESTÁNDAR
+    # TEASERS son 9:16 -> intentar REEL primero, fallback a VIDEO ESTANDAR
     if is_reel_safe(video_path):
         logging.info("Subiendo TEASER como REEL (9:16) a %s: %s", page_name, video_path.name)
         try:
             result = upload_fb_reel(str(video_path), caption, page_id=page_id, page_token=page_token)
             if result:
-                logging.info("Subida exitosa como REEL | video_id=%s | archivo=%s | página=%s", result, video_path.name, page_name)
+                logging.info("Subida exitosa como REEL | video_id=%s | archivo=%s | pagina=%s",
+                             result, video_path.name, page_name)
                 return True
-            logging.warning("REEL falló (resultado vacío), probando VIDEO ESTÁNDAR como fallback...")
+            logging.warning("REEL fallo (resultado vacio o permiso denegado). Probando VIDEO ESTANDAR...")
         except MetaRateLimitError as exc:
-            # Code 368: /video_reels bloqueado temporalmente por spam.
-            # El endpoint /videos tiene límites distintos — intentar como fallback.
             logging.warning(
-                "Code 368 en REEL endpoint — probando VIDEO ESTÁNDAR como fallback antibloqueo. (%s)", exc
+                "Code 368 en REEL endpoint — probando VIDEO ESTANDAR como fallback antibloqueo. (%s)", exc
             )
 
     logging.info("Subiendo TEASER como VIDEO ESTANDAR a %s: %s", page_name, video_path.name)
@@ -165,15 +210,16 @@ def upload_video(video_path: Path) -> bool:
         result = upload_fb_video_standard(str(video_path), caption, page_id=page_id, page_token=page_token)
     except MetaRateLimitError as exc:
         logging.error(
-            "Code 368 también en VIDEO ESTANDAR. Página bloqueada temporalmente — esperando al próximo ciclo. (%s)", exc
+            "Code 368 tambien en VIDEO ESTANDAR. Pagina bloqueada temporalmente — esperando al proximo ciclo. (%s)", exc
         )
         return False
 
     if result:
-        logging.info("Subida exitosa | video_id=%s | archivo=%s | página=%s", result, video_path.name, page_name)
+        logging.info("Subida exitosa | video_id=%s | archivo=%s | pagina=%s",
+                     result, video_path.name, page_name)
         return True
     else:
-        logging.error("Fallo la subida de: %s a página %s", video_path.name, page_name)
+        logging.error("Fallo la subida de: %s a pagina %s", video_path.name, page_name)
         return False
 
 
@@ -187,7 +233,7 @@ def main():
         logging.error("La carpeta fuente no existe: %s", SOURCE_DIR)
         sys.exit(1)
 
-    # Solo videos CON _teaser_
+    # Solo videos CON _teaser_ en el nombre
     videos = sorted(
         f for f in SOURCE_DIR.iterdir()
         if f.is_file()
@@ -197,14 +243,14 @@ def main():
     )
 
     if not videos:
-        logging.info("No hay TEASERS pendientes. Nada que hacer.")
+        logging.info("No hay TEASERS pendientes en %s. Nada que hacer.", SOURCE_DIR)
         sys.exit(2)
 
     logging.info("Pendientes TEASERS: %s video(s). Procesando el primero.", len(videos))
 
     video = videos[0]
 
-    # Verificar estabilidad del archivo (no se esté copiando)
+    # Verificar estabilidad del archivo (no se este copiando)
     last_size = video.stat().st_size
     for _ in range(3):
         time.sleep(1)
@@ -222,11 +268,11 @@ def main():
     ok = upload_video(video)
     if ok:
         move_to_done(video)
-        logging.info("CICLO OK — bash hara pausa de 720s antes del proximo.")
+        logging.info("CICLO OK — bash hara pausa antes del proximo.")
         sys.exit(0)
     else:
         move_to_failed(video)
-        logging.error("CICLO FALLO — video movido a fallidos_facebook para no bloquear la cola. Bash hara pausa de 720s.")
+        logging.error("CICLO FALLO — video movido a fallidos_facebook para no bloquear la cola.")
         sys.exit(1)
 
 
