@@ -238,3 +238,8 @@
 - **Lógica del candidato global:** El script extrae un bloque (chunk) de posts de cada una de las 4 páginas y elige el candidato que sea cronológicamente el más reciente entre todas, antes de proceder a la validación y *crosspost* hacia Instagram.
 - **Entorno Proot (S24):** El script bash asociado `vigia_meta720_termux.sh` se modificó para exportar correctamente los IDs y tokens de las 4 páginas (incluidos `META_FB_PAGE_ID_SEANCHAI` y `META_FB_PAGE_ID_GHAWAZEE`) dentro de la invocación proot del S24.
 - Los cambios fueron desarrollados e inyectados directamente al Termux (S24 Ultra) vía ADB y respaldados en este repositorio local para mantener la paridad operativa.
+
+## Fix de Tokens Internos y Rutas de Montaje (2026-09-30)
+- **Propagación del Token de Página:** Las subidas asíncronas de Meta (Graph API) a páginas secundarias (Shirabyoshi, Seanchai, Ghawazee) fallaban cuando los videos requerían fallback a "Video Estándar". Se corrigió `meta_uploader.py` para asegurar que el `page_token` inyectado por los scripts individuales viaje hasta los métodos internos (`_start_fb_upload`, `_transfer_fb_upload`, `_finish_fb_upload`), evitando errores de permisos (`#200`).
+- **Resolución de Carpeta Fuente en Proot:** Se solucionó el bug donde los scripts intentaban subir archivos desde el directorio de trabajo local (`.`) bajo entornos `proot-distro`. La evaluación `Path("")` se reemplazó por un chequeo estricto del string vacío para el envvar `AGENTES_STORAGE_ROOT`, restaurando exitosamente el comportamiento de fallback hacia `/sdcard/Antigravity`.
+- **Scripts Completos:** Se añadió `scripts/linux/shirabyoshi_teasers_termux.sh` para completar los envoltorios individuales del S24. Todo fue inyectado y estabilizado vía ADB.

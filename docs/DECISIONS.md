@@ -479,3 +479,29 @@ con `sudo`. Esto impedía cualquier operación de escritura de Git (`git commit`
 Ambos workspaces (`Antigravity/agentes` y `Codex/agentes-linux-arm64`) apuntan
 ahora al mismo HEAD en `origin/linux-arm64`. La otra IA puede hacer commits
 y pushes sin restricciones.
+
+---
+
+## 2026-09-30: Fix propagación de tokens y fallback de ROOT en evacuadores Meta
+
+### Contexto
+Se presentaron tres errores concurrentes en los evacuadores de teasers y crudos:
+1. Las páginas **Ghawazee Writings** y **Seanchai Writings** fallaban al intentar subir videos que no cumplían la relación de aspecto 9:16 (fallando el fallback a "Video Estándar") con el error `(#200) No tienes permiso para subir un video aquí`.
+2. El script de bash `7_SHYRABYOSHI_TEASERS.SH` fallaba por archivo no encontrado.
+3. El widget de Shirabyoshi lanzaba un error indicando que la carpeta fuente no existía (`La carpeta fuente no existe: videos subidos exitosamente`).
+
+### Decisiones y Soluciones
+
+1. **Propagación del `page_token` en `meta_uploader.py`:**
+   Se descubrió que, aunque las funciones públicas `upload_fb_reel` y `upload_fb_video_standard` recibían el `page_token` de la página destino, estas **no lo propagaban** hacia las funciones internas encargadas de ejecutar los pasos del upload (`_start_fb_upload`, `_transfer_fb_upload` y `_finish_fb_upload`).
+   - Se actualizó el archivo `meta_uploader.py` para asegurar que el token se pase consistentemente a través de todas las fases del *resumable upload* de Graph API. Con esto se evitan las caídas silenciosas al token por defecto (Performatic).
+
+2. **Nuevo script wrapper para Shirabyoshi:**
+   - Se creó el script `scripts/linux/shirabyoshi_teasers_termux.sh` inyectando el ID correcto de la página (`1347014641828725`). Esto completa el conjunto de widgets individuales.
+
+3. **Corrección de lógica de `ROOT` en evacuadores Python:**
+   - El código `ROOT = Path(os.environ.get("AGENTES_STORAGE_ROOT", ""))` fallaba porque en Python `Path("")` evalúa como el directorio actual (`.`), lo cual es un valor *truthy* que evadía el fallback hacia `/sdcard/Antigravity`.
+   - Se parcheó masivamente a través de un script en Python todos los archivos `subir_fb_evacuador_*.py` y `subir_teasers_*.py` para validar contra un string vacío (`""`) explícito antes de construir el objeto `Path`. Ahora el rescate hacia `/sdcard/...` (necesario cuando `proot` limpia las variables de entorno no exportadas) funciona correctamente.
+
+### Consecuencia
+Los flujos de publicación paralela hacia las 4 páginas (Performatic, Shirabyoshi, Seanchai, Ghawazee) ahora manejan correctamente los casos extremos (videos estándar y limpieza de variables del shell proot) en total sincronía y sin problemas de permisos transversales.
