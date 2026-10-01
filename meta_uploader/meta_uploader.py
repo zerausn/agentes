@@ -1411,7 +1411,7 @@ def _normalize_fb_status(status_blob):
 
     return video_status, processing_state or uploading_state, publishing_state
 
-def start_fb_status_verifier(video_id, allow_scheduled=False):
+def start_fb_status_verifier(video_id, allow_scheduled=False, page_token=None):
     """
     Lanza el verificador de estado en un hilo separado para permitir asincronía.
     Retorna el objeto Thread.
@@ -1419,7 +1419,7 @@ def start_fb_status_verifier(video_id, allow_scheduled=False):
     t = threading.Thread(
         target=wait_for_fb_video_status,
         args=(video_id,),
-        kwargs={"allow_scheduled": allow_scheduled},
+        kwargs={"allow_scheduled": allow_scheduled, "page_token": page_token},
         name=f"FBVerif-{video_id}",
     )
     t.daemon = True
@@ -1428,7 +1428,7 @@ def start_fb_status_verifier(video_id, allow_scheduled=False):
 
 
 
-def wait_for_fb_video_status(video_id, *, allow_scheduled=False):
+def wait_for_fb_video_status(video_id, *, allow_scheduled=False, page_token=None):
     """
     Valida el estado asincrono de videos/Reels de Facebook.
     Devuelve:
@@ -1437,8 +1437,9 @@ def wait_for_fb_video_status(video_id, *, allow_scheduled=False):
     - "scheduled" si Meta confirma que el video quedo programado
     - None si la subida fue aceptada pero no se pudo confirmar antes del timeout
     """
+    ptoken = page_token or META_FB_PAGE_TOKEN
     url = graph_url(str(video_id))
-    params = {"fields": "status,published,scheduled_publish_time", "access_token": META_FB_PAGE_TOKEN}
+    params = {"fields": "status,published,scheduled_publish_time", "access_token": ptoken}
 
     for _ in range(FB_STATUS_MAX_POLLS):
         result = _request_json("GET", url, params=params)
@@ -1479,19 +1480,21 @@ def wait_for_fb_video_status(video_id, *, allow_scheduled=False):
     return None
 
 
-def _start_fb_upload(page_endpoint, file_size):
+def _start_fb_upload(page_endpoint, file_size, page_token=None):
+    ptoken = page_token or META_FB_PAGE_TOKEN
     return _request_json(
         "POST",
         graph_url(page_endpoint),
         data={
             "upload_phase": "start",
             "file_size": str(file_size),
-            "access_token": META_FB_PAGE_TOKEN,
+            "access_token": ptoken,
         },
     )
 
 
-def _transfer_fb_upload(page_endpoint, upload_session_id, file_path, *, video_id, current_offset=0):
+def _transfer_fb_upload(page_endpoint, upload_session_id, file_path, *, video_id, current_offset=0, page_token=None):
+    ptoken = page_token or META_FB_PAGE_TOKEN
     file_size = os.path.getsize(file_path)
     target_chunk_bytes = max(FB_UPLOAD_MIN_CHUNK_BYTES, FB_UPLOAD_CHUNK_BYTES)
     chunk_bytes = target_chunk_bytes
@@ -1530,7 +1533,7 @@ def _transfer_fb_upload(page_endpoint, upload_session_id, file_path, *, video_id
             "upload_phase": "transfer",
             "upload_session_id": upload_session_id,
             "start_offset": str(current_offset),
-            "access_token": META_FB_PAGE_TOKEN,
+            "access_token": ptoken,
         }
         result = _post_transfer_chunk(
             graph_video_url(page_endpoint),
@@ -1603,11 +1606,12 @@ def _transfer_fb_upload(page_endpoint, upload_session_id, file_path, *, video_id
     return {"success": True, "upload_session_id": upload_session_id}
 
 
-def _finish_fb_upload(endpoint, video_id, description, upload_session_id=None, publish=True, scheduled_publish_time=None, background=False):
+def _finish_fb_upload(endpoint, video_id, description, upload_session_id=None, publish=True, scheduled_publish_time=None, background=False, page_id=None, page_token=None):
+    ptoken = page_token or META_FB_PAGE_TOKEN
     finish_payload = {
         "upload_phase": "finish",
         "video_id": video_id,
-        "access_token": META_FB_PAGE_TOKEN,
+        "access_token": ptoken,
     }
     if upload_session_id:
         finish_payload["upload_session_id"] = upload_session_id
@@ -1627,12 +1631,16 @@ def _finish_fb_upload(endpoint, video_id, description, upload_session_id=None, p
         str(video_id),
         allow_scheduled=bool(scheduled_publish_time),
         background=background,
+        page_id=page_id,
+        page_token=ptoken,
     )
 
 
-def _validate_facebook_credentials(require_app_id=False):
-    if not FB_PAGE_ID or not META_FB_PAGE_TOKEN:
-        logging.error("Faltan META_FB_PAGE_ID o META_FB_PAGE_TOKEN.")
+def _validate_facebook_credentials(require_app_id=False, page_id=None, page_token=None):
+    pid = page_id or FB_PAGE_ID
+    ptoken = page_token or META_FB_PAGE_TOKEN
+    if not pid or not ptoken:
+        logging.error("Faltan page_id o page_token para Facebook.")
         return False
     if require_app_id and not FB_APP_ID:
         logging.error("Falta META_APP_ID para el flujo de file handles.")
@@ -1640,11 +1648,17 @@ def _validate_facebook_credentials(require_app_id=False):
     return True
 
 
-def _upload_facebook_video_binary(video_id, video_path):
+def _get_fb_credentials(page_id=None, page_token=None):
+    """Retorna (page_id, page_token) usando los valores pasados o los globales."""
+    return (page_id or FB_PAGE_ID, page_token or META_FB_PAGE_TOKEN)
+
+
+def _upload_facebook_video_binary(video_id, video_path, page_token=None):
+    ptoken = page_token or META_FB_PAGE_TOKEN
     file_size = os.path.getsize(video_path)
     rupload_url = f"https://rupload.facebook.com/video-upload/{GRAPH_API_VERSION}/{video_id}"
     headers = {
-        "Authorization": f"OAuth {META_FB_PAGE_TOKEN}",
+        "Authorization": f"OAuth {ptoken}",
         "offset": "0",
         "file_offset": "0",
         "file_size": str(file_size),
@@ -1654,19 +1668,21 @@ def _upload_facebook_video_binary(video_id, video_path):
     return result is not None
 
 
-def _finalize_facebook_upload(endpoint, payload, video_id, *, allow_scheduled=False, background=False):
-    result = _request_json("POST", graph_url(f"{FB_PAGE_ID}/{endpoint}"), data=payload)
+def _finalize_facebook_upload(endpoint, payload, video_id, *, allow_scheduled=False, background=False, page_id=None, page_token=None):
+    pid = page_id or FB_PAGE_ID
+    ptoken = page_token or META_FB_PAGE_TOKEN
+    result = _request_json("POST", graph_url(f"{pid}/{endpoint}"), data=payload)
     if not result:
         return None
 
     if result.get("success") or result.get("video_id") or result.get("id"):
         if background:
             logging.info("Subida aceptada por Meta para %s. Iniciando verificador en segundo plano...", video_id)
-            verif_thread = start_fb_status_verifier(video_id, allow_scheduled=allow_scheduled)
+            verif_thread = start_fb_status_verifier(video_id, allow_scheduled=allow_scheduled, page_token=ptoken)
             _set_operation_status("success_background", "facebook_finish", str(video_id), transient=False)
             return video_id
 
-        status_result = wait_for_fb_video_status(video_id, allow_scheduled=allow_scheduled)
+        status_result = wait_for_fb_video_status(video_id, allow_scheduled=allow_scheduled, page_token=ptoken)
         if status_result is False:
             return None
         if status_result == "scheduled":
@@ -1681,7 +1697,7 @@ def _finalize_facebook_upload(endpoint, payload, video_id, *, allow_scheduled=Fa
         success_msg = f"Facebook confirmo la publicacion del video {video_id}."
         if payload.get("file_name"):
             success_msg = f"Facebook confirmo la publicacion del video {video_id} para {payload['file_name']}."
-            
+
         logging.info(success_msg)
         _set_operation_status("success", "facebook_finish", str(video_id), transient=False)
         return video_id
@@ -1691,7 +1707,7 @@ def _finalize_facebook_upload(endpoint, payload, video_id, *, allow_scheduled=Fa
     return None
 
 
-def upload_fb_reel(video_path, caption, scheduled_publish_time=None, _allow_fresh_retry=True, is_draft=False, background=False):
+def upload_fb_reel(video_path, caption, scheduled_publish_time=None, _allow_fresh_retry=True, is_draft=False, background=False, page_id=None, page_token=None):
     """
     Flujo asincrono de Facebook Reels:
     1. start
@@ -1699,7 +1715,8 @@ def upload_fb_reel(video_path, caption, scheduled_publish_time=None, _allow_fres
     3. finish
     4. polling de estado
     """
-    if not _validate_facebook_credentials():
+    pid, ptoken = _get_fb_credentials(page_id, page_token)
+    if not _validate_facebook_credentials(page_id=pid, page_token=ptoken):
         return None
 
     if is_draft:
@@ -1711,7 +1728,7 @@ def upload_fb_reel(video_path, caption, scheduled_publish_time=None, _allow_fres
         return None
 
     file_size = file_path.stat().st_size
-    page_endpoint = f"{FB_PAGE_ID}/video_reels"
+    page_endpoint = f"{pid}/video_reels"
     checkpoint = _load_fb_upload_checkpoint(page_endpoint, str(file_path), file_size)
     if checkpoint:
         video_id = checkpoint["video_id"]
@@ -1739,14 +1756,14 @@ def upload_fb_reel(video_path, caption, scheduled_publish_time=None, _allow_fres
             return None
         current_offset = 0
 
-    if not _upload_facebook_video_binary(str(video_id), str(file_path)):
+    if not _upload_facebook_video_binary(str(video_id), str(file_path), ptoken):
         if checkpoint and _allow_fresh_retry and not get_last_operation_status().get("transient"):
             logging.warning(
                 "No se pudo reanudar el checkpoint de Facebook Reel para %s. Se reinicia una sesion nueva.",
                 file_path.name,
             )
             _delete_fb_upload_checkpoint(page_endpoint, str(file_path))
-            return upload_fb_reel(video_path, caption, scheduled_publish_time=scheduled_publish_time, _allow_fresh_retry=False, is_draft=is_draft)
+            return upload_fb_reel(video_path, caption, scheduled_publish_time=scheduled_publish_time, _allow_fresh_retry=False, is_draft=is_draft, page_id=pid, page_token=ptoken)
         return None
 
     result = _finish_fb_upload(
@@ -1757,6 +1774,7 @@ def upload_fb_reel(video_path, caption, scheduled_publish_time=None, _allow_fres
         publish=not is_draft,
         scheduled_publish_time=scheduled_publish_time,
         background=background,
+        page_id=pid,
     )
     if result:
         _delete_fb_upload_checkpoint(page_endpoint, str(file_path))
@@ -1770,11 +1788,12 @@ def upload_fb_reel(video_path, caption, scheduled_publish_time=None, _allow_fres
     return result
 
 
-def upload_fb_video_standard(video_path, description, scheduled_publish_time=None, _allow_fresh_retry=True, is_draft=False, background=False):
+def upload_fb_video_standard(video_path, description, scheduled_publish_time=None, _allow_fresh_retry=True, is_draft=False, background=False, page_id=None, page_token=None):
     """
     Flujo de videos estandar de pagina usando start/upload/finish y validacion.
     """
-    if not _validate_facebook_credentials():
+    pid, ptoken = _get_fb_credentials(page_id, page_token)
+    if not _validate_facebook_credentials(page_id=pid, page_token=ptoken):
         return None
 
     if is_draft:
@@ -1786,7 +1805,7 @@ def upload_fb_video_standard(video_path, description, scheduled_publish_time=Non
         return None
 
     file_size = file_path.stat().st_size
-    page_endpoint = f"{FB_PAGE_ID}/videos"
+    page_endpoint = f"{pid}/videos"
     checkpoint = _load_fb_upload_checkpoint(page_endpoint, str(file_path), file_size)
     if checkpoint:
         video_id = checkpoint["video_id"]
@@ -1989,20 +2008,23 @@ def republish_draft_to_scheduled(video_id, scheduled_unix_time):
         return False
 
 
-def get_facebook_page_feed(limit=5, after=None):
+def get_facebook_page_feed(limit=5, after=None, page_id=None, page_token=None):
     """
     Obtiene las publicaciones publicadas mas recientes de la pagina de Facebook.
     Soporta paginacion mediante el cursor 'after'. Limit=5 para resiliencia a errores 500.
     """
-    if not FB_PAGE_ID or not META_FB_PAGE_TOKEN:
+    target_id = page_id or FB_PAGE_ID
+    target_token = page_token or META_FB_PAGE_TOKEN
+    
+    if not target_id or not target_token:
         logging.error("Faltan FB_PAGE_ID o META_FB_PAGE_TOKEN para leer el feed.")
         return None
     
-    url = graph_url(f"{FB_PAGE_ID}/published_posts")
+    url = graph_url(f"{target_id}/published_posts")
     params = {
         "fields": "id,message,created_time,full_picture,attachments{media,type,subattachments}",
         "limit": limit,
-        "access_token": META_FB_PAGE_TOKEN
+        "access_token": target_token
     }
     if after:
         params["after"] = after
@@ -2061,6 +2083,72 @@ def create_ig_media_container_from_url(media_url, media_type="IMAGE", caption=""
     return creation_id
 
 
+def create_ig_carousel_item(media_url, media_type="IMAGE"):
+    """
+    Crea un contenedor de un item unitario para un carrusel de Instagram (is_carousel_item=true).
+    Soporta IMAGE o VIDEO.
+    """
+    if not IG_USER_ID or not IG_ACCESS_TOKEN:
+        logging.error("Faltan IG_USER_ID o token de Instagram para crear item de carrusel.")
+        return None
+
+    payload = {
+        "is_carousel_item": "true",
+        "access_token": IG_ACCESS_TOKEN
+    }
+
+    if media_type.upper() == "VIDEO":
+        payload["media_type"] = "VIDEO"
+        payload["video_url"] = media_url
+    else:
+        payload["image_url"] = media_url
+
+    result = _request_json("POST", graph_url(f"{IG_USER_ID}/media"), data=payload)
+    if not result:
+        return None
+
+    creation_id = result.get("id")
+    if not creation_id:
+        logging.error("No se recibio creation_id al crear item de carrusel: %s", result)
+        return None
+
+    logging.info("Contenedor de item para carrusel creado: %s (tipo %s)", creation_id, media_type)
+    return creation_id
+
+
+def create_ig_carousel(children_ids, caption=""):
+    """
+    Crea el contenedor maestro del carrusel de Instagram agrupando los items creados previamente.
+    children_ids: lista de strings con los IDs de los contenedores hijos.
+    """
+    if not IG_USER_ID or not IG_ACCESS_TOKEN:
+        logging.error("Faltan IG_USER_ID o token de Instagram para crear carrusel maestro.")
+        return None
+
+    if not children_ids:
+        logging.error("No se proporcionaron children_ids para el carrusel.")
+        return None
+
+    payload = {
+        "media_type": "CAROUSEL",
+        "children": ",".join(children_ids),
+        "caption": caption,
+        "access_token": IG_ACCESS_TOKEN
+    }
+
+    result = _request_json("POST", graph_url(f"{IG_USER_ID}/media"), data=payload)
+    if not result:
+        return None
+
+    creation_id = result.get("id")
+    if not creation_id:
+        logging.error("No se recibio creation_id al crear carrusel maestro: %s", result)
+        return None
+
+    logging.info("Contenedor maestro de carrusel creado: %s con %s items", creation_id, len(children_ids))
+    return creation_id
+
+
 def get_instagram_user_feed(limit=5):
     """
     Obtiene las ultimas publicaciones del feed de Instagram para procesos de reconciliacion.
@@ -2079,7 +2167,7 @@ def get_instagram_user_feed(limit=5):
     return _request_json("GET", url, params=params)
 
 
-def ensure_ig_compatibility(file_path, max_duration=None, force_recode=False):
+def ensure_ig_compatibility(file_path, max_duration=None, force_recode=False, crf_value=23):
     """
     Optimiza el archivo para IG:
     1. Si excede 300MB -> Aplica Fast Slice (-fs 290M).
@@ -2126,7 +2214,7 @@ def ensure_ig_compatibility(file_path, max_duration=None, force_recode=False):
         cmd += [
             "-c:v", "libx264",
             "-preset", "veryfast",
-            "-crf", "23",
+            "-crf", str(crf_value),
             "-profile:v", "high",
             "-level:v", "4.1",
             "-pix_fmt", "yuv420p",
