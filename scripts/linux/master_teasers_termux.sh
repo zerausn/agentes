@@ -19,7 +19,7 @@ SCRIPTS=(
     "subir_teasers_seanchai.py"
     "subir_teasers_ghawazee.py"
     "subir_teasers_shirabyoshi.py"
-    "subir_fb_evacuador_teasers.py"
+    "subir_teasers_performatic.py"
 )
 
 # Nombres legibles para el log
@@ -27,7 +27,7 @@ NOMBRES=(
     "Seanchai Writings"
     "Ghawazee Writings"
     "Shirabyoshi Writings"
-    "Performatic Writings"
+    "Performatic Writings Cali"
 )
 
 # Intervalo entre CADA publicacion en segundos (12 minutos)
