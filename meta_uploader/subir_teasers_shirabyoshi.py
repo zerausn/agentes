@@ -48,8 +48,8 @@ SUPPORTED_EXTS = {".mp4", ".mov", ".mkv"}
 REEL_ASPECT_TOLERANCE = 0.08
 
 # --- Credenciales ---
-FB_PAGE_ID_TEASER = os.environ.get("META_FB_PAGE_ID_TEASER", "1347014641828725")
-FB_PAGE_TOKEN_TEASER = os.environ.get("META_FB_PAGE_TOKEN_TEASER", os.environ.get("META_FB_PAGE_TOKEN", ""))
+FB_PAGE_ID_TEASER = os.environ.get("META_FB_PAGE_ID_SHIRABYOSHI", "1347014641828725")
+FB_PAGE_TOKEN_TEASER = os.environ.get("META_FB_PAGE_TOKEN_SHIRABYOSHI", "")
 
 # --- Logging ---
 logging.basicConfig(
