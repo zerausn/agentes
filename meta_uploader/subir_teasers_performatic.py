@@ -41,7 +41,7 @@ if not _root_env:
 else:
     ROOT = Path(_root_env)
 
-SOURCE_DIR   = ROOT / "videos subidos exitosamente"
+SOURCE_DIR   = ROOT / "teasers_pendientes"
 DONE_DIR     = ROOT / "subidos a facebbok"
 FAILED_DIR   = ROOT / "fallidos_facebook"
 LOG_FILE     = BASE_DIR / "fb_performatic_teasers.log"
