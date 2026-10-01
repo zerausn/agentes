@@ -231,3 +231,10 @@
   y advertencias de plugins/MCP. Se documenta como bloqueo local, sin borrar
   estado ni credenciales.
 - Detalle completo: `docs/PROVEEDORES_IA_CODEX_2026-09-06.md`.
+
+## Actualización Vigía Meta (2026-09-30)
+- **Monitoreo Multi-Página:** El script `fb_to_ig_vigia.py` fue actualizado para soportar la lectura secuencial del feed de múltiples páginas de Facebook en un solo ciclo.
+- Se añadieron las cuentas de **Seanchai Writings** y **Ghawazee Writings** a la tupla `FB_PAGES` para un total de 4 páginas monitoreadas: Performatic, Shirabyoshi, Seanchai y Ghawazee.
+- **Lógica del candidato global:** El script extrae un bloque (chunk) de posts de cada una de las 4 páginas y elige el candidato que sea cronológicamente el más reciente entre todas, antes de proceder a la validación y *crosspost* hacia Instagram.
+- **Entorno Proot (S24):** El script bash asociado `vigia_meta720_termux.sh` se modificó para exportar correctamente los IDs y tokens de las 4 páginas (incluidos `META_FB_PAGE_ID_SEANCHAI` y `META_FB_PAGE_ID_GHAWAZEE`) dentro de la invocación proot del S24.
+- Los cambios fueron desarrollados e inyectados directamente al Termux (S24 Ultra) vía ADB y respaldados en este repositorio local para mantener la paridad operativa.
