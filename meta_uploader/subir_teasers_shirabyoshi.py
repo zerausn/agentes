@@ -36,8 +36,8 @@ if not str(ROOT):
     else:
         ROOT = Path("/home/zerausn/Documents/Antigravity")
 
-# CORREGIDO: leer de teasers_pendientes
-SOURCE_DIR   = ROOT / "teasers_pendientes"
+# CORREGIDO: leer de videos subidos exitosamente
+SOURCE_DIR   = ROOT / "videos subidos exitosamente"
 DONE_DIR     = ROOT / "subidos a facebbok"
 FAILED_DIR   = ROOT / "fallidos_facebook"
 LOG_FILE     = BASE_DIR / "fb_shirabyoshi_teasers.log"
@@ -212,7 +212,7 @@ def upload_video(video_path: Path) -> bool:
     if is_reel_safe(video_path):
         logging.info("Subiendo TEASER como REEL (9:16) a %s: %s", page_name, video_path.name)
         try:
-            result = upload_fb_reel(str(video_path), caption)
+            result = upload_fb_reel(str(video_path), caption, page_id=page_id, page_token=page_token)
             if result:
                 logging.info("Subida exitosa como REEL | video_id=%s", result)
                 return True
@@ -224,7 +224,7 @@ def upload_video(video_path: Path) -> bool:
 
     logging.info("Subiendo TEASER como VIDEO ESTANDAR a %s: %s", page_name, video_path.name)
     try:
-        result = upload_fb_video_standard(str(video_path), caption)
+        result = upload_fb_video_standard(str(video_path), caption, page_id=page_id, page_token=page_token)
     except MetaRateLimitError as exc:
         logging.error("Code 368 tambien en VIDEO ESTANDAR. Pagina bloqueada temporalmente.")
         set_backoff()
