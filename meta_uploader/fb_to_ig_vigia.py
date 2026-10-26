@@ -47,11 +47,10 @@ FB_PAGES = [
         "Performatic Writings Cali",
     ),
     (
-        os.environ.get("META_FB_PAGE_ID_TEASER", "1347014641828725"),
-        os.environ.get(
-            "META_FB_PAGE_TOKEN_TEASER",
-            "",
-        ),
+        os.environ.get("META_FB_PAGE_ID_SHIRABYOSHI", os.environ.get("META_FB_PAGE_ID_TEASER", "1347014641828725")),
+        # Busca META_FB_PAGE_TOKEN_SHIRABYOSHI (nombre en .env) con fallback a
+        # META_FB_PAGE_TOKEN_TEASER (nombre legacy en .agentes_termux_env)
+        os.environ.get("META_FB_PAGE_TOKEN_SHIRABYOSHI") or os.environ.get("META_FB_PAGE_TOKEN_TEASER", ""),
         "Shirabyoshi Writings",
     ),
     (
@@ -65,6 +64,7 @@ FB_PAGES = [
         "Ghawazee Writings",
     ),
 ]
+
 
 logging.basicConfig(
     level=logging.INFO,
