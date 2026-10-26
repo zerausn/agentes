@@ -574,7 +574,7 @@ def process_new_posts(dry_run=False):
                         logging.error("[%s] Contenedor %s nunca llegó a UPLOAD_IN_PROGRESS. Abortando subida.", src_page, target_type)
                     else:
                         # Probe del clip — diagnóstico para entender ProcessingFailedError
-                        from meta_uploader import probe_video
+                        # (probe_video ya importado a nivel de módulo en línea 11)
                         _p = probe_video(path_for_target)
                         _fps = _p.get("avg_frame_rate", "?")
                         try:
