@@ -83,4 +83,4 @@
     - Códigos de salida `0/2/3/1` y mensajes del launcher actualizados.
     - Escalado por orientación (`1920x1080` horizontal / `1080x1920` vertical) y verificación binaria real contra IG con un clip `720x1280` de 90s.
     - 15 tests unitarios, `py_compile` y `bash -n` OK; documentado como D49/D50.
-- **Estado**: Cambios listos en la rama `linux-arm64`, pendientes de commit, push y despliegue en el S24. El siguiente ciclo debe seleccionar Ghawazee `teaser_16` o el post más reciente que siga elegible.
+- **Estado**: Desplegado en el S24 en `303dc93`. El ciclo #26 publicó `teaser_18` (`803559979506784_122157978075044766`) en IG REELS con clip `720x1280` sin `ProcessingFailedError`. El registro quedó con `content:20260429_185945_teaser_18` y la siguiente simulación elige `teaser_17` como candidato distinto; las claves `stem:` viejas permanecen inertes. La actualización del banner/case del launcher se aplicará cuando se reinicie el widget; el Python nuevo ya está en uso.

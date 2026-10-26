@@ -127,4 +127,5 @@
 - [x] Verificación de transcode: fuente `720x1280` de 195.9s → clip `720x1280`, 90s, 30fps, H.264 High 4.1, yuv420p, AAC 48kHz; subida binaria real a contenedor IG OK (sin publicar).
 - [x] `test_vigia_dedupe.py` ampliado a 15 tests; `py_compile` de ambos módulos y `bash -n` del launcher OK.
 - [x] Documentado en `DECISIONS.md` como D49 y D50; `ARCHITECTURE.md` actualizado.
-- [ ] Desplegar en el S24 (`0_RENOVAR_REPO` o ADB) y confirmar que el siguiente ciclo publica `teaser_16` sin `ProcessingFailedError`.
+- [x] Desplegado en el S24 (`git pull` a `303dc93`); ciclo #26 publicó `803559979506784_122157978075044766` (`teaser_18`) en IG REELS con clip `720x1280`, 16.1s, 3.10 MB, sin `ProcessingFailedError`.
+- [x] Verificación post-publicación: el registro guardó `content:20260429_185945_teaser_18` + post ID; la simulación del feed elige `teaser_17` (Shirabyoshi, 19:39Z) como siguiente candidato distinto. Las claves `stem:` viejas siguen inertes.
