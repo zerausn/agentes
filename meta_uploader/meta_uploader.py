@@ -1260,6 +1260,37 @@ def _create_ig_video_container(media_type, caption="", share_to_feed=None):
     return creation_id
 
 
+def wait_for_ig_container_upload_ready(creation_id, max_wait_seconds=45):
+    """
+    Espera hasta que el contenedor IG esté en UPLOAD_IN_PROGRESS antes de subir
+    el binario. Meta puede tardar entre 1 y 20s en prepararlo; sin esta espera
+    la subida falla con 'not in the status to upload a video'.
+    """
+    url = graph_url(str(creation_id))
+    params = {"fields": "status_code,status", "access_token": IG_ACCESS_TOKEN}
+    deadline = time.time() + max_wait_seconds
+    poll_interval = 3
+
+    while time.time() < deadline:
+        result = _request_json("GET", url, params=params)
+        if result:
+            status_code = (result.get("status_code") or "").upper()
+            if status_code in {"UPLOAD_IN_PROGRESS", "FINISHED", "PUBLISHED"}:
+                logging.info("Contenedor IG %s listo para upload (estado: %s).", creation_id, status_code)
+                return True
+            if status_code in {"ERROR", "EXPIRED"}:
+                logging.error("Contenedor IG %s en estado terminal antes del upload: %s", creation_id, status_code)
+                return False
+            logging.info("Contenedor IG %s esperando estado upload (actual: %s)...", creation_id, status_code or "UNKNOWN")
+        time.sleep(poll_interval)
+
+    logging.warning(
+        "Timeout (%ss) esperando UPLOAD_IN_PROGRESS en contenedor IG %s. Intentando upload de todas formas.",
+        max_wait_seconds, creation_id,
+    )
+    return True  # Intenta de todas formas; mejor que abortar silenciosamente
+
+
 def create_ig_reel_container(caption="", share_to_feed=True):
     return _create_ig_video_container("REELS", caption=caption, share_to_feed=share_to_feed)
 
@@ -2230,7 +2261,7 @@ def ensure_ig_compatibility(file_path, max_duration=None, force_recode=False, cr
             "-c:a", "aac",
             "-b:a", "128k",
             "-ac", "2",
-            "-ar", "44100"
+            "-ar", "48000"  # Meta requiere 48 kHz para Reels (era 44100, causa de ProcessingFailedError)
         ]
         if max_duration:
             cmd += ["-t", str(max_duration)]

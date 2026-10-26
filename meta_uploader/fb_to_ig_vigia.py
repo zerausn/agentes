@@ -15,6 +15,7 @@ from meta_uploader import (
     get_facebook_page_feed,
     get_instagram_library_batch,
     wait_for_ig_container,
+    wait_for_ig_container_upload_ready,
     publish_ig_container,
     check_ig_publish_limit,
     ensure_ig_compatibility,
@@ -25,6 +26,9 @@ BASE_DIR = Path(__file__).resolve().parent
 HISTORY_FILE = BASE_DIR / "crosspost_history.json"
 DEDUPE_REGISTRY_FILE = BASE_DIR / "crosspost_dedupe_registry.json"
 CAPTION_SIGNATURE = "\n\n#PW\nSíguenos también en Facebook"
+# Número máximo de fallos consecutivos antes de marcar un post como procesado (evita reintentos infinitos)
+MAX_CONSECUTIVE_FAILURES = 3
+FAILURE_COUNTS_FILE = BASE_DIR / "crosspost_failure_counts.json"
 STEM_PATTERNS = (
     re.compile(r"\b\d{8}[\s_-]\d{6}(?:_\d+)?\b", re.IGNORECASE),
     re.compile(r"\b\d{8}[-_]\d{4}\b", re.IGNORECASE),
@@ -125,6 +129,25 @@ def save_dedupe_registry(registry):
             json.dump(payload, f, indent=2, ensure_ascii=False)
     except Exception as e:
         logging.error("Error al guardar registro de deduplicacion: %s", e)
+
+
+def load_failure_counts():
+    if not FAILURE_COUNTS_FILE.exists():
+        return {}
+    try:
+        with open(FAILURE_COUNTS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logging.warning("No se pudo leer el registro de fallos: %s", e)
+        return {}
+
+
+def save_failure_counts(counts):
+    try:
+        with open(FAILURE_COUNTS_FILE, "w", encoding="utf-8") as f:
+            json.dump(counts, f, indent=2)
+    except Exception as e:
+        logging.error("Error al guardar conteo de fallos: %s", e)
 
 
 def register_processed_post(history, registry, post_id, content_keys=None, remember_keys=True):
@@ -512,9 +535,9 @@ def process_new_posts(dry_run=False):
             duration = vinfo.get("duration_seconds", 0)
 
             active_targets = list(targets)
-            if duration > 90 and "FEED" not in active_targets:
-                logging.info("[%s] Video largo (%.2fs): activando Feed Completo.", src_page, duration)
-                active_targets.append("FEED")
+            # NOTA: El fallback FEED fue eliminado — usaba _create_ig_video_container("REELS", share_to_feed=True)
+            # que es idéntico al target REELS base y causaba 24 rechazos binarios dobles sin beneficio.
+            # Videos >90s son recortados a 90s por ensure_ig_compatibility en el target REELS.
         except Exception as e:
             logging.error("[%s] Fallo descarga/optimizacion local: %s", src_page, e)
             continue
@@ -546,9 +569,10 @@ def process_new_posts(dry_run=False):
                     creation_id = _create_ig_video_container("STORIES")
 
                 if creation_id:
-                    logging.info("[%s] Contenedor %s listo. Esperando propagacion...", src_page, target_type)
-                    time.sleep(2)
-                    if upload_ig_binary(creation_id, path_for_target):
+                    logging.info("[%s] Contenedor %s creado. Esperando que Meta lo active para upload...", src_page, target_type)
+                    if not wait_for_ig_container_upload_ready(creation_id):
+                        logging.error("[%s] Contenedor %s nunca llegó a UPLOAD_IN_PROGRESS. Abortando subida.", src_page, target_type)
+                    elif upload_ig_binary(creation_id, path_for_target):
                         if wait_for_ig_container(creation_id):
                             ig_id = publish_ig_container(creation_id)
                             if ig_id:
@@ -585,8 +609,46 @@ def process_new_posts(dry_run=False):
     if at_least_one_success:
         register_processed_post(history, registry, post_id, candidate_keys, remember_keys=True)
         ig_catalog_keys.update(candidate_keys or set())
+        # Reset conteo de fallos al publicar con éxito
+        failure_counts = load_failure_counts()
+        failure_counts.pop(post_id, None)
+        save_failure_counts(failure_counts)
         logging.info("Post %s publicado y registrado. Bash hara pausa de 720s.", post_id)
+        # Limpieza de temporales huérfanos en .ig_temp
+        ig_temp_dir = BASE_DIR / ".ig_temp"
+        if ig_temp_dir.exists():
+            removed = 0
+            freed_mb = 0.0
+            for tmp in ig_temp_dir.iterdir():
+                if tmp.is_file():
+                    try:
+                        freed_mb += tmp.stat().st_size / (1024 * 1024)
+                        tmp.unlink()
+                        removed += 1
+                    except Exception:
+                        pass
+            if removed:
+                logging.info("[LIMPIEZA] Eliminados %s temporales huérfanos en .ig_temp (%.1f MB liberados).", removed, freed_mb)
         return 1
+
+    # Post falló en todos los targets — incrementar contador de fallos
+    failure_counts = load_failure_counts()
+    failure_counts[post_id] = failure_counts.get(post_id, 0) + 1
+    save_failure_counts(failure_counts)
+
+    if failure_counts[post_id] >= MAX_CONSECUTIVE_FAILURES:
+        logging.warning(
+            "[SKIP] Post %s falló %s veces consecutivas. Marcando como procesado para no reintentar infinitamente.",
+            post_id, failure_counts[post_id],
+        )
+        register_processed_post(history, registry, post_id, candidate_keys, remember_keys=False)
+        failure_counts.pop(post_id, None)
+        save_failure_counts(failure_counts)
+    else:
+        logging.warning(
+            "[FALLO] Post %s: intento %s/%s fallido. Se reintentara en el proximo ciclo.",
+            post_id, failure_counts[post_id], MAX_CONSECUTIVE_FAILURES,
+        )
 
     logging.info("Ciclo finalizado sin publicaciones nuevas.")
     return 0

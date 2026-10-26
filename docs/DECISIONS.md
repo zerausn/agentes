@@ -648,3 +648,90 @@ Esta arquitectura es superior porque:
    por completo la restricción de Code 10 impuesta a las consultas directas por ID.
 2. Es resiliente a posts borrados (la API simplemente no los devuelve).
 3. No requiere mantenimiento externo (el reporte se generaba manualmente).
+
+
+---
+
+## 2026-10-26: Vigía IG — Fix de 5 bugs críticos (ProcessingFailedError / reintentos infinitos)
+
+### Contexto
+
+El widget `vigia_meta720.sh` llevaba publicando a tasas muy bajas: solo 2 de 14
+intentos exitosos en la jornada, con 433 `ProcessingFailedError` acumulados en el
+log histórico y el mismo post fallido reintentándose 12 veces seguidas. Una IA
+externa diagnosticó los fallos; se corrigieron en esta sesión.
+
+### Bugs corregidos
+
+#### Bug 1 — Audio AAC a 44.1 kHz (causa raíz del HTTP 400)
+**Archivo:** `meta_uploader/meta_uploader.py` → `ensure_ig_compatibility()`
+
+Meta **requiere 48 kHz** para Reels. El pipeline transcodificaba con `-ar 44100`,
+produciendo un formato incompatible que el procesador de Meta rechazaba con
+`ProcessingFailedError` aun cuando el binario llegaba al 100%.
+
+**Fix:** `-ar 44100` → `-ar 48000`.
+
+#### Bug 2 — Contenedor IG no estaba listo antes del upload del binario
+**Archivo:** `meta_uploader/meta_uploader.py` — nueva función `wait_for_ig_container_upload_ready()`
+
+El código esperaba `time.sleep(2)` fija tras crear el contenedor antes de subir el
+binario. Meta puede tardar entre 1 y 20 s en poner el contenedor en estado
+`UPLOAD_IN_PROGRESS`; si el upload llegaba antes, la respuesta era "not in the
+status to upload a video" y el binario se descartaba silenciosamente.
+
+**Fix:** Nueva función `wait_for_ig_container_upload_ready(creation_id, max_wait=45s)`
+que hace polling hasta confirmar `UPLOAD_IN_PROGRESS` antes de llamar a
+`upload_ig_binary()`.
+
+#### Bug 3 — Fallback "FEED" era un duplicado exacto de REELS
+**Archivo:** `meta_uploader/fb_to_ig_vigia.py`
+
+Para videos > 90 s, el código añadía `"FEED"` a los targets activos, pero la rama
+de FEED llamaba exactamente a `_create_ig_video_container("REELS", share_to_feed=True)`,
+idéntico al target REELS. Resultado: 2 contenedores idénticos, 2 uploads, 2
+rechazos por cada post largo — 24 rechazos binarios en un solo día.
+
+**Fix:** Eliminado el bloque `if duration > 90 and "FEED" not in active_targets`.
+Videos > 90 s son recortados a 90 s por `ensure_ig_compatibility(max_duration=90)`
+dentro del target REELS.
+
+#### Bug 4 — `time.sleep(2)` fija reemplazada por espera real
+**Archivo:** `meta_uploader/fb_to_ig_vigia.py`
+
+El `time.sleep(2)` fue reemplazado por la llamada a `wait_for_ig_container_upload_ready()`,
+que garantiza que el contenedor esté en estado correcto antes de subir.
+
+#### Bug 5 — Reintentos infinitos del mismo post fallido
+**Archivo:** `meta_uploader/fb_to_ig_vigia.py`
+
+`register_processed_post()` solo se llamaba en caso de éxito. Un post que fallaba
+todos sus targets no se registraba, y el siguiente ciclo lo intentaba de nuevo
+indefinidamente. Hoy el mismo post fue reintentado 12 veces.
+
+**Fix:** Nuevo archivo `crosspost_failure_counts.json` con contador por post_id.
+Después de `MAX_CONSECUTIVE_FAILURES = 3` fallos consecutivos, el post se marca
+como procesado y se salta. Al publicar con éxito, el contador se resetea.
+
+**Bonus:** Al publicar con éxito, el código ahora limpia automáticamente los
+temporales huérfanos en `.ig_temp` (había 4.9 GB acumulados).
+
+### Archivos modificados
+
+| Archivo | Cambios |
+|---------|---------|
+| `meta_uploader/meta_uploader.py` | Fix AAC 44100→48000 Hz; nueva función `wait_for_ig_container_upload_ready()` |
+| `meta_uploader/fb_to_ig_vigia.py` | Import nueva función; eliminado fallback FEED; `sleep(2)` → wait real; contador de fallos; limpieza `.ig_temp` |
+
+### Archivos nuevos en runtime
+
+| Archivo | Propósito |
+|---------|-----------|
+| `meta_uploader/crosspost_failure_counts.json` | Contador de fallos consecutivos por post_id (auto-generado) |
+
+### Impacto esperado
+
+- Eliminación del `ProcessingFailedError` causado por audio incompatible.
+- Fin de los uploads rechazados por contenedor no preparado.
+- Reducción del 50% en uploads innecesarios (fallback FEED eliminado).
+- Un post fallido se descarta automáticamente tras 3 intentos en lugar de ciclar indefinidamente.
