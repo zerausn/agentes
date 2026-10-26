@@ -728,3 +728,24 @@ con ruido tipo "sal y pimienta" y manchas de fotocopia. Extraer texto y exportar
   7. **Token correcto**: el bloqueo real no era falta de `pages_manage_metadata`; `META_FB_PAGE_TOKEN` tenía un token `USER`. Se derivó token `PAGE` y el script ahora valida/deriva en memoria si hace falta.
   8. **Teaser más viral**: caption en inglés con headline fuerte, pregunta final y carrusel distribuido por segmentos priorizando fotos más pesadas.
 - Estado: listo para prueba controlada; no se lanzó la subida masiva completa.
+
+## Sesion 39 - Vigía Meta720: dedupe por derivada, selección multipágina y transcode vertical (opencode, 2026-10-26)
+
+- **Objetivo**: que el Vigía publique el post elegible más reciente de las 4 páginas, deduplique teasers reales sin bloquear derivadas distintas y deje de fallar por transcode vertical en Instagram.
+- **Hallazgos**:
+  1. `extract_content_keys()` generaba `stem:20260429_185945` para cualquier teaser de ese fuente, así que el registro viejo bloqueaba `teaser_16` y el log lo reportaba como "ya estaban publicados".
+  2. El Vigía se quedaba con el primer candidato de la primera página sin comparar `created_time` entre las 4.
+  3. `--once` devolvía `0` tanto si publicaba como si no quedaba nada; el launcher no distinguía un fallo de publicación.
+  4. `ensure_ig_compatibility()` reducía un `720x1280` vertical a `608x1080`; Meta recibía el 100% del binario y respondía HTTP 400 `ProcessingFailedError`.
+- **Implementado**:
+  - Identidades `content:<stem>`, `content:<stem>_teaser_<n>` y `content:<stem>_teaser`; `text:` como respaldo con prefijos de página normalizados y `#full`/`#teaser` conservados.
+  - Normalización de claves `text:` viejas al cargar; claves `stem:` históricas inertes.
+  - Selección del candidato más reciente entre páginas en bloques frescos y Deep Cursor (`parse_created_time()` + `_pick_newer_candidate()`).
+  - Códigos de salida `0/2/3/1` y casos separados en el launcher.
+  - Escalado por orientación (`1920x1080` horizontal / `1080x1920` vertical) y verificación binaria real contra IG con un clip `720x1280` de 90 s.
+  - 15 tests unitarios, `py_compile` y `bash -n` OK.
+- **Verificación en producción (S24)**:
+  - Ciclo #26 publicó Performatic `teaser_18` como Reel `18104992640284376` (`https://www.instagram.com/reel/De-F4qFgvMs/`).
+  - Ciclo #27 comparó las 4 páginas y eligió el post nuevo de Seanchai de 20:06Z (`teaser_19`) sobre Shirabyoshi 19:39Z; publicó Reel `18117973030825331` (`https://www.instagram.com/reel/De-HbfoAi-p/`).
+  - Ambos clips `720x1280`, 16.1 s, sin `ProcessingFailedError`, exit 0.
+- **Estado**: desplegado en el S24 en `c51dcee`. El Python nuevo está activo; el banner/case del launcher se actualiza al reiniciar el widget. Detalle completo en `docs/VIGIA_META720_DEDUPE_MULTIPAGE_FIX.md`.

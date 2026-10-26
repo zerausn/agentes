@@ -84,3 +84,5 @@
     - Escalado por orientación (`1920x1080` horizontal / `1080x1920` vertical) y verificación binaria real contra IG con un clip `720x1280` de 90s.
     - 15 tests unitarios, `py_compile` y `bash -n` OK; documentado como D49/D50.
 - **Estado**: Desplegado en el S24 en `303dc93` (docs en `5206ea6`). El ciclo #26 publicó `teaser_18` (Performatic) y el ciclo #27 publicó `teaser_19` (Seanchai, post de 20:06Z) como Reel `18117973030825331`; en ambos casos el Vigía comparó `created_time` entre las 4 páginas y eligió el más reciente distinto, con clip `720x1280` y sin `ProcessingFailedError`. El registro guardó las claves `content:` correspondientes y las claves `stem:` viejas permanecen inertes. La actualización del banner/case del launcher se aplicará cuando se reinicie el widget; el Python nuevo ya está en uso.
+
+**Documento detallado:** `docs/VIGIA_META720_DEDUPE_MULTIPAGE_FIX.md`.

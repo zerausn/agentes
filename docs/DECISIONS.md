@@ -806,3 +806,40 @@ en el Business. No se requiere renovación automática.
 | `meta_uploader/meta_uploader.py` | `IN_PROGRESS` aceptado; timeout reducido a 30s |
 | `meta_uploader/fb_to_ig_vigia.py` | `SHIRABYOSHI` con fallback `TEASER` en `FB_PAGES` |
 | `meta_uploader/.env` (proot, runtime) | Alias `META_FB_PAGE_TOKEN_TEASER` añadido |
+
+## 2026-10-26 (sesión 3): Vigía IG — dedupe por derivada, selección multipágina y escalado vertical
+
+### Contexto
+El Vigía reportaba teasers como "ya publicados" sin serlo y, cuando publicaba,
+Meta rechazaba videos verticales con `ProcessingFailedError` después de recibir
+el 100% del binario. El detalle completo está en
+`docs/VIGIA_META720_DEDUPE_MULTIPAGE_FIX.md`.
+
+### Decisiones
+1. **Identidad de contenido por derivada** (D49 en `meta_uploader/docs/DECISIONS.md`):
+   `content:<stem>` para video completo, `content:<stem>_teaser_<n>` para teaser
+   numerado y `content:<stem>_teaser` para teaser sin número. No se emiten más
+   claves `stem:` desnudas; las históricas quedan inertes.
+2. **`text:` como respaldo normalizado:** se eliminan los prefijos de página
+   (`#PW`, `#SW`, `#GW`, `#SC`) para deduplicar el mismo teaser entre páginas,
+   conservando `#full`/`#teaser` para separar derivadas. Las claves `text:`
+   viejas se normalizan al cargar el registro.
+3. **Selección del más reciente:** `parse_created_time()` +
+   `_pick_newer_candidate()` comparan `created_time` entre las 4 páginas, tanto
+   en bloques frescos como en Deep Cursor.
+4. **Códigos de salida honestos:** `0` publicado, `2` sin candidatos, `3`
+   candidato encontrado pero fallo de publicación, `1` error de ejecución. El
+   launcher no colapsa `3` en "sin posts nuevos".
+5. **Escalado por orientación** (D50): máximo `1920x1080` horizontal y
+   `1080x1920` vertical, con dimensiones pares.
+
+### Verificación
+- 15 tests unitarios OK; `py_compile` y `bash -n` OK.
+- Ciclo #26: Performatic `teaser_18` → Reel `18104992640284376`.
+- Ciclo #27: Seanchai `teaser_19` → Reel `18117973030825331`.
+- Ambos clips `720x1280`, 16.1 s, sin `ProcessingFailedError`, exit 0.
+- El registro guardó `content:20260429_185945_teaser_18` y
+  `content:20260429_185945_teaser_19`; las claves `stem:` viejas siguen inertes.
+
+### Commits
+`303dc93`, `5206ea6`, `c51dcee` en la rama `linux-arm64`.

@@ -131,3 +131,4 @@
 - [x] Verificación post-publicación: el registro guardó `content:20260429_185945_teaser_18` + post ID; las claves `stem:` viejas siguen inertes.
 - [x] Ciclo #27 (15:13 local) confirmó la selección multipágina en vivo: comparó Performatic 19:52Z (ya publicado), Shirabyoshi 19:39Z (`teaser_17`) y Ghawazee 19:26Z, y eligió el post nuevo de Seanchai de 20:06Z (`teaser_19`), publicado como Reel `18117973030825331` (`720x1280`, 16.1s) en 92s, exit 0.
 - [x] Dos ciclos consecutivos (#26 Performatic, #27 Seanchai) publicaron teasers distintos sin `ProcessingFailedError`, confirmando que el dedupe por derivada no bloquea teasers nuevos.
+- [x] Documentación detallada de la sesión en `docs/VIGIA_META720_DEDUPE_MULTIPAGE_FIX.md` (síntomas, causas, fixes, evidencia de ciclos #26/#27 y operación).

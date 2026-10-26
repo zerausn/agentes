@@ -289,3 +289,27 @@ el endpoint `/{page_id}/videos` en vez de buscar posts individuales.
 
 ### Archivo modificado
 - `meta_uploader/fb_to_ig_vigia.py` — commit `c483513`
+
+## Fix Vigía Meta720 — Dedupe por derivada, selección multipágina y transcode vertical (2026-10-26)
+
+Detalle completo en `docs/VIGIA_META720_DEDUPE_MULTIPAGE_FIX.md`.
+
+- **Dedupe:** `extract_content_keys()` pasó de emitir `stem:<stem>` a identidades
+  por derivada: `content:<stem>` (video completo), `content:<stem>_teaser_<n>`
+  (teaser numerado) y `content:<stem>_teaser` (teaser sin número). Las claves
+  `stem:` viejas del registro quedan inertes; los prefijos de página (`#PW`,
+  `#SW`, `#GW`, `#SC`) se normalizan en `text:` conservando `#full`/`#teaser`.
+- **Selección multipágina:** el Vigía ya no se queda con el primer candidato de
+  la primera página; compara `created_time` entre las 4 páginas y elige el más
+  reciente, tanto en bloques frescos como en el rescate Deep Cursor.
+- **Logs y exit codes:** los bloques resumen duplicados/sin media por motivo;
+  `--once` distingue `0` publicado, `2` sin candidatos, `3` candidato con fallo
+  de publicación y `1` error de ejecución. El launcher muestra los 4 casos.
+- **Transcode vertical:** `ensure_ig_compatibility()` escala a `1920x1080`
+  horizontal o `1080x1920` vertical. Un `720x1280` ya no se reduce a `608x1080`,
+  que Meta rechazaba con `ProcessingFailedError` tras recibir el 100%.
+- **Verificación:** 15 tests OK, `py_compile` y `bash -n` OK. En el S24, el
+  ciclo #26 publicó Performatic `teaser_18` (Reel `18104992640284376`) y el
+  ciclo #27 publicó Seanchai `teaser_19` (Reel `18117973030825331`), ambos
+  `720x1280`, sin `ProcessingFailedError` y con exit 0.
+- **Commits:** `303dc93` (fix), `5206ea6` y `c51dcee` (verificación).
