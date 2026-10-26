@@ -735,3 +735,74 @@ temporales huérfanos en `.ig_temp` (había 4.9 GB acumulados).
 - Fin de los uploads rechazados por contenedor no preparado.
 - Reducción del 50% en uploads innecesarios (fallback FEED eliminado).
 - Un post fallido se descarta automáticamente tras 3 intentos en lugar de ciclar indefinidamente.
+
+
+---
+
+## 2026-10-26 (sesión 2): Vigía IG — 3 bugs post-deploy detectados en ciclo #18
+
+### Contexto
+Después de desplegar `ad8c934`, el ciclo #18 reveló 3 bugs nuevos visibles solo en producción.
+
+### Bug 6 — `wait_for_ig_container_upload_ready` esperaba estado que Meta nunca envía
+**Archivo:** `meta_uploader/meta_uploader.py`
+
+**Síntoma observado en log ciclo #18:**
+```
+Contenedor IG 17911959279565377 esperando estado upload (actual: IN_PROGRESS)...
+[× 13 veces, 45s]
+Timeout (45s) esperando UPLOAD_IN_PROGRESS. Intentando upload de todas formas.
+Fallo subida binaria HTTP 400 — ProcessingFailedError
+```
+
+**Causa:** La función esperaba el estado `UPLOAD_IN_PROGRESS`, pero Meta usa `IN_PROGRESS`
+para señalar que el contenedor está listo. El timeout de 45s dejaba expirar la ventana de
+upload del contenedor, causando `ProcessingFailedError`.
+
+**Fix:** Aceptar `IN_PROGRESS` como estado listo → el primer poll (~2s) retorna True
+inmediatamente. El timeout se redujo a 30s (seguridad). Commit `c0a4e62`.
+
+### Bug 7 — Shirabyoshi: nombre de variable incorrecto en `.env`
+**Archivo:** `meta_uploader/fb_to_ig_vigia.py`
+
+**Síntoma:** `[Shirabyoshi Writings] Sin credenciales - saltando.` en ciclo #18.
+
+**Causa:**
+- El `.env` del proot Debian almacena el token como `META_FB_PAGE_TOKEN_SHIRABYOSHI`
+- El código (commit `8811cdf`, Oct 1) buscaba `META_FB_PAGE_TOKEN_TEASER`
+- El commit `ad8c934` eliminó el token hardcodeado que servía de fallback
+- En ciclo 17 (código viejo con token hardcodeado) funcionaba; en ciclo 18 no
+
+**Fix:** `FB_PAGES` ahora busca `META_FB_PAGE_TOKEN_SHIRABYOSHI` primero,
+con fallback a `META_FB_PAGE_TOKEN_TEASER`. Commit `c0a4e62`.
+
+### Bug 8 — Alias `META_FB_PAGE_TOKEN_TEASER` faltaba en el `.env` del proot
+**Aplicado en runtime (no requiere commit).**
+
+El token de Shirabyoshi existía como `META_FB_PAGE_TOKEN_SHIRABYOSHI` en el `.env`
+del proot, pero no como `META_FB_PAGE_TOKEN_TEASER`. Se añadió el alias directamente
+al archivo `/root/agentes/meta_uploader/.env` del proot Debian.
+
+### Verificación de tokens en vivo (Graph API)
+
+Todos los 4 tokens verificados con `GET /{page_id}?fields=name,id` directamente desde
+el S24 — respuesta positiva confirmada:
+
+| Variable | Página | Estado |
+|----------|--------|--------|
+| `META_FB_PAGE_TOKEN` | Performatic Writings Cali | Válido |
+| `META_FB_PAGE_TOKEN_SHIRABYOSHI` | Shirabyoshi Writings | Válido |
+| `META_FB_PAGE_TOKEN_SEANCHAI` | Seanchai Writings | Válido |
+| `META_FB_PAGE_TOKEN_GHAWAZEE` | Ghawazee Writings | Válido |
+
+### Nota sobre expiración de tokens
+Los Page Access Tokens (`EAAUr7rtgpvMBSs...`) son tokens de larga duración derivados
+del Business Manager. **No expiran** mientras el usuario/app mantenga los permisos
+en el Business. No se requiere renovación automática.
+
+### Archivos modificados
+| Archivo | Cambio |
+|---------|--------|
+| `meta_uploader/meta_uploader.py` | `IN_PROGRESS` aceptado; timeout reducido a 30s |
+| `meta_uploader/fb_to_ig_vigia.py` | `SHIRABYOSHI` con fallback `TEASER` en `FB_PAGES` |
+| `meta_uploader/.env` (proot, runtime) | Alias `META_FB_PAGE_TOKEN_TEASER` añadido |
