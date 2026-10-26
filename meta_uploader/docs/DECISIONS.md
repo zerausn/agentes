@@ -340,3 +340,16 @@
 - **Razón:**
     - Un error 500/timeout de Meta a mitad del Deep Cursor dejaba `block_posts` vacío y el código marcaba la página como `"DONE"` para siempre, perdiendo el backlog histórico hasta borrar manualmente `crosspost_deep_cursors.json`.
     - El retorno `0` reutilizado para "todo al día", "post descartado" y "catálogo roto" impedía distinguir un ciclo sano de un fallo en el log del widget.
+
+## D49: Deduplicación por derivada y selección del post más reciente entre páginas
+- **Decisión:**
+    1. `extract_content_keys()` genera identidades de contenido independientes de la página: `content:<stem>` para video completo, `content:<stem>_teaser_<n>` para teaser numerado y `content:<stem>_teaser` para teaser sin número. Ya no emite claves `stem:` desnudas.
+    2. `text:` se conserva como respaldo, normalizando los prefijos de página `#PW`, `#SW`, `#GW`, `#SC`, pero conservando `#full` y `#teaser` para que las derivadas no colisionen.
+    3. Al cargar el registro, las claves `text:` viejas con prefijo de página se normalizan. Las claves `stem:` viejas se conservan pero quedan inertes.
+    4. El Vigía escanea las 4 páginas y elige el candidato con `created_time` más reciente, tanto en bloques frescos como en el rescate Deep Cursor.
+    5. `--once` distingue `0` publicado, `2` sin candidatos, `3` candidato encontrado pero fallo de publicación y `1` error de ejecución. El launcher muestra cada caso por separado.
+- **Razón:** un teaser `20260429_185945_teaser_16` generaba la clave `stem:20260429_185945`, la misma que el video completo y que cualquier otro teaser del mismo fuente. Eso hacía que el registro viejo bloqueara todos los teasers nuevos y que el Vigía reportara "ya estaban publicados" sin ser cierto. Al mismo tiempo, el launcher trataba cualquier salida distinta de 0/2 como error genérico, ocultando si había un candidato real que falló al publicarse.
+
+## D50: Escalado IG según orientación (horizontal 1920x1080 / vertical 1080x1920)
+- **Decisión:** el filtro de `ensure_ig_compatibility()` usa el lado mayor para decidir el tope: `1920x1080` si el video es horizontal y `1080x1920` si es vertical. Luego fuerza dimensiones pares.
+- **Razón:** el tope fijo `min(ih,1080)` convertía un `720x1280` vertical en `608x1080`. Meta recibía el 100% del binario y respondía HTTP 400 `ProcessingFailedError` en `rupload` (dos intentos consecutivos). La verificación local con el mismo fuente produjo `720x1280`, 90s, 30fps, H.264 High 4.1, yuv420p, AAC 48kHz; ese clip se subió correctamente a un contenedor IG real. La prueba confirma que el ancho reducido era el bloqueador, no la red ni el token.

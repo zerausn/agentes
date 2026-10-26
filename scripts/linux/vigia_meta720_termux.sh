@@ -5,7 +5,9 @@
 #
 # Páginas monitoreadas (más reciente primero):
 #   - Performatic Writings Cali  (META_FB_PAGE_ID)
-#   - Shirabyoshi Writings       (META_FB_PAGE_ID_TEASER=1347014641828725)
+#   - Shirabyoshi Writings       (META_FB_PAGE_ID_SHIRABYOSHI / legacy TEASER)
+#   - Seanchai Writings          (META_FB_PAGE_ID_SEANCHAI)
+#   - Ghawazee Writings          (META_FB_PAGE_ID_GHAWAZEE)
 #
 # METODO: reloj del sistema (date +%s) — anti-Doze.
 # Si Android pausa el proceso por Doze, cuando despierte
@@ -64,7 +66,7 @@ echo "=============================================="
 echo "  VIGIA_META720 — Reconciliador FB->IG"
 echo "  Intervalo: ${INTERVALO}s | Check: ${CHECK_INTERVAL}s"
 echo "  Inicio: $(date '+%Y-%m-%d %H:%M:%S')"
-echo "  Paginas: Performatic Writings Cali + Shirabyoshi Writings"
+echo "  Paginas: Performatic + Shirabyoshi + Seanchai + Ghawazee"
 echo "  Orden: MAS RECIENTE primero"
 echo "=============================================="
 
@@ -115,7 +117,11 @@ source "$(dirname "$0")/_proot_bind.sh"
     case "$EXIT_CODE" in
         0)  echo "[CICLO #${CICLO}] OK — crosspost exitoso en ${DURACION}s."
             ;;
-        2)  echo "[CICLO #${CICLO}] Sin posts nuevos para crosspostear (${DURACION}s)."
+        2)  echo "[CICLO #${CICLO}] Sin candidatos (duplicados o sin media) en ${DURACION}s."
+            ;;
+        3)  echo "[CICLO #${CICLO}] Candidato encontrado, pero fallo la publicacion; se reintentara (${DURACION}s)."
+            ;;
+        1)  echo "[CICLO #${CICLO}] Error de ejecucion exit=1 (${DURACION}s)."
             ;;
         *)  echo "[CICLO #${CICLO}] Error exit=$EXIT_CODE (${DURACION}s)."
             ;;

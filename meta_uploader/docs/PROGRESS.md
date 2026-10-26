@@ -114,3 +114,17 @@
 - [x] Documentado en `DECISIONS.md` como D48.
 - [ ] Hacer push a `origin/linux-arm64` y correr `0_RENOVAR_REPO` en los dispositivos para que el widget tome el fix.
 - [ ] Rotar el Page Access Token filtrado en el historial público del repo (commits `83c004f`, `c1ac514`, `1713712`).
+
+### 2026-10-26: Dedupe por derivada, selección multipágina y escalado vertical IG
+- [x] `extract_content_keys()` ahora emite identidades `content:<stem>_teaser_<n>` / `content:<stem>_teaser` / `content:<stem>` y dejó de emitir `stem:` desnudo.
+- [x] Prefijos de página (`#PW`, `#SW`, `#GW`, `#SC`) se normalizan en `text:`; `#full` y `#teaser` se conservan para separar derivadas.
+- [x] Las claves `text:` viejas se normalizan al cargar el registro; las `stem:` viejas quedan inertes.
+- [x] El Vigía compara `created_time` entre las 4 páginas y elige el candidato más reciente, tanto en bloques frescos como en Deep Cursor.
+- [x] Logs de bloque resumen duplicados/sin media y sus motivos; ya no dicen "los N posts ya estaban publicados" cuando hubo fallo de publicación.
+- [x] `--once` distingue `0` publicado, `2` sin candidatos, `3` fallo de publicación y `1` error; el launcher muestra los 4 casos.
+- [x] Simulación con registro y catálogo IG reales del dispositivo: seleccionado Ghawazee `teaser_16` (`2026-10-26T19:26:19+0000`); `stem:20260429_185945` confirmado inerte.
+- [x] Escalado IG corregido por orientación (`1920x1080` horizontal / `1080x1920` vertical); un `720x1280` ya no se reduce a `608x1080`.
+- [x] Verificación de transcode: fuente `720x1280` de 195.9s → clip `720x1280`, 90s, 30fps, H.264 High 4.1, yuv420p, AAC 48kHz; subida binaria real a contenedor IG OK (sin publicar).
+- [x] `test_vigia_dedupe.py` ampliado a 15 tests; `py_compile` de ambos módulos y `bash -n` del launcher OK.
+- [x] Documentado en `DECISIONS.md` como D49 y D50; `ARCHITECTURE.md` actualizado.
+- [ ] Desplegar en el S24 (`0_RENOVAR_REPO` o ADB) y confirmar que el siguiente ciclo publica `teaser_16` sin `ProcessingFailedError`.

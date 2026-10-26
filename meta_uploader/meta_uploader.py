@@ -2271,9 +2271,11 @@ def ensure_ig_compatibility(file_path, max_duration=None, force_recode=False, cr
             "-profile:v", "high",
             "-level:v", "4.1",
             "-pix_fmt", "yuv420p",
-            # Escalar a maximo 1920x1080 manteniendo ratio (Meta rechaza videos >1080p con ProcessingFailedError)
-            # scale2ref no disponible en todas las versiones; usamos min() para cada dimension
-            "-vf", "scale=w='min(iw,1920)':h='min(ih,1080)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2",
+            # Escalar al maximo correcto segun orientacion: 1920x1080 para
+            # horizontal y 1080x1920 para vertical. Un cap fijo 1920x1080
+            # convertia un 720x1280 vertical en 608x1080 y Meta lo rechazaba
+            # con ProcessingFailedError tras recibir el 100% del binario.
+            "-vf", "scale=w='if(gte(iw,ih),min(iw,1920),min(iw,1080))':h='if(gte(iw,ih),min(ih,1080),min(ih,1920))':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2",
             "-r", "30",          # fps fijo 30 (Meta procesa mejor fps enteros estandar)
             "-bf", "2",          # max 2 B-frames por GOP
             "-g", "60",          # keyframe cada 60 frames (= 2s a 30fps)

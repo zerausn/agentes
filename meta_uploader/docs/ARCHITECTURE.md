@@ -23,11 +23,23 @@ con una capa de automatizacion separada del repo contenedor.
   pausar el batch para no consumir la cola a ciegas.
 - `reconcile_meta_cloud.py`: Motor de reconciliación rápida (Reconciliación 3.0). Realiza una limpieza triple nuclear basada en una caché masiva de 2000 videos remotos. Sincroniza el sistema purgando las colas `pendientes_*.json` y marcando el calendario como `completed`.
 - `run_jornada1_normal.py`: El runner operativo normal para la jornada 1. Ahora **enfocado exclusivamente en Facebook**, delegando Instagram al Vigía para maximizar la resiliencia de la ráfaga. Implementa el auto-move de archivos completados.
-- `fb_to_ig_vigia.py`: Agente Vigía encargado de la reconciliación FB -> IG. Rescata los videos `#full` de Facebook y los publica en Instagram (Feed/Reel/Stories), permitiendo que el runner principal se libre de la carga de Instagram.
+- `fb_to_ig_vigia.py`: Agente Vigía encargado de la reconciliación FB -> IG. Recorre las 4 páginas (Performatic, Shirabyoshi, Seanchai, Ghawazee), elige el post elegible más reciente y lo publica en Instagram, permitiendo que el runner principal se libre de la carga de Instagram.
 
 - **Delegación Total de Instagram**: Instagram ya no se procesa en el runner principal. El runner marca las tareas como `delegated_to_vigia`. Esto elimina los fallos de IG como causa de aborto de la ráfaga de Facebook y ahorra tiempo de CPU al no transcodificar para IG en el flujo principal.
 - **Carril Facebook Dual (Teaser + Full)**: Facebook sigue recibiendo dos versiones: un `#teaser` (Reel inmediato de 60s) y el video completo (`#full`) programado. Esto maximiza el alcance orgánico inmediato mientras se construye la biblioteca completa.
-- **Vigía (Rescate FB -> IG)**: El Vigía monitorea Facebook, detecta los videos `#full` y los promueve a Instagram. Los `#teaser` de Facebook son ignorados por el Vigía para mantener el feed de Instagram limpio de fragmentos cortos duplicados.
+- **Vigía multipágina (Rescate FB -> IG)**: El Vigía monitorea las 4 páginas y
+  publica en la misma cuenta IG el candidato más reciente que aún no exista en
+  Instagram. La deduplicación usa identidades de contenido independientes de la
+  página: `content:<stem>` para video completo, `content:<stem>_teaser_<n>` para
+  teaser numerado y `content:<stem>_teaser` para teaser sin número. Así el mismo
+  teaser publicado en varias páginas se sube una sola vez, pero distintos
+  teasers del mismo video fuente sí se publican. La clave `text:` queda como
+  respaldo y normaliza los prefijos de página (`#PW`, `#SW`, `#GW`, `#SC`).
+  Las claves `stem:` viejas del registro quedan inertes y no bloquean derivadas.
+- **Compatibilidad IG por orientación**: antes de subir, `ensure_ig_compatibility`
+  reescala a un máximo de `1920x1080` en horizontal o `1080x1920` en vertical.
+  Un tope fijo de `1080` de alto reducía un `720x1280` a `608x1080` y Meta lo
+  rechazaba con `ProcessingFailedError` después de recibir el 100% del binario.
 - **Gestión de Archivos Post-Subida**: Una vez completada una jornada, el sistema mueve automáticamente los archivos:
     - Videos originales -> `ya_subidos_fb_ig/`
     - Archivos temporales (`slice_60s`, `ig_compat`) -> `ya_subidos_ig_temp/`
@@ -106,5 +118,8 @@ con una capa de automatizacion separada del repo contenedor.
   bloqueos por spam.
 - Un mismo archivo no debe republicarse si Meta ya devuelve evidencia remota
   de que el stem original existe en Facebook o Instagram.
+- El Vigía distingue en `--once`: `0` publicado, `2` sin candidatos, `3`
+  candidato encontrado pero falló la publicación, `1` error de ejecución. El
+  launcher no debe colapsar `3` en "sin posts nuevos".
 - La Limpieza Triple Nuclear asegura la coherencia absoluta entre el disco, las colas JSON y el calendario.
 - Todo cambio estructural debe reflejarse en ARCHITECTURE.md, DECISIONS.md, PROGRESS.md y HISTORIAL_CONVERSACIONES.md.

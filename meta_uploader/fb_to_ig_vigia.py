@@ -6,6 +6,8 @@ import re
 import sys
 import time
 import unicodedata
+from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 
 from meta_uploader import (
@@ -29,14 +31,31 @@ CAPTION_SIGNATURE = "\n\n#PW\nSíguenos también en Facebook"
 # Número máximo de fallos consecutivos antes de marcar un post como procesado (evita reintentos infinitos)
 MAX_CONSECUTIVE_FAILURES = 3
 FAILURE_COUNTS_FILE = BASE_DIR / "crosspost_failure_counts.json"
+# `_teaser_<n>` es una derivada distinta del mismo video fuente. El lookahead
+# deja que el patron capture el stem aunque el nombre venga pegado al sufijo
+# (ej: 20260429_185945_teaser_14), sin incluir el sufijo en el stem.
 STEM_PATTERNS = (
-    re.compile(r"\b\d{8}[\s_-]\d{6}(?:_\d+)?\b", re.IGNORECASE),
-    re.compile(r"\b\d{8}[-_]\d{4}\b", re.IGNORECASE),
-    re.compile(r"\bvid-\d{8}-wa\d+\b", re.IGNORECASE),
+    re.compile(r"\b\d{8}[\s_-]\d{6}(?:_\d+)?(?=$|[^\w]|_teaser_\d+)", re.IGNORECASE),
+    re.compile(r"\b\d{8}[-_]\d{4}(?=$|[^\w]|_teaser_\d+)", re.IGNORECASE),
+    re.compile(r"\bvid-\d{8}-wa\d+(?=$|[^\w]|_teaser_\d+)", re.IGNORECASE),
 )
+# Prefijo de marca al inicio del caption (#PW | ..., #SW | ..., #GW | ...).
+# Se elimina para que el mismo teaser publicado en varias paginas comparta
+# la clave `text:` y se deduplique entre paginas.
+PAGE_PREFIX_RE = re.compile(r"^\s*#(?:pw|sw|gw|sc)\s*\|\s*", re.IGNORECASE)
 PW_PREFIX_RE = re.compile(r"^\s*pw\s*\|\s*\d{4}-\d{2}-\d{2}\s*\|\s*", re.IGNORECASE)
-NOISE_TOKEN_RE = re.compile(r"(?i)\s*#(?:pw|full|teaser|hq|pc|p)\b")
+# Solo se eliminan etiquetas de marca/calidad. `#full` y `#teaser` se
+# conservan porque distinguen derivadas del mismo video fuente.
+NOISE_TOKEN_RE = re.compile(r"(?i)\s*#(?:pw|sw|gw|sc|hq|pc|p)\b")
+TEASER_TAIL_RE = re.compile(r"^[)\]\s]*_?teaser[ _-]*(\d+)\b", re.IGNORECASE)
+UNNUMBERED_TEASER_RE = re.compile(r"(?i)#teaser\b")
 MULTISPACE_RE = re.compile(r"\s+")
+
+# Codigos internos del ciclo. `main()` los traduce a codigos de salida del
+# proceso (0 publicado, 2 sin candidatos, 3 fallo de publicacion, 1 error).
+CYCLE_PUBLISHED = 1
+CYCLE_NO_CANDIDATE = 2
+CYCLE_PUBLISH_FAILED = 3
 
 # Páginas de Facebook → Instagram
 # Cada entrada: (page_id, page_token, page_name)
@@ -102,12 +121,18 @@ def load_dedupe_registry():
         logging.warning("No se pudo leer el registro de deduplicacion: %s", e)
         return {"processed_post_ids": set(), "processed_keys": set()}
     if isinstance(data, list):
-        return {"processed_post_ids": set(), "processed_keys": set(data)}
+        return {
+            "processed_post_ids": set(),
+            "processed_keys": {_normalize_registry_key(key) for key in data},
+        }
     if not isinstance(data, dict):
         return {"processed_post_ids": set(), "processed_keys": set()}
     return {
         "processed_post_ids": set(data.get("processed_post_ids") or []),
-        "processed_keys": set(data.get("processed_keys") or []),
+        "processed_keys": {
+            _normalize_registry_key(key)
+            for key in (data.get("processed_keys") or [])
+        },
     }
 
 
@@ -167,11 +192,16 @@ def _strip_accents(value):
     return "".join(ch for ch in normalized if not unicodedata.combining(ch))
 
 
+def _first_nonempty_line(value):
+    lines = [line.strip() for line in str(value or "").splitlines() if line.strip()]
+    return lines[0] if lines else ""
+
+
 def _normalize_marker(value):
     raw = _strip_accents(value or "")
-    raw = raw.replace(CAPTION_SIGNATURE, "")
-    lines = [line.strip() for line in raw.splitlines() if line.strip()]
-    text = lines[0] if lines else ""
+    raw = raw.replace(_strip_accents(CAPTION_SIGNATURE), "")
+    text = _first_nonempty_line(raw)
+    text = PAGE_PREFIX_RE.sub("", text)
     text = PW_PREFIX_RE.sub("", text)
     text = NOISE_TOKEN_RE.sub("", text)
     text = MULTISPACE_RE.sub(" ", text).strip(" |-_").lower()
@@ -184,16 +214,50 @@ def _normalize_stem(value):
     return stem
 
 
+def _normalize_registry_key(key):
+    """Normaliza claves `text:` viejas para que el prefijo de pagina no rompa
+    la deduplicacion entre paginas. Las claves `stem:` viejas se conservan en
+    el registro pero ya no se generan (ver _extract_content_identities)."""
+    if not isinstance(key, str) or not key.startswith("text:"):
+        return key
+    normalized = _normalize_marker(key[len("text:"):])
+    return f"text:{normalized}" if normalized else key
+
+
+def _extract_content_identities(raw):
+    """Identidades de contenido independientes de la pagina.
+
+    - Video completo: `<stem>`
+    - Teaser numerado: `<stem>_teaser_<n>` (misma derivada en cualquier pagina)
+    - Teaser sin numero: `<stem>_teaser` (no bloquea al video completo)
+    """
+    normalized = _strip_accents(str(raw or ""))
+    unnumbered_teaser = bool(UNNUMBERED_TEASER_RE.search(_first_nonempty_line(normalized)))
+    identities = set()
+    for pattern in STEM_PATTERNS:
+        for match in pattern.finditer(normalized):
+            stem = _normalize_stem(match.group(0))
+            if not stem:
+                continue
+            tail = normalized[match.end():match.end() + 24]
+            teaser_match = TEASER_TAIL_RE.match(tail)
+            if teaser_match:
+                identities.add(f"{stem}_teaser_{int(teaser_match.group(1))}")
+            elif unnumbered_teaser:
+                identities.add(f"{stem}_teaser")
+            else:
+                identities.add(stem)
+    return identities
+
+
 def extract_content_keys(text):
     raw = str(text or "")
     keys = set()
     marker = _normalize_marker(raw)
     if marker:
         keys.add(f"text:{marker}")
-    normalized_raw = _strip_accents(raw)
-    for pattern in STEM_PATTERNS:
-        for match in pattern.findall(normalized_raw):
-            keys.add(f"stem:{_normalize_stem(match)}")
+    for identity in _extract_content_identities(raw):
+        keys.add(f"content:{identity}")
     return keys
 
 
@@ -294,23 +358,116 @@ def _fetch_block(page_id, page_token, page_name, after_cursor=None, block_size=1
 
 
 def _find_newest_uncrossposted(posts, registry, ig_catalog_keys):
-    """Retorna el primer post no publicado (el mas reciente) de un bloque que tenga media, o (None, None)."""
+    """Retorna el post no publicado mas reciente del bloque que tenga media.
+
+    Devuelve `(post, keys, stats)`. `stats` resume duplicados y posts sin media
+    para que el log del bloque explique por que no hubo candidato.
+    """
+    stats = {"duplicates": 0, "no_media": 0, "reasons": Counter()}
     for post in posts:
         post_id = post.get("id")
         message = post.get("message", "")
-        duplicate, content_keys, _ = find_duplicate_reason(post_id, message, registry, ig_catalog_keys)
-        if not duplicate:
-            media_items, _ = extract_media_list(post)
-            if media_items:
-                return post, content_keys
-            else:
-                # Si no tiene media, lo marcamos como procesado inmediatamente para no volver a evaluarlo
-                # (register_processed_post/load_history son del propio modulo;
-                # no se auto-importa para evitar ejecutar el modulo dos veces).
-                history = load_history()
-                register_processed_post(history, registry, post_id, content_keys, remember_keys=False)
-                logging.info("Post %s ignorado en pre-filtro (sin media).", post_id)
-    return None, None
+        duplicate, content_keys, reason = find_duplicate_reason(post_id, message, registry, ig_catalog_keys)
+        if duplicate:
+            stats["duplicates"] += 1
+            if reason:
+                stats["reasons"][reason] += 1
+            continue
+
+        media_items, _ = extract_media_list(post)
+        if media_items:
+            return post, content_keys, stats
+
+        # Si no tiene media, lo marcamos como procesado inmediatamente para no
+        # volver a evaluarlo (register_processed_post/load_history son del
+        # propio modulo; no se auto-importa para evitar ejecutar el modulo dos veces).
+        history = load_history()
+        register_processed_post(history, registry, post_id, content_keys, remember_keys=False)
+        stats["no_media"] += 1
+        logging.info("Post %s ignorado en pre-filtro (sin media).", post_id)
+    return None, None, stats
+
+
+def _format_scan_stats(stats):
+    parts = []
+    if stats.get("duplicates"):
+        parts.append(f"{stats['duplicates']} duplicados")
+    if stats.get("no_media"):
+        parts.append(f"{stats['no_media']} sin media")
+    text = ", ".join(parts) if parts else "0 duplicados, 0 sin media"
+    reasons = stats.get("reasons") or {}
+    top_reasons = ", ".join(
+        f"{reason} x{count}" for reason, count in reasons.most_common(3)
+    )
+    if top_reasons:
+        text += f"; motivos: {top_reasons}"
+    return text
+
+
+def parse_created_time(value):
+    """Convierte `created_time` de Graph API a datetime con zona horaria.
+
+    Graph devuelve `2026-10-26T19:26:19+0000`; tambien se aceptan `Z`,
+    variantes sin zona y objetos `datetime`.
+    """
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    text = str(value or "").strip()
+    if not text:
+        return None
+
+    candidates = [text]
+    if text.endswith("Z"):
+        candidates.insert(0, text[:-1] + "+00:00")
+
+    parsed = None
+    for candidate in candidates:
+        try:
+            parsed = datetime.fromisoformat(candidate)
+            break
+        except ValueError:
+            parsed = None
+
+    if parsed is None:
+        for fmt in (
+            "%Y-%m-%dT%H:%M:%S%z",
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%d %H:%M:%S%z",
+            "%Y-%m-%d %H:%M:%S",
+        ):
+            try:
+                parsed = datetime.strptime(text, fmt)
+                break
+            except ValueError:
+                parsed = None
+
+    if parsed is None:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _pick_newer_candidate(current_post, current_keys, new_post, new_keys):
+    """Conserva el candidato con `created_time` mas reciente entre paginas."""
+    if current_post is None:
+        return new_post, new_keys
+
+    current_dt = parse_created_time(current_post.get("created_time"))
+    new_dt = parse_created_time(new_post.get("created_time"))
+
+    if current_dt is None and new_dt is None:
+        current_raw = str(current_post.get("created_time") or "")
+        new_raw = str(new_post.get("created_time") or "")
+        if new_raw > current_raw:
+            return new_post, new_keys
+        return current_post, current_keys
+
+    if new_dt is None:
+        return current_post, current_keys
+    if current_dt is None or new_dt > current_dt:
+        return new_post, new_keys
+    return current_post, current_keys
 
 
 # ─── Paginacion Profunda (Deep Cursors) ──────────────────────────────────────────
@@ -394,18 +551,20 @@ def process_new_posts(dry_run=False):
                     )
                 break
 
-            new_post, new_keys = _find_newest_uncrossposted(block_posts, registry, ig_catalog_keys)
+            new_post, new_keys, scan_stats = _find_newest_uncrossposted(
+                block_posts, registry, ig_catalog_keys
+            )
             if new_post:
                 logging.info("[%s] Bloque %s: post nuevo encontrado: %s", page_name, block_num, new_post.get("id"))
-                # Elegir el candidato más reciente entre todas las páginas
-                if candidate_post is None or new_post.get("created_time", "") > candidate_post.get("created_time", ""):
-                    candidate_post = new_post
-                    candidate_keys = new_keys
+                # Elegir el candidato mas reciente entre todas las paginas.
+                candidate_post, candidate_keys = _pick_newer_candidate(
+                    candidate_post, candidate_keys, new_post, new_keys
+                )
                 break  # Un candidato por página; seguir con la siguiente
 
             logging.info(
-                "[%s] Bloque %s: los %s posts ya estaban publicados. Siguiente bloque.",
-                page_name, block_num, len(block_posts)
+                "[%s] Bloque %s: sin candidatos en %s posts (%s). Siguiente bloque.",
+                page_name, block_num, len(block_posts), _format_scan_stats(scan_stats)
             )
             block_cursor = next_cursor
             if not block_cursor:
@@ -464,11 +623,16 @@ def process_new_posts(dry_run=False):
                         )
                     break
                     
-                new_post, new_keys = _find_newest_uncrossposted(block_posts, registry, ig_catalog_keys)
+                new_post, new_keys, scan_stats = _find_newest_uncrossposted(
+                    block_posts, registry, ig_catalog_keys
+                )
                 if new_post:
                     logging.info("[%s] Rescate profundo exitoso: %s", page_name, new_post.get("id"))
-                    candidate_post = new_post
-                    candidate_keys = new_keys
+                    # Comparar con candidatos de las otras paginas: el rescate
+                    # profundo no debe quedarse con el primero que aparezca.
+                    candidate_post, candidate_keys = _pick_newer_candidate(
+                        candidate_post, candidate_keys, new_post, new_keys
+                    )
                     # NO actualizamos el cursor, para que en el prox ciclo siga revisando este mismo bloque
                     break 
                 
@@ -483,17 +647,24 @@ def process_new_posts(dry_run=False):
                     deep_cursors[page_id] = cursor
                 save_deep_cursors(deep_cursors)
                 
-                logging.info("[%s] Bloque historico %s vacio de pendientes. Cursor hundido al siguiente nivel.", page_name, deep_block_num)
+                logging.info(
+                    "[%s] Bloque historico %s sin candidatos (%s). Cursor hundido al siguiente nivel.",
+                    page_name, deep_block_num, _format_scan_stats(scan_stats)
+                )
                 
                 if not cursor:
                     break
-                    
-            if candidate_post:
-                break  # Encontramos uno, no hace falta buscar en las otras páginas este ciclo
                 
         if candidate_post is None:
             logging.info("No hay contenido pendiente ni en bloques frescos ni en la historia profunda visible este ciclo. Todo al dia.")
-            return 0
+            return CYCLE_NO_CANDIDATE
+
+    logging.info(
+        "Candidato mas reciente entre paginas: %s (%s, %s).",
+        candidate_post.get("id"),
+        candidate_post.get("_source_page_name", "desconocida"),
+        candidate_post.get("created_time", "sin fecha"),
+    )
 
     # 4. Subir el candidato encontrado
     post_id = candidate_post.get("id")
@@ -502,7 +673,7 @@ def process_new_posts(dry_run=False):
 
     if dry_run:
         logging.info("[%s] Dry-Run: subiria post %s", src_page, post_id)
-        return 1
+        return CYCLE_PUBLISHED
 
     logging.info("[%s] Procesando publicacion de: %s", src_page, post_id)
     media_items, original_caption = extract_media_list(candidate_post)
@@ -510,7 +681,7 @@ def process_new_posts(dry_run=False):
     if not media_items:
         logging.info("[%s] Post %s sin media. Descartando.", src_page, post_id)
         register_processed_post(history, registry, post_id, candidate_keys, remember_keys=False)
-        return 0
+        return CYCLE_NO_CANDIDATE
 
     final_caption = (original_caption or "").strip() + CAPTION_SIGNATURE
     at_least_one_success = False
@@ -651,7 +822,7 @@ def process_new_posts(dry_run=False):
                         pass
             if removed:
                 logging.info("[LIMPIEZA] Eliminados %s temporales huérfanos en .ig_temp (%.1f MB liberados).", removed, freed_mb)
-        return 1
+        return CYCLE_PUBLISHED
 
     # Post falló en todos los targets — incrementar contador de fallos
     failure_counts = load_failure_counts()
@@ -672,8 +843,8 @@ def process_new_posts(dry_run=False):
             post_id, failure_counts[post_id], MAX_CONSECUTIVE_FAILURES,
         )
 
-    logging.info("Ciclo finalizado sin publicaciones nuevas.")
-    return 0
+    logging.info("Ciclo finalizado sin publicacion confirmada.")
+    return CYCLE_PUBLISH_FAILED
 
 
 def main():
@@ -686,7 +857,7 @@ def main():
 
     while True:
         try:
-            rescued = process_new_posts(dry_run=args.dry_run)
+            cycle_result = process_new_posts(dry_run=args.dry_run)
         except Exception as e:
             logging.error("Error en pulso del Vigia: %s", e)
             if args.once or args.dry_run:
@@ -694,21 +865,31 @@ def main():
                 # interpreta 0 como crosspost exitoso. Con --once salimos
                 # con código 1 para que el widget muestre el error real.
                 sys.exit(1)
-            rescued = 0
+            cycle_result = None
 
         if args.once:
-            # 0 = se publico algo, 2 = nada pendiente, 1 = error (ver except).
-            # El launcher distingue 2 como "Sin posts nuevos para crosspostear".
-            sys.exit(0 if rescued else 2)
+            # 0 = se publico algo, 2 = sin candidatos (duplicados/sin media),
+            # 3 = candidato encontrado pero fallo la publicacion, 1 = error.
+            if cycle_result == CYCLE_PUBLISHED:
+                sys.exit(0)
+            if cycle_result == CYCLE_NO_CANDIDATE:
+                sys.exit(2)
+            sys.exit(3)
         if args.dry_run:
             break
 
-        if rescued > 0:
+        if cycle_result == CYCLE_PUBLISHED:
             wait_time = 600
             logging.info("Backlog pendiente. Reintentando en 10 minutos...")
-        else:
+        elif cycle_result == CYCLE_PUBLISH_FAILED:
+            wait_time = 600
+            logging.info("Fallo de publicacion. Reintentando en 10 minutos...")
+        elif cycle_result == CYCLE_NO_CANDIDATE:
             wait_time = 86400
             logging.info("Todo al dia. Durmiendo 24 horas...")
+        else:
+            wait_time = 600
+            logging.info("Error de ciclo. Reintentando en 10 minutos...")
 
         time.sleep(wait_time)
 

@@ -68,3 +68,19 @@
     - Conclusión: el Deep Cursor SÍ es la vía correcta para el backlog histórico (evita el Code 10 del reporte estático); el widget publica 1 post por ciclo de 12 min, primero lo reciente y luego hunde el cursor en la historia.
     - Hallazgo de seguridad: el Page Access Token sigue en el historial del repo público (commits `83c004f`, `c1ac514`, `1713712`); hay que rotarlo.
 - **Estado**: Cambios listos localmente en la rama `linux-arm64`, pendientes de push + `0_RENOVAR_REPO` en los dispositivos y de rotar el token.
+
+## Sesión: 2026-10-26 — Vigía multipágina: dedupe por derivada, selección y transcode vertical
+- **Objetivo**: Corregir el Vigía para que publique el post elegible más reciente de las 4 páginas, deduplique teasers reales sin bloquear derivadas distintas y deje de fallar por transcode vertical en Instagram.
+- **Hallazgos**:
+    - `extract_content_keys()` generaba `stem:20260429_185945` para cualquier teaser de ese fuente; el registro viejo bloqueaba `teaser_16` y el log lo reportaba como "ya estaban publicados".
+    - El Vigía se quedaba con el primer candidato de la primera página, sin comparar `created_time` entre las 4 páginas.
+    - `--once` devolvía 0 tanto si publicaba como si no quedaba nada, y el launcher no distinguía un fallo de publicación.
+    - `ensure_ig_compatibility()` reducía un `720x1280` vertical a `608x1080`; Meta recibía el 100% del binario y respondía HTTP 400 `ProcessingFailedError` en `rupload` (dos intentos consecutivos).
+- **Logros**:
+    - Dedupe por identidad de contenido: `content:<stem>`, `content:<stem>_teaser_<n>` y `content:<stem>_teaser`; `text:` como respaldo con prefijos de página normalizados.
+    - Registro viejo normalizado al cargar; claves `stem:` viejas conservadas pero inertes.
+    - Selección del candidato más reciente entre páginas en bloques frescos y en Deep Cursor.
+    - Códigos de salida `0/2/3/1` y mensajes del launcher actualizados.
+    - Escalado por orientación (`1920x1080` horizontal / `1080x1920` vertical) y verificación binaria real contra IG con un clip `720x1280` de 90s.
+    - 15 tests unitarios, `py_compile` y `bash -n` OK; documentado como D49/D50.
+- **Estado**: Cambios listos en la rama `linux-arm64`, pendientes de commit, push y despliegue en el S24. El siguiente ciclo debe seleccionar Ghawazee `teaser_16` o el post más reciente que siga elegible.
