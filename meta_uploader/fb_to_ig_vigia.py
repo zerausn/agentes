@@ -572,18 +572,40 @@ def process_new_posts(dry_run=False):
                     logging.info("[%s] Contenedor %s creado. Esperando que Meta lo active para upload...", src_page, target_type)
                     if not wait_for_ig_container_upload_ready(creation_id):
                         logging.error("[%s] Contenedor %s nunca llegó a UPLOAD_IN_PROGRESS. Abortando subida.", src_page, target_type)
-                    elif upload_ig_binary(creation_id, path_for_target):
-                        if wait_for_ig_container(creation_id):
-                            ig_id = publish_ig_container(creation_id)
-                            if ig_id:
-                                logging.info("[%s] Video %s publicado en IG %s", src_page, post_id, target_type)
-                                at_least_one_success = True
+                    else:
+                        # Probe del clip — diagnóstico para entender ProcessingFailedError
+                        from meta_uploader import probe_video
+                        _p = probe_video(path_for_target)
+                        _fps = _p.get("avg_frame_rate", "?")
+                        try:
+                            _n, _d = _fps.split("/")
+                            _fps = f"{round(int(_n)/int(_d),2)}fps" if int(_d) else _fps
+                        except Exception:
+                            pass
+                        logging.info(
+                            "[CLIP-SPECS] %s | %dx%d | %.1fs | %.2f MB | %.2f Mbps | %s | codec:%s pix:%s",
+                            Path(path_for_target).name,
+                            _p.get("width", 0), _p.get("height", 0),
+                            _p.get("duration_seconds", 0),
+                            _p.get("size_bytes", 0) / 1_048_576,
+                            _p.get("bit_rate", 0) / 1_000_000,
+                            _fps,
+                            _p.get("codec_name", "?"),
+                            _p.get("pix_fmt", "?"),
+                        )
+                        if upload_ig_binary(creation_id, path_for_target):
+                            if wait_for_ig_container(creation_id):
+                                ig_id = publish_ig_container(creation_id)
+                                if ig_id:
+                                    logging.info("[%s] Video %s publicado en IG %s", src_page, post_id, target_type)
+                                    at_least_one_success = True
 
                 if path_for_target != local_path and os.path.exists(path_for_target):
                     try:
                         os.remove(path_for_target)
                     except Exception:
                         pass
+
             else:
                 from meta_uploader import create_ig_media_container_from_url
                 creation_id = create_ig_media_container_from_url(

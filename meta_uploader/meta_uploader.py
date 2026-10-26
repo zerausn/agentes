@@ -2259,12 +2259,10 @@ def ensure_ig_compatibility(file_path, max_duration=None, force_recode=False, cr
     output_path = temp_dir / f"{prefix}{duration_tag}_{os.path.basename(file_path)}"
     
     # Base del comando (SIEMPRE con faststart para streaming eficiente en Meta)
-    # Usamos -map 0:v:0 -map 0:a:0? para asegurar que el video sea el primer stream
-    # y evitar que ffmpeg a veces solo copie audio en ciertos contenedores/escenarios.
+    # -map 0:v:0 -map 0:a:0? garantiza un solo stream de video y audio
     cmd = ["ffmpeg", "-y", "-i", file_path, "-map", "0:v:0", "-map", "0:a:0?", "-movflags", "+faststart"]
     
     # Si pedimos max_duration o force_recode, aplicamos el perfil de compatibilidad maxima (Deep Clean)
-    # Por experiencia, usar -c copy con -t (slicing) a veces pierde la pista de video en MP4.
     if force_recode or max_duration:
         cmd += [
             "-c:v", "libx264",
@@ -2273,16 +2271,19 @@ def ensure_ig_compatibility(file_path, max_duration=None, force_recode=False, cr
             "-profile:v", "high",
             "-level:v", "4.1",
             "-pix_fmt", "yuv420p",
-            "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
-            "-bf", "2",
-            "-flags", "+cgop",
-            "-g", "60",
+            # Escalar a maximo 1920x1080 manteniendo ratio (Meta rechaza videos >1080p con ProcessingFailedError)
+            # scale2ref no disponible en todas las versiones; usamos min() para cada dimension
+            "-vf", "scale=w='min(iw,1920)':h='min(ih,1080)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2",
+            "-r", "30",          # fps fijo 30 (Meta procesa mejor fps enteros estandar)
+            "-bf", "2",          # max 2 B-frames por GOP
+            "-g", "60",          # keyframe cada 60 frames (= 2s a 30fps)
             "-color_range", "tv",
             "-c:a", "aac",
             "-b:a", "128k",
             "-ac", "2",
-            "-ar", "48000"  # Meta requiere 48 kHz para Reels (era 44100, causa de ProcessingFailedError)
+            "-ar", "48000",      # Meta requiere 48 kHz AAC para Reels
         ]
+        # NOTA: -flags +cgop ELIMINADO — conflicta con -bf 2 (B-frames dentro del GOP vs GOP cerrado)
         if max_duration:
             cmd += ["-t", str(max_duration)]
     else:
